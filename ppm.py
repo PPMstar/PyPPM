@@ -964,6 +964,60 @@ class yprofile(DataPlot):
             L_C12pg = np.sum(enuc_C12pg*dV)
             
             return L_C12pg
+        elif attri == 'enuc_C12C12':
+            required_args = ('airmu', 'cldmu', 'fkcld', 'AtomicNocld')
+            missing_args = get_missing_args(required_args, **kwargs)
+            if len(missing_args) > 0:
+                if not silent:
+                    print 'The following arguments are missing: ', \
+                    missing_args
+                return None
+                
+            airmu = kwargs['airmu']
+            cldmu = kwargs['cldmu']
+            fkcld = kwargs['fkcld']
+            AtomicNocld = kwargs['AtomicNocld']
+
+            kwargs2 = {}
+            if 'Q' in kwargs:
+                kwargs2['Q'] = kwargs['Q']
+
+            if 'corr_fact' in kwargs:
+                kwargs2['corr_fact'] = kwargs['corr_fact']
+            
+            if 'T9' in kwargs:
+                kwargs2['T9'] = kwargs['T9']
+                
+            enuc_C12C12 = self._get_enuc_C12C12(fname, airmu, cldmu, \
+                          fkcld, AtomicNocld, numtype=numtype, \
+                          silent=silent, **kwargs2)
+
+            return enuc_C12C12
+        elif attri == 'enuc_O16O16':
+            required_args = ('airmu', 'cldmu', 'XO16conv')
+            missing_args = get_missing_args(required_args, **kwargs)
+            if len(missing_args) > 0:
+                if not silent:
+                    print 'The following arguments are missing: ', \
+                    missing_args
+                return None
+                
+            airmu = kwargs['airmu']
+            cldmu = kwargs['cldmu']
+            XO16conv = kwargs['XO16conv']
+
+            kwargs2 = {}
+            if 'corr_fact' in kwargs:
+                kwargs2['corr_fact'] = kwargs['corr_fact']
+            
+            if 'T9' in kwargs:
+                kwargs2['T9'] = kwargs['T9']
+                
+            enuc_O16O16 = self._get_enuc_O16O16(fname, airmu, cldmu, \
+                          XO16conv, numtype=numtype, silent=silent, \
+                          **kwargs2)
+            
+            return enuc_O16O16
         else:
             return None 
 
@@ -1042,6 +1096,116 @@ class yprofile(DataPlot):
         # This factor can account for the heating bug if present.
         enuc *= corr_fact
         
+        return enuc
+        
+    def _get_enuc_C12C12(self, fname, airmu, cldmu, fkcld, AtomicNocld,\
+                        numtype='ndump', silent=False, Q=9.35, \
+                        corr_fact=1., T9=None):
+        if T9 is None:
+            T9 = self.get('T9', fname=fname, numtype=numtype, \
+                          resolution='l', airmu=airmu, cldmu=cldmu, \
+                          silent=silent)
+        fv = self.get('FV H+He', fname=fname, numtype=numtype, \
+                      resolution='l', silent=silent)
+        rho = self.get('Rho', fname=fname, numtype=numtype, \
+                       resolution='l', silent=silent)
+        rhocld = self.get('Rho H+He', fname=fname, numtype=numtype, \
+                          resolution='l', silent=silent)
+
+        T9 = 1.022*T9**0.64
+        T9 = T9*0.5*(1. - np.tanh(2e2*(T9 - 2.240)))
+        
+        TP13 = T9**(1./3.)
+        TP23 = TP13*TP13
+        thyng = np.sqrt(T9)
+        TP14 = np.sqrt(thyng)
+        TP12 = TP14*TP14
+        TP32 = T9*TP12
+        TM13 = 1./TP13
+        TM23 = 1./TP23
+        TM32 = 1./TP32
+
+        T9B = T9/(1.+0.0396*T9)
+        T9B13 = T9B**(1./3.)
+        T9B56 = T9B**(5./6.)
+        T932 = T9**(3./2.)
+
+        # C12(C12,a)ne20,60, VITAL
+        BRCCA = 0.65*np.ones(len(T9))
+        
+        # BRCCN according to Dayras et al. 1977 NUC. PHYS. A 279
+        BRCCN = np.zeros(len(T9))
+        
+        tmp = -(0.766e0/T9**3.e0)
+        tmp = (1.e0 + 0.0789e0*T9 + 7.74e0*T9**3.e0)*tmp
+        tmp = 0.859e0*np.exp(tmp)
+        idx = where((T9 >= 0.5) & (T9 <= 1.5))
+        BRCCN[idx] = tmp[idx]
+        
+        idx = where((T9 > 1.5) & (T9 <= 5.0))
+        BRCCN[idx] = 0.055e0*(1.e0 - np.exp(-(0.789e0*T9[idx] - 0.976e0)))
+        
+        idx = where(T9 > 5.0)
+        BRCCN[idx] = 0.02e0
+        
+        # Rate from CF88 for C12+C12 (MG24):
+        C12C12 = 4.27e26*T9B56/T932*np.exp(-84.165/T9B13-2.12e-03*T9**3)
+
+        # Channel modifcation to get (c12,a):
+        vc12c12 = (C12C12 - C12C12*BRCCN)*BRCCA
+
+        vc12c12 = vc12c12 * rho * 1000.
+
+        v = 1./ rho
+        atomicnocldinv = 1./AtomicNocld
+
+        Y1 =  rhocld * fv * v * atomicnocldinv
+
+        thing2 = fkcld * Y1 * Y1 * vc12c12
+
+        DY = 0.5 * fkcld * thing2
+        
+        CN = 96.480733
+        enuc = DY * rho * CN * Q
+
+        # This factor can account for the heating bug if present.
+        enuc *= corr_fact
+
+        return enuc
+        
+    def _get_enuc_O16O16(self, fname, airmu, cldmu, XO16conv, \
+                         numtype='ndump', silent=False, corr_fact=1., \
+                         T9=None):
+        if T9 is None:
+            T9 = self.get('T9', fname=fname, numtype=numtype, \
+                          resolution='l', silent=silent, airmu=airmu, \
+                          cldmu=cldmu)
+        rho = self.get('Rho', fname=fname, numtype=numtype, \
+                       resolution=  'l', silent=silent)
+
+        T9 = 1.022*T9**0.64
+        T9 = T9*0.5*(1. - np.tanh(2e2*(T9 - 2.240)))
+        
+        TP13 = T9**(1./3.)
+        TP23 = TP13*TP13
+        TP43=TP23*TP23
+        thyng = np.sqrt(T9)
+        TP14 = np.sqrt(thyng)
+        TP12 = TP14*TP14
+        TP32 = T9*TP12
+        TM13 = 1./TP13
+        TM23 = 1./TP23
+        TM32 = 1./TP32
+        
+        # Equation 18.75 of Kippenhahn+12 with electron screening neglected.
+        enuc = 2.14e37*(1.e3*rho)*XO16conv*XO16conv*TM23
+        thyng = -135.93*TM13 - 0.629*TP23 - 0.445*TP43 + 0.0103*T9*T9
+        enuc = enuc*np.exp(thyng)
+        enuc = enuc*rho
+
+        # This factor can account for the heating bug if present.
+        enuc *= corr_fact
+
         return enuc
 
     def findFile(self, FName, numType='FILE', silent=False):
