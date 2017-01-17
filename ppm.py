@@ -981,10 +981,10 @@ class yprofile(DataPlot):
             kwargs2 = {}
             if 'Q' in kwargs:
                 kwargs2['Q'] = kwargs['Q']
-
+            
             if 'corr_fact' in kwargs:
                 kwargs2['corr_fact'] = kwargs['corr_fact']
-            
+
             if 'T9' in kwargs:
                 kwargs2['T9'] = kwargs['T9']
                 
@@ -1007,6 +1007,9 @@ class yprofile(DataPlot):
             XO16conv = kwargs['XO16conv']
 
             kwargs2 = {}
+            if 'Q' in kwargs:
+                kwargs2['Q'] = kwargs['Q']
+
             if 'corr_fact' in kwargs:
                 kwargs2['corr_fact'] = kwargs['corr_fact']
             
@@ -1102,6 +1105,7 @@ class yprofile(DataPlot):
                         numtype='ndump', silent=False, Q=9.35, \
                         corr_fact=1., T9=None):
         if T9 is None:
+            print 'Corrected T9 profile not supplied, using uncorrected T9.'
             T9 = self.get('T9', fname=fname, numtype=numtype, \
                           resolution='l', airmu=airmu, cldmu=cldmu, \
                           silent=silent)
@@ -1112,9 +1116,6 @@ class yprofile(DataPlot):
         rhocld = self.get('Rho H+He', fname=fname, numtype=numtype, \
                           resolution='l', silent=silent)
 
-        T9 = 1.022*T9**0.64
-        T9 = T9*0.5*(1. - np.tanh(2e2*(T9 - 2.240)))
-        
         TP13 = T9**(1./3.)
         TP23 = TP13*TP13
         thyng = np.sqrt(T9)
@@ -1177,14 +1178,12 @@ class yprofile(DataPlot):
                          numtype='ndump', silent=False, corr_fact=1., \
                          T9=None):
         if T9 is None:
+            print 'Corrected T9 profile not supplied, using uncorrected T9.'
             T9 = self.get('T9', fname=fname, numtype=numtype, \
-                          resolution='l', silent=silent, airmu=airmu, \
-                          cldmu=cldmu)
+                          resolution='l', airmu=airmu, cldmu=cldmu, \
+                          silent=silent)
         rho = self.get('Rho', fname=fname, numtype=numtype, \
                        resolution=  'l', silent=silent)
-
-        T9 = 1.022*T9**0.64
-        T9 = T9*0.5*(1. - np.tanh(2e2*(T9 - 2.240)))
         
         TP13 = T9**(1./3.)
         TP23 = TP13*TP13
