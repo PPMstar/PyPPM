@@ -288,7 +288,7 @@ class yprofile(DataPlot):
         
     """
 
-    def __init__(self, sldir='.'):
+    def __init__(self, sldir='.', filename_offset=0):
         """ 
         init method
 
@@ -339,7 +339,7 @@ class yprofile(DataPlot):
             # returns the concatination of cycle and top attributes
             self.cattrs=self.getCattrs() 
 
-            self.ndumpDict=self.ndumpDict(self.files)
+            self.ndumpDict=self.ndumpDict(self.files, filename_offset=filename_offset)
             self.radbase = float(self.hattrs['At base of the convection zone R'])
             self.radtop  = float(self.hattrs['Thickness (Mm) of transition from convection to stability '].split()[4])
             print 'There are '+str(len(self.files))+' YProfile files in the ' +self.sldir+' directory.'
@@ -350,7 +350,7 @@ class yprofile(DataPlot):
             self.cycles=self.ndumpDict.keys()
         return None
 
-    def ndumpDict(self, fileList):
+    def ndumpDict(self, fileList, filename_offset=0):
         """ 
         Method that creates a dictionary of Filenames with the
         associated key of the filename's Ndump.
@@ -369,8 +369,9 @@ class yprofile(DataPlot):
         ndumpDict={}
         for i in xrange(len(fileList)):
             ndump=fileList[i].split("-")[-1]
-            ndump=ndump.split(".")[0]
-            ndumpDict[int(ndump)]=fileList[i]
+            ndump=int(ndump.split(".")[0])
+            ndump+=filename_offset
+            ndumpDict[ndump]=fileList[i]
 
         return ndumpDict
 
@@ -985,8 +986,11 @@ class yprofile(DataPlot):
             if 'corr_fact' in kwargs:
                 kwargs2['corr_fact'] = kwargs['corr_fact']
 
-            if 'T9' in kwargs:
-                kwargs2['T9'] = kwargs['T9']
+            if 'corr_func' in kwargs:
+                kwargs2['corr_func'] = kwargs['corr_func']
+
+            if 'T9_func' in kwargs:
+                kwargs2['T9_func'] = kwargs['T9_func']
                 
             enuc_C12C12 = self._get_enuc_C12C12(fname, airmu, cldmu, \
                           fkcld, AtomicNocld, numtype=numtype, \
@@ -1013,8 +1017,8 @@ class yprofile(DataPlot):
             if 'corr_fact' in kwargs:
                 kwargs2['corr_fact'] = kwargs['corr_fact']
             
-            if 'T9' in kwargs:
-                kwargs2['T9'] = kwargs['T9']
+            if 'T9_func' in kwargs:
+                kwargs2['T9_func'] = kwargs['T9_func']
                 
             enuc_O16O16 = self._get_enuc_O16O16(fname, airmu, cldmu, \
                           XO16conv, numtype=numtype, silent=silent, \
@@ -1103,12 +1107,15 @@ class yprofile(DataPlot):
         
     def _get_enuc_C12C12(self, fname, airmu, cldmu, fkcld, AtomicNocld,\
                         numtype='ndump', silent=False, Q=9.35, \
-                        corr_fact=1., T9=None):
-        if T9 is None:
+                        corr_fact=1., corr_func=None, T9_func=None):
+        if T9_func is None:
             print 'Corrected T9 profile not supplied, using uncorrected T9.'
             T9 = self.get('T9', fname=fname, numtype=numtype, \
                           resolution='l', airmu=airmu, cldmu=cldmu, \
                           silent=silent)
+        else:
+            T9 = T9_func(self, fname=fname, numtype=numtype, resolution='l')
+        
         fv = self.get('FV H+He', fname=fname, numtype=numtype, \
                       resolution='l', silent=silent)
         rho = self.get('Rho', fname=fname, numtype=numtype, \
@@ -1171,17 +1178,24 @@ class yprofile(DataPlot):
 
         # This factor can account for the heating bug if present.
         enuc *= corr_fact
+        
+        if corr_func is not None:
+            cf = corr_func(self, fname=fname, numtype=numtype, resolution='l')
+            enuc *= cf
 
         return enuc
         
     def _get_enuc_O16O16(self, fname, airmu, cldmu, XO16conv, \
                          numtype='ndump', silent=False, corr_fact=1., \
-                         T9=None):
-        if T9 is None:
+                         T9_func=None):
+        if T9_func is None:
             print 'Corrected T9 profile not supplied, using uncorrected T9.'
             T9 = self.get('T9', fname=fname, numtype=numtype, \
                           resolution='l', airmu=airmu, cldmu=cldmu, \
                           silent=silent)
+        else:
+            T9 = T9_func(self, fname=fname, numtype=numtype, resolution='l')
+        
         rho = self.get('Rho', fname=fname, numtype=numtype, \
                        resolution=  'l', silent=silent)
         
@@ -4297,6 +4311,9 @@ class yprofile(DataPlot):
             unit = 1e43/1e27
         elif var_name == 'enuc_C12pg':
             cbar_lbl = r'$\epsilon_\mathrm{C12pg}$ / erg cm$^{-3}$ s$^{-1}$'
+            unit = 1e43/1e24
+        elif var_name == 'enuc_C12C12':
+            cbar_lbl = r'$\epsilon_\mathrm{C12C12}$ / erg cm$^{-3}$ s$^{-1}$'
             unit = 1e43/1e24
         else:
             cbar_lbl = var_name
