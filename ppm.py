@@ -370,7 +370,7 @@ class yprofile(DataPlot):
         for i in xrange(len(fileList)):
             ndump=fileList[i].split("-")[-1]
             ndump=int(ndump.split(".")[0])
-            ndump+=filename_offset
+            ndump-=filename_offset
             ndumpDict[ndump]=fileList[i]
 
         return ndumpDict
