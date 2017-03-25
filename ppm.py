@@ -4039,11 +4039,12 @@ class yprofile(DataPlot):
             pl.legend(loc = 0)
             fig1.tight_layout()
 
-            print 'r_b is the radius of the convective boundary.'
-            print 'r_b_fc = ', r_b_fc
-            print 'dr_b/dt = {:.2e} km/s\n'.format(1e3*r_b_fc[0])
-            print 'r_top is the upper limit for mass integration.'
-            print 'dr_top/dt = {:.2e} km/s'.format(1e3*r_top_fc[0])
+            if show_fits:
+                print 'r_b is the radius of the convective boundary.'
+                print 'r_b_fc = ', r_b_fc
+                print 'dr_b/dt = {:.2e} km/s\n'.format(1e3*r_b_fc[0])
+                print 'r_top is the upper limit for mass integration.'
+                print 'dr_top/dt = {:.2e} km/s'.format(1e3*r_top_fc[0])
             
             max_val = np.max(m_ir)
             if show_fits:
@@ -4089,9 +4090,10 @@ class yprofile(DataPlot):
             if file_name is not None:
                 fig2.savefig(file_name)
         
-            print 'Resolution: {:d}^3'.format(2*len(r))
-            print 'm_ir_fc = ', m_ir_fc
-            print 'Entrainment rate: {:.3e} M_Sun/s'.format(mdot)
+            if show_fits:
+                print 'Resolution: {:d}^3'.format(2*len(r))
+                print 'm_ir_fc = ', m_ir_fc
+                print 'Entrainment rate: {:.3e} M_Sun/s'.format(mdot)
         
         if return_time_series:
             return m_ir
