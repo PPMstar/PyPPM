@@ -4053,10 +4053,7 @@ class yprofile(DataPlot):
             oom = int(np.floor(np.log10(max_val)))
             
             pl.close(ifig0 + 1); fig2 = pl.figure(ifig0 + 1)
-            lbl = 'measured time series'
-            if mdot_curve_label is not None:
-                lbl = mdot_curve_label
-            pl.plot(time/60., m_ir/10**oom, color = cb(5), label = lbl)
+            pl.plot(time/60., m_ir/10**oom, color = cb(5), label=mdot_curve_label)
             mdot_str = '{:e}'.format(mdot)
             parts = mdot_str.split('e')
             mantissa = float(parts[0])
