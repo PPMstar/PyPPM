@@ -276,6 +276,15 @@ def prof_compare(cases,ndump=None,yaxis_thing='FV H+He',ifig=None,num_type='ndum
                logy=logy,shape=utils.linestyle(j)[0],markevery=utils.linestyle(j)[1])
         i += 1
 
+def cdiff(x):
+    # compute 2nd order centred differences
+    dx = (np.roll(x, -1) - np.roll(x, 1))/2.
+    
+    # 1st order differences to correct the boundaries
+    dx[0] = x[1] - x[0]
+    dx[-1] = x[-1] - x[-2]
+    
+    return dx
 
 class yprofile(DataPlot):
     """ 
@@ -801,13 +810,6 @@ class yprofile(DataPlot):
 
             return missing_args
          
-        def cdiff(x):
-            dx = 0.5*(np.roll(x, +1) - np.roll(x, -1))
-            dx[0] = dx[1]
-            dx[-1] = dx[-2]
-
-            return dx
-            
         # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
         G_code = ast.grav_const/1e-3
         
@@ -873,7 +875,7 @@ class yprofile(DataPlot):
             # g[idx_bot] == g_bot).
             m_bot = g_bot*(r[idx_bot]**2)/G_code
             
-            dm = 4.*np.pi*(r**2)*cdiff(r)*rho
+            dm = -4.*np.pi*(r**2)*cdiff(r)*rho
             m = -np.cumsum(dm) # Get the mass profile by integration.
             
             # Shift the mass profile to make sure that m[idx_bot] == m_bot.
@@ -961,7 +963,7 @@ class yprofile(DataPlot):
                                   silent = silent, **kwargs)
             r = self.get('Y', fname, numtype, resolution = 'l', silent = silent)
             
-            dV = 4.*np.pi*r**2*cdiff(r)
+            dV = -4.*np.pi*r**2*cdiff(r)
             L_C12pg = np.sum(enuc_C12pg*dV)
             
             return L_C12pg
@@ -2008,16 +2010,6 @@ class yprofile(DataPlot):
         # the unit of G in the code is 10^{-3} g cm^3 s^{-2}
         G_code = ast.grav_const/1e-3
         
-        def diff(x):
-            # compute 2nd order centred differences
-            dx = (np.roll(x, -1) - np.roll(x, 1))/2.
-            
-            # 1st order differences to correct the boundaries
-            dx[0] = x[1] - x[0]
-            dx[-1] = x[-1] - x[-2]
-            
-            return dx
-        
         if fname1 < 0 or fname1 > np.max(self.ndumpDict.keys()):
             raise IOError("fname1 out of range.")
         
@@ -2053,7 +2045,7 @@ class yprofile(DataPlot):
         
         min_r = np.min(r)
         max_r = np.max(r)
-        dr = diff(r)
+        dr = cdiff(r)
         
         if R_top is not None:
             if R_top < min_r:
@@ -2208,7 +2200,7 @@ class yprofile(DataPlot):
             pl.legend(loc = 3)
         elif plot_type == 1:
             # the steepest velocity gradient between R_low and R_top
-            dudr = diff(rms_u_xz)/dr
+            dudr = cdiff(rms_u_xz)/dr
             max_dudr = np.max(np.abs(dudr[idx_top:(idx_low + 1)]))
             
             # characteristic length scale on which velocities decrease at the boundary
@@ -2331,14 +2323,14 @@ class yprofile(DataPlot):
             pl.title("pressure scale height")
             
             pl.close(107); pl.figure(107)
-            nabla_rho = diff(logrho)/diff(logp)
+            nabla_rho = cdiff(logrho)/cdiff(logp)
             pl.plot(r[i1:i2], nabla_rho[i1:i2])
             pl.xlabel("radius [Mm]")
             pl.ylabel("nabla_rho")
             pl.title("density gradient")
             
             pl.close(108); pl.figure(108)
-            nabla_rho = diff(logrho)/diff(logp)
+            nabla_rho = cdiff(logrho)/cdiff(logp)
             N2 = (g/H_p)*(nabla_rho - nabla_rho_ad)
             pl.plot(r[i1:i2], N2[i1:i2])
             pl.xlabel("radius [Mm]")
@@ -3933,24 +3925,17 @@ class yprofile(DataPlot):
             int_func = interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
         
-        def diff(x):
-            dx = 0.5*(np.roll(x, -1) - np.roll(x, +1))
-            dx[0] = dx[1]
-            dx[-1] = dx[-2]
-            
-            return dx
-        
         r = self.get('Y', fname = cycles[0], resolution='l')
         
         idx_min = np.argmin(np.abs(r - r_max))
         idx_max = np.argmin(np.abs(r - r_min))
-        
+
         r_min = r[idx_max]
         r_max = r[idx_min]
         
         r = r[idx_min:(idx_max + 1)]
         r_int = np.linspace(r_min, r_max, num = 20.*(idx_max - idx_min + 1))
-        dr_int = diff(r_int)
+        dr_int = cdiff(r_int)
         
         time = np.zeros(len(cycles))
         r_b = np.zeros(len(cycles))
@@ -3964,7 +3949,7 @@ class yprofile(DataPlot):
                 q = self.get(var, fname = cycles[i], resolution='l')[idx_min:(idx_max + 1)]
             
             q_int = regrid(r, q, r_int)
-            grad = diff(q_int)/dr_int
+            grad = cdiff(q_int)/dr_int
 
             if criterion == 'min_grad':
                 idx_b = np.argmin(grad)
@@ -3996,7 +3981,7 @@ class yprofile(DataPlot):
         m_ir = np.zeros(len(cycles))
         r = self.get('Y', fname = cycles[0], resolution='l')
         r_int = np.linspace(np.min(r), np.max(r), num = 20.*len(r))
-        dr_int = diff(r_int)
+        dr_int = cdiff(r_int)
         for i in range(len(cycles)):
             if integrate_both_fluids:
                 rho = self.get('Rho', fname = cycles[i], resolution='l')
