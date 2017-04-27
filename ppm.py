@@ -4082,6 +4082,73 @@ class yprofile(DataPlot):
         else:
             return mdot
 
+    def boundary_radius(self, cycles, r_min, r_max, var='vxz', \
+                        criterion='min_grad', var_value=None):
+        eps = 1e-9
+        n_cycles = len(cycles)
+        rb = np.zeros(n_cycles)
+
+        r = self.get('Y', cycles[0], resolution='l')
+        idx_r_min = np.argmin(np.abs(r - r_min))
+        idx_r_max = np.argmin(np.abs(r - r_max))
+
+        for i in range(n_cycles):
+            if var == 'vxz':
+                v = self.get('EkXZ', fname = cycles[i], resolution='l')**0.5
+            else:
+               v = self.get(var, cycles[i], resolution='l')
+
+            if criterion == 'min_grad' or criterion == 'max_grad':
+                # The following code always looks for a local minimum in dv.
+                dvdr = cdiff(v)/cdiff(r)
+
+                # A local maximum is found by looking for a local minimum in
+                # -dvdr.
+                if criterion == 'max_grad':
+                    dvdr = -dvdr
+
+                # 0th-order estimate.
+                idx0 = idx_r_max + np.argmin(dvdr[idx_r_max:idx_r_min])
+                r0 = r[idx0]
+
+                # Try to pinpoint the radius of the local minimum by fitting
+                # a parabola around r0.
+                coefs = np.polyfit(r[idx0-1:idx0+2], dvdr[idx0-1:idx0+2], 2)
+
+                if np.abs(coefs[0]) > eps:
+                    r00 = -coefs[1]/(2.*coefs[0])
+
+                    # Only use the refined radius if it is within the three
+                    # cells.
+                    if r00 < r[idx0-1] and r00 > r[idx0+1]:
+                        r0 = r00
+            elif criterion == 'value':
+                # 0th-order estimate.
+                idx0 = idx_r_max + np.argmin(np.abs(v[idx_r_max:idx_r_min] - var_value))
+                r0 = r[idx0]
+
+                if np.abs(v[idx0] - var_value) > eps:
+                    # 1st-order refinement.
+                    if idx0 > idx_r_max and idx0 < idx_r_min:
+                        if (v[idx0-1] < var_value and v[idx0] > var_value) or \
+                           (v[idx0-1] > var_value and v[idx0] < var_value):
+                            slope = v[idx0] - v[idx0-1]
+                            t = (var_value - v[idx0-1])/slope
+                            r0 = (1. - t)*r[idx0-1] + t*r[idx0]
+                        elif (v[idx0] < var_value and v[idx0+1] > var_value) or \
+                            (v[idx0] > var_value and v[idx0+1] < var_value):
+                            slope = v[idx0+1] - v[idx0]
+                            t = (var_value - v[idx0])/slope
+                            r0 = (1. - t)*r[idx0] + t*r[idx0+1]
+                        else:
+                            r0 = r_max
+                        
+            rb[i] = r0
+
+        return rb
+
+        
+
     def vaverage(self,vi='v',transient=0.,sparse=1):
         '''
         plots and returns the average velocity profile for a given
