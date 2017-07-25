@@ -2962,7 +2962,8 @@ class yprofile(DataPlot):
 
     def Dsolvedown(self,fname1,fname2,fluid='FV H+He',numtype='ndump',
        newton=False,niter=3,debug=False,grid=False,FVaverage=False,
-       tauconv=None,returnY=False,smooth=False,plot_Dlt0=True):
+       tauconv=None,returnY=False,smooth=False,plot_Dlt0=True,
+       sinusoidal_FV=False, log_X=True, Xlim=None, Dlim=None):
         '''
         Solve diffusion equation sequentially by iterating over the spatial
         domain inwards from the upper boundary.        
@@ -3238,9 +3239,15 @@ class yprofile(DataPlot):
             x = x[::-1]
             y0 = y0[::-1]
 
-        # restrict the computational domain to only where the regions are mixed
-        idxu = np.where( y1 != 1. )[0][-1] + 1
-        idxl = np.where( y1 != 0. )[0][0] - 1
+        if sinusoidal_FV:
+            ru = float(self.get('Gravity turns off between radii Low', fname=fname1))
+            idxu = np.argmin(np.abs(x - ru))
+            rl = float(self.get('Gravity turns on between radii High', fname=fname1))
+            idxl = np.argmin(np.abs(x - rl))
+        else:
+            # restrict the computational domain to only where the regions are mixed
+            idxu = np.where( y1 != 1. )[0][-1] + 1
+            idxl = np.where( y1 != 0. )[0][0] - 1
         print idxl, idxu
         print y1
         y1 = y1[idxl:idxu]
@@ -3285,7 +3292,8 @@ class yprofile(DataPlot):
         lsty = utils.linestyle
         
         pl.figure()
-        pl.plot(xlong,np.log10(y0long),\
+        yplot = np.log10(y0long) if log_X else y0long
+        pl.plot(xlong,yplot,\
                 marker='o',
                 color=cb(8),\
                 markevery=lsty(1)[1],\
@@ -3293,15 +3301,20 @@ class yprofile(DataPlot):
                 mew = 1.,
                 mfc = 'w',
                 label='$X_{'+str(fname1)+'}$')
-        pl.plot(xlong,np.log10(y1long),\
+        yplot = np.log10(y1long) if log_X else y1long
+        pl.plot(xlong,yplot,\
                 marker='o',\
                 color=cb(9),\
                 lw=0.5,
                 markevery=lsty(2)[1],\
                 label='$X_{'+str(fname2)+'}$')
-        pl.ylabel('$\log_{10}\,X$ ')
+        lbl = '$\log_{10}\,X$ ' if log_X else '$X$ '
+        pl.ylabel(lbl)
         pl.xlabel('$\mathrm{r\,/\,Mm}$')
-        pl.ylim(-8,0.1)
+        if Xlim is not None:
+            pl.ylim(Xlim)
+        else:
+           pl.ylim(-8,0.1)
         pl.legend(loc='center right').draw_frame(False)
         if grid:
             pl.grid()
@@ -3312,6 +3325,11 @@ class yprofile(DataPlot):
         if plot_Dlt0:
             pl.plot(x/1.e8,np.log10(-D),'k--',\
                     label='$D < 0$')
+        pl.xlim((3.5, 9.5))
+        if Dlim is not None:
+            pl.ylim(Dlim)
+        else:
+            pl.ylim((8., 18.))
         pl.ylabel('$\log_{10}(D\,/\,{\\rm cm}^2\,{\\rm s}^{-1})$')
         pl.legend(loc='upper right').draw_frame(False)
 
