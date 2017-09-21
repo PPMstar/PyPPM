@@ -4210,6 +4210,241 @@ class yprofile(DataPlot):
         pl.xlabel('r / Mm')
 
         return vav
+    
+    #Some plotting functions
+    #See Idealized hydrodynamic simulations of turbulent oxygen-burning shell convection in 4 geometry
+    #Jones, S.; Andrassy, R.; Sandalski, S.; Davis, A.; Woodward, P.; Herwig, F.
+    
+    def vr_evolution(cases, ymin, ymax):
+        
+        '''
+        Plots Fig. 12 in the above paper, 
+        cases = array of strings indicating directories containing yprofile files
+        ex. cases = ['D1', 'D2']
+
+        ymin and ymax are minimum and maximum boundaries for the search for vr_max
+
+        ! global ppm_path must be set using ppm.set_YProf_path
+
+        '''
+        sparse = 1
+        markevery = 25
+        cb = utils.colourblind
+        yy = 0
+        for case in cases:
+
+            try:
+                prof = ppm.yprofile(ppm.ppm_path+case)
+            except ValueError:
+                print "have you set the yprofile filepath using ppm.set_YProf_path?"
+
+            cycles = range(prof.cycles[0], prof.cycles[-1], sparse)
+            t, vr_max = get_vr_max_evolution(prof, cycles, ymin, ymax)
+            pl.plot(t/60.,  1e3*vr_max,  color = cb(yy),\
+                     marker = 's', markevery = markevery, label = case)
+            yy += 1
+
+        pl.title('')
+        pl.xlabel('t / min')
+        pl.ylabel(r'v$_r$ / km s$^{-1}$')
+        pl.legend(loc = 0)
+    
+    def upper_bound_ut(data_path, derivative, dump_to_plot, hist_dump_min, hist_dump_max, r1, r2, t_fit_start):
+        '''
+        
+        Plots. Fig. 14,15 in above paper
+        
+        derivative = True/False plot dut/dr or just ut
+        dump_To_plot = which dump number to plot [int]
+        hist_dump_min/hist_dump_max = range of dumps to use in histogram
+        r1/r2 = radial velocity that the minimum of the transverse velocity will be looked for
+        
+        sample values:
+        
+        data_path = "/data/ppm_rpod2/RProfiles/O-shell-M25/D15/"
+        dump_to_plot = 121
+        hist_dump_min = 101
+        hist_dump_max = 135
+        r1 = 7.4
+        r2 = 8.4
+        t_fit_start = 700 
+        
+        '''
+        # The code in this cell calls analyse_dump() for all dumps and computes
+        # some statistics on the temporal evolution of r_ub.
+
+        # radial interval in that the minimum of the transverse
+        # velocity will be looked for
+
+        #rp = rp_set.get_dump(data_path)
+        rp_set = rprofile.rprofile_set(data_path)
+        rp = rp_set.get_dump(dump_to_plot)
+
+        n_dumps = len(rp_set.dumps)
+        n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
+        t = np.zeros(n_dumps)
+        r_ub = np.zeros((n_buckets, n_dumps))
+
+        for k in range(n_dumps):
+            rp = rp_set.get_dump(rp_set.dumps[k])
+            t[k] = rp.get('time')
+
+            res = analyse_dump(rp, r1, r2)
+            r = res[0]
+            ut = res[1]
+            dutdr = res[2]
+            r_ub[:, k] = res[3]
+
+        avg_r_ub = np.sum(r_ub, axis = 0)/float(n_buckets)
+        dev = np.array([r_ub[i, :] - avg_r_ub for i in range(n_buckets)])
+        sigmap_r_ub = np.zeros(n_dumps)
+        sigmam_r_ub = np.zeros(n_dumps)
+
+        for k in range(n_dumps):
+            devp = dev[:, k]
+            devp = devp[devp >= 0]
+            if len(devp) > 0:
+                sigmap_r_ub[k] = (sum(devp**2)/float(len(devp)))**0.5
+            else:
+                sigmam_r_ub[k] = None
+
+            devm = dev[:, k]
+            devm = devm[devm <= 0]
+            if len(devm) > 0:
+                sigmam_r_ub[k] = (sum(devm**2)/float(len(devm)))**0.5
+            else:
+                sigmam_r_ub[k] = None
+
+        idx_fit_start = np.argmin(np.abs(t - t_fit_start))
+        t_fit_start = t[idx_fit_start]
+
+        # fc = fit coefficients
+        fc_avg = np.polyfit(t[idx_fit_start:-1], avg_r_ub[idx_fit_start:-1], 1)
+        avg_fit = fc_avg[0]*t + fc_avg[1]
+        fc_plus = np.polyfit(t[idx_fit_start:-1], 2.*sigmap_r_ub[idx_fit_start:-1], 1)
+        plus_fit = fc_plus[0]*t + fc_plus[1]
+        fc_minus = np.polyfit(t[idx_fit_start:-1], 2.*sigmam_r_ub[idx_fit_start:-1], 1)
+        minus_fit = fc_minus[0]*t + fc_minus[1]
+
+        #r, ut, dutdr, void = analyse_dump(rp,r1,r2)
+
+        hist_bins = 0.5*(r + np.roll(r, -1))
+        hist_bins[-1] = hist_bins[-2] + (hist_bins[-2] - hist_bins[-3])
+        #hist_bins = np.insert(hist_bins, 0., 0.)       # #robert - this command throws an error?!?
+
+        print "Dump {:d} (t = {:.2f} min).".format(dump_to_plot, t[dump_to_plot]/60.)
+        print "Histogram constructed using dumps {:d} (t = {:.2f} min) to {:d} (t = {:.2f} min) inclusive."\
+            .format(hist_dump_min, t[hist_dump_min]/60., hist_dump_max, t[hist_dump_max]/60.)
+
+        ifig = 1; plt.close(ifig); fig = plt.figure(ifig, figsize = (2*3.39, 2*2.8))
+        gs = gridspec.GridSpec(2, 1, height_ratios = [3, 1])
+        ax0 = plt.subplot(gs[0])
+
+        if derivative:
+            temp = dutdr
+            lims = (-0.39, 0.1)
+        else:
+            temp = 1e3*ut
+            lims = (-9.99, 50)
+
+        ax0.set_ylim(lims)
+
+        for bucket in range(n_buckets):
+            lbl = r'bucket data' if bucket == 0 else None
+
+            ax0.plot(r, temp[:, bucket], ls = '-', lw = 0.5, color = cb(3), \
+                label = lbl)
+
+            lines = (min(lims) + (max(lims)- min(lims))/13.3 ,\
+                     min(lims) + (max(lims)- min(lims))/13.3 + (max(lims)- min(lims))/30)
+            lbl = r'steepest decline'
+            lbl = lbl if bucket == 0 else None
+            ax0.plot((r_ub[bucket, dump_to_plot], r_ub[bucket, dump_to_plot]), lines, \
+                     ls = '-', lw = 0.5, color = cb(4), label = lbl)
+
+        ax0.axvline(x = avg_r_ub[dump_to_plot], ls = '--', lw = 1., color = cb(4), label = 'average')
+        ax0.axvline(x = avg_r_ub[dump_to_plot] - 2*sigmam_r_ub[dump_to_plot], ls = ':', lw = 1., \
+                    color = cb(4), label = '2$\sigma$ fluctuations')
+        ax0.axvline(x = avg_r_ub[dump_to_plot] + 2*sigmap_r_ub[dump_to_plot], ls = ':', lw = 1., color = cb(4))
+        ax0.set_xlim((r1 - 0.4, r2))
+
+        ax0.set_ylabel(r'v$_{\!\perp}$ / km s$^{-1}$')
+        yticks = ax0.yaxis.get_major_ticks()
+        yticks[0].label1.set_visible(False)
+        ax0.legend(loc = 3, frameon = False)
+
+        ax1 = plt.subplot(gs[1])
+        ax1.hist(r_ub[:, hist_dump_min:hist_dump_max+1].flatten(), bins = hist_bins, \
+                 log = True, color = cb(3), edgecolor = cb(4), lw = 0.5)
+        ax1.axvline(x = avg_r_ub[dump_to_plot], ls = '--', lw = 1., color = cb(4))
+        ax1.axvline(x = avg_r_ub[dump_to_plot] - 2*sigmam_r_ub[dump_to_plot], ls = ':', lw = 1., color = cb(4))
+        ax1.axvline(x = avg_r_ub[dump_to_plot] + 2*sigmap_r_ub[dump_to_plot], ls = ':', lw = 1., color = cb(4))
+        ax1.set_xlim((r1 - 0.4, r2))
+        #ax1.set_ylim((4e-1, 4e3))
+        ax1.set_xlabel(r'r / Mm')
+        ax1.set_ylabel(r'N')
+        ax1.minorticks_off()
+        fig.subplots_adjust(hspace = 0)
+        plt.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible = False)
+        #plt.savefig('D15_vt_ub.pdf')
+    
+        def analyse_dump(rp, r1, r2):
+
+            '''
+            This function analyses ray profiles of one dump and returns
+
+            r, ut, dutdr, r_ub,
+
+            where
+
+            r: radius,
+            ut: RMS tangential velocity profiles for all buckets (except the 0th),
+            dutdr: radial gradient of ut for all buckets (except the 0th),
+            r_ub: radius of the upper boundary as defined by the minimum in dutdr
+                  for all buckets  (except the 0th).
+
+            Parameters:
+            rp: radial profile
+            r1: minimum radius for the search for r_ub
+            r2: maximum radius for the search for r_ub
+            '''
+            n_buckets = rp.get('nbuckets')
+
+            r = rp.get_table('y')
+            dr = 0.5*(np.roll(r, -1) - np.roll(r, +1))
+
+            idx1 = np.argmin(np.abs(r - r1))
+            idx2 = np.argmin(np.abs(r - r2))
+
+            ekt = rp.get_table('ekt')
+            ut = ekt[0, :, 1:n_buckets+1]**0.5
+
+            dut = 0.5*(np.roll(ut, -1, axis = 0) - np.roll(ut, +1, axis = 0))
+            dutdr = np.transpose(np.array([dut[:, i]/dr for i in range(n_buckets)]))
+
+            idx_min_dutdr = [idx1 + np.argmin(dutdr[idx1:idx2 + 1, i]) \
+                             for i in range(n_buckets)]
+            r_ub = np.zeros(n_buckets)
+
+            for bucket in range(n_buckets):
+                idx = idx_min_dutdr[bucket]
+                r_min = r[idx] # 0th-order estimate
+
+                # try to fit a parabola around r_min
+                r_fit = r[idx-1:idx+2]
+                dutdr_fit = dutdr[idx-1:idx+2, bucket]
+                coefs = np.polyfit(r_fit, dutdr_fit, 2)
+
+                # hopefully we can determine the position of the minimum from the fit
+                if coefs[0] != 0:
+                    r_min = -coefs[1]/(2.*coefs[0])
+                    # go back to 0th order if something has gone awry with the fit
+                    if r_min < r[idx -1] or r_min > r[idx + 1]:
+                        r_min = r[idx]
+
+                r_ub[bucket] = r_min
+
+            return r, ut, dutdr, r_ub
             
 # below are some utilities that the user typically never calls directly
     def readTop(self,atri,filename,stddir='./'):
