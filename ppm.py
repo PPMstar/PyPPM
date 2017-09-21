@@ -134,6 +134,7 @@ import astronomy as ast
 import scipy.interpolate as interpolate
 from scipy import optimize
 import copy
+import rprofile as rprofile
 
 # from rprofile import rprofile_reader
 
@@ -4218,13 +4219,21 @@ class yprofile(DataPlot):
     def vr_evolution(cases, ymin, ymax):
         
         '''
-        Plots Fig. 12 in the above paper, 
-        cases = array of strings indicating directories containing yprofile files
-        ex. cases = ['D1', 'D2']
-
-        ymin and ymax are minimum and maximum boundaries for the search for vr_max
-
-        ! global ppm_path must be set using ppm.set_YProf_path
+        Compares the time evolution of the max RMS velocity of different runs
+        
+        Plots Fig. 12 in paper: "Idealized hydrodynamic simulations
+        of turbulent oxygen-burning shell convection in 4 geometry"
+        by Jones, S.; Andrassy, R.; Sandalski, S.; Davis, A.; Woodward, P.; Herwig, F.
+        NASA ADS: http://adsabs.harvard.edu/abs/2017MNRAS.465.2991J
+        
+        Parameters
+        ----------
+        cases : string array
+            directory names that contain the runs you wish to compare
+            assumes ppm.set_YProf_path was used, thus only the directory name
+            is necessary and not the full path ex. cases = ['D1', 'D2']
+        ymin, ymax : float
+            Boundaries of the range to look for vr_max in
 
         '''
         sparse = 1
@@ -4248,35 +4257,65 @@ class yprofile(DataPlot):
         pl.xlabel('t / min')
         pl.ylabel(r'v$_r$ / km s$^{-1}$')
         pl.legend(loc = 0)
+        
+    def get_vr_max_evolution(prof, cycles, r1, r2):
+
+        r = prof.get('Y', fname = cycles[0], resolution = 'l')
+        idx1 = np.argmin(np.abs(r - r1))
+        idx2 = np.argmin(np.abs(r - r2))
+
+        t = np.zeros(len(cycles))
+        vr_max = np.zeros(len(cycles))
+        for k in range(len(cycles)):
+            t[k] = prof.get('t', fname = cycles[k], resolution = 'l')[-1]
+            vr_rms  = prof.get('EkY', fname = cycles[k], resolution = 'l')**0.5
+            vr_max[k] = np.max(vr_rms[idx2:idx1])
+    
+        return t, vr_max
     
     def upper_bound_ut(data_path, derivative, dump_to_plot, hist_dump_min, hist_dump_max, r1, r2, t_fit_start):
+        
         '''
+        Finds the upper convective boundary as defined by the steepest decline in 
+        tangential velocity. 
         
-        Plots. Fig. 14,15 in above paper
+        Subpolot(1) plots the tangential velocity as a function of radius for a single dump and 
+            displays the convective boundary
+        Subplot(2) plots a histogram of the convective boundaries for a range of dumps specified by
+            user and compares them to the selected dump
         
-        derivative = True/False plot dut/dr or just ut
-        dump_To_plot = which dump number to plot [int]
-        hist_dump_min/hist_dump_max = range of dumps to use in histogram
-        r1/r2 = radial velocity that the minimum of the transverse velocity will be looked for
+        Plots Fig. 14 or 15 in paper: "Idealized hydrodynamic simulations
+        of turbulent oxygen-burning shell convection in 4 geometry"
+        by Jones, S.; Andrassy, R.; Sandalski, S.; Davis, A.; Woodward, P.; Herwig, F.
+        NASA ADS: http://adsabs.harvard.edu/abs/2017MNRAS.465.2991J
         
-        sample values:
+        Parameters
+        ----------
+        derivative = boolean
+            True = plot dut/dr False = plot ut
+        dump_To_plot = int
+            The file number of the dump you wish to plot
+        hist_dump_min/hist_dump_max = int
+            Range of file numbers you want to use in the histogram
+        r1/r2 = float
+            This function will only search for the convective 
+            boundary in the range between r1/r2
+        t_fit_start = int
+            The time to start the fit for upper boundary fit takes 
+            range t[t_fit_start:-1] and computes average boundary
         
+        Example
+        -------
         data_path = "/data/ppm_rpod2/RProfiles/O-shell-M25/D15/"
         dump_to_plot = 121
-        hist_dump_min = 101
-        hist_dump_max = 135
-        r1 = 7.4
-        r2 = 8.4
+        hist_dump_min = 101; hist_dump_max = 135
+        r1 = 7.4; r2 = 8.4
         t_fit_start = 700 
+        upper_bound_ut(data_path, derivative, dump_to_plot,\
+            hist_dump_min, hist_dump_max, r1, r2, t_fit_start)
         
         '''
-        # The code in this cell calls analyse_dump() for all dumps and computes
-        # some statistics on the temporal evolution of r_ub.
-
-        # radial interval in that the minimum of the transverse
-        # velocity will be looked for
-
-        #rp = rp_set.get_dump(data_path)
+        
         rp_set = rprofile.rprofile_set(data_path)
         rp = rp_set.get_dump(dump_to_plot)
 
@@ -4326,8 +4365,6 @@ class yprofile(DataPlot):
         fc_minus = np.polyfit(t[idx_fit_start:-1], 2.*sigmam_r_ub[idx_fit_start:-1], 1)
         minus_fit = fc_minus[0]*t + fc_minus[1]
 
-        #r, ut, dutdr, void = analyse_dump(rp,r1,r2)
-
         hist_bins = 0.5*(r + np.roll(r, -1))
         hist_bins[-1] = hist_bins[-2] + (hist_bins[-2] - hist_bins[-3])
         #hist_bins = np.insert(hist_bins, 0., 0.)       # #robert - this command throws an error?!?
@@ -4336,9 +4373,9 @@ class yprofile(DataPlot):
         print "Histogram constructed using dumps {:d} (t = {:.2f} min) to {:d} (t = {:.2f} min) inclusive."\
             .format(hist_dump_min, t[hist_dump_min]/60., hist_dump_max, t[hist_dump_max]/60.)
 
-        ifig = 1; plt.close(ifig); fig = plt.figure(ifig, figsize = (2*3.39, 2*2.8))
+        fig = plt.figure( figsize = (2*3.39, 2*2.8))        
         gs = gridspec.GridSpec(2, 1, height_ratios = [3, 1])
-        ax0 = plt.subplot(gs[0])
+        ax0 = pl.subplot(gs[0])
 
         if derivative:
             temp = dutdr
@@ -4373,7 +4410,7 @@ class yprofile(DataPlot):
         yticks[0].label1.set_visible(False)
         ax0.legend(loc = 3, frameon = False)
 
-        ax1 = plt.subplot(gs[1])
+        ax1 = pl.subplot(gs[1])
         ax1.hist(r_ub[:, hist_dump_min:hist_dump_max+1].flatten(), bins = hist_bins, \
                  log = True, color = cb(3), edgecolor = cb(4), lw = 0.5)
         ax1.axvline(x = avg_r_ub[dump_to_plot], ls = '--', lw = 1., color = cb(4))
@@ -4385,66 +4422,74 @@ class yprofile(DataPlot):
         ax1.set_ylabel(r'N')
         ax1.minorticks_off()
         fig.subplots_adjust(hspace = 0)
-        plt.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible = False)
-        #plt.savefig('D15_vt_ub.pdf')
+        pl.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible = False)
     
-        def analyse_dump(rp, r1, r2):
+    def analyse_dump(rp, r1, r2):
 
-            '''
-            This function analyses ray profiles of one dump and returns
+        '''
+        This function analyses ray profiles of one dump and returns
 
-            r, ut, dutdr, r_ub,
+        r, ut, dutdr, r_ub,
 
-            where
+        Parameters
+        ----------
+        rp: radial profile object
+            radial profile
+        r1: float
+            minimum radius for the search for r_ub
+        r2: float
+            maximum radius for the search for r_ub\
 
-            r: radius,
-            ut: RMS tangential velocity profiles for all buckets (except the 0th),
-            dutdr: radial gradient of ut for all buckets (except the 0th),
-            r_ub: radius of the upper boundary as defined by the minimum in dutdr
-                  for all buckets  (except the 0th).
+        Output
+        ------
+        r: array
+            radius
+        ut: array
+            RMS tangential velocity profiles for all buckets (except the 0th)
+        dutdr: array
+            radial gradient of ut for all buckets (except the 0th)
+        r_ub: array
+            radius of the upper boundary as defined by the minimum in dutdr
+            for all buckets  (except the 0th).
 
-            Parameters:
-            rp: radial profile
-            r1: minimum radius for the search for r_ub
-            r2: maximum radius for the search for r_ub
-            '''
-            n_buckets = rp.get('nbuckets')
+        '''
+        n_buckets = rp.get('nbuckets')
 
-            r = rp.get_table('y')
-            dr = 0.5*(np.roll(r, -1) - np.roll(r, +1))
+        r = rp.get_table('y')
+        dr = 0.5*(np.roll(r, -1) - np.roll(r, +1))
 
-            idx1 = np.argmin(np.abs(r - r1))
-            idx2 = np.argmin(np.abs(r - r2))
+        idx1 = np.argmin(np.abs(r - r1))
+        idx2 = np.argmin(np.abs(r - r2))
 
-            ekt = rp.get_table('ekt')
-            ut = ekt[0, :, 1:n_buckets+1]**0.5
+        ekt = rp.get_table('ekt')
+        ut = ekt[0, :, 1:n_buckets+1]**0.5
 
-            dut = 0.5*(np.roll(ut, -1, axis = 0) - np.roll(ut, +1, axis = 0))
-            dutdr = np.transpose(np.array([dut[:, i]/dr for i in range(n_buckets)]))
+        dut = 0.5*(np.roll(ut, -1, axis = 0) - np.roll(ut, +1, axis = 0))
+        dutdr = np.transpose(np.array([dut[:, i]/dr for i in range(n_buckets)]))
 
-            idx_min_dutdr = [idx1 + np.argmin(dutdr[idx1:idx2 + 1, i]) \
-                             for i in range(n_buckets)]
-            r_ub = np.zeros(n_buckets)
+        idx_min_dutdr = [idx1 + np.argmin(dutdr[idx1:idx2 + 1, i]) \
+                         for i in range(n_buckets)]
+        r_ub = np.zeros(n_buckets)
 
-            for bucket in range(n_buckets):
-                idx = idx_min_dutdr[bucket]
-                r_min = r[idx] # 0th-order estimate
+        for bucket in range(n_buckets):
+            idx = idx_min_dutdr[bucket]
+            r_min = r[idx] # 0th-order estimate
 
-                # try to fit a parabola around r_min
-                r_fit = r[idx-1:idx+2]
-                dutdr_fit = dutdr[idx-1:idx+2, bucket]
-                coefs = np.polyfit(r_fit, dutdr_fit, 2)
+            # try to fit a parabola around r_min
+            r_fit = r[idx-1:idx+2]
+            dutdr_fit = dutdr[idx-1:idx+2, bucket]
+            coefs = np.polyfit(r_fit, dutdr_fit, 2)
 
-                # hopefully we can determine the position of the minimum from the fit
-                if coefs[0] != 0:
-                    r_min = -coefs[1]/(2.*coefs[0])
-                    # go back to 0th order if something has gone awry with the fit
-                    if r_min < r[idx -1] or r_min > r[idx + 1]:
-                        r_min = r[idx]
+            # hopefully we can determine the position of the minimum from the fit
+            if coefs[0] != 0:
+                r_min = -coefs[1]/(2.*coefs[0])
+                # go back to 0th order if something has gone awry with the fit
+                if r_min < r[idx -1] or r_min > r[idx + 1]:
+                    r_min = r[idx]
 
-                r_ub[bucket] = r_min
+            r_ub[bucket] = r_min
 
-            return r, ut, dutdr, r_ub
+        return r, ut, dutdr, r_ub
             
 # below are some utilities that the user typically never calls directly
     def readTop(self,atri,filename,stddir='./'):
