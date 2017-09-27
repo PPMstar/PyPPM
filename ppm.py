@@ -4215,13 +4215,7 @@ class yprofile(DataPlot):
         pl.xlabel('r / Mm')
 
         return vav
-    
-    #Some plotting functions
-    #See Idealized hydrodynamic simulations of turbulent oxygen-burning shell convection in 4 geometry
-    #Jones, S.; Andrassy, R.; Sandalski, S.; Davis, A.; Woodward, P.; Herwig, F.
-    
 
-            
 # below are some utilities that the user typically never calls directly
     def readTop(self,atri,filename,stddir='./'):
         """ 
