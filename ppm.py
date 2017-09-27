@@ -124,17 +124,21 @@ plots the data.
 from numpy import *
 import numpy as np
 from math import *
-from data_plot import *
-import utils
+from nugridpy.data_plot import *
+from nugridpy import utils
 import matplotlib.pylab as pyl
 import matplotlib.pyplot as pl
+from matplotlib import rcParams
+from matplotlib import gridspec
 import os
 import re
-import astronomy as ast
+import nugridpy.astronomy as ast
 import scipy.interpolate as interpolate
 from scipy import optimize
 import copy
-import rprofile as rprofile
+import sys
+sys.path.insert(0, '/data/ppm_rpod2/lib/lcse')
+import rprofile as rprof
 
 # from rprofile import rprofile_reader
 
@@ -5046,3 +5050,491 @@ def cmap_from_str(str, segment=None):
     
     return cmap
 
+###########################################################
+# Additional plotting methods Jericho
+###########################################################
+
+def analyse_dump(rp, r1, r2):
+
+    '''
+    This function analyses ray profiles of one dump and returns
+
+    r, ut, dutdr, r_ub,
+
+    Parameters
+    ----------
+    rp: radial profile object
+        radial profile
+    r1: float
+        minimum radius for the search for r_ub
+    r2: float
+        maximum radius for the search for r_ub\
+        
+    Output
+    ------
+    r: array
+        radius
+    ut: array
+        RMS tangential velocity profiles for all buckets (except the 0th)
+    dutdr: array
+        radial gradient of ut for all buckets (except the 0th)
+    r_ub: array
+        radius of the upper boundary as defined by the minimum in dutdr
+        for all buckets  (except the 0th).
+        
+    '''
+    n_buckets = rp.get('nbuckets')
+
+    r = rp.get_table('y')
+    dr = 0.5*(np.roll(r, -1) - np.roll(r, +1))
+
+    idx1 = np.argmin(np.abs(r - r1))
+    idx2 = np.argmin(np.abs(r - r2))
+
+    ekt = rp.get_table('ekt')
+    ut = ekt[0, :, 1:n_buckets+1]**0.5
+
+    dut = 0.5*(np.roll(ut, -1, axis = 0) - np.roll(ut, +1, axis = 0))
+    dutdr = np.transpose(np.array([dut[:, i]/dr for i in range(n_buckets)]))
+
+    idx_min_dutdr = [idx1 + np.argmin(dutdr[idx1:idx2 + 1, i]) \
+                     for i in range(n_buckets)]
+    r_ub = np.zeros(n_buckets)
+
+    for bucket in range(n_buckets):
+        idx = idx_min_dutdr[bucket]
+        r_min = r[idx] # 0th-order estimate
+
+        # try to fit a parabola around r_min
+        r_fit = r[idx-1:idx+2]
+        dutdr_fit = dutdr[idx-1:idx+2, bucket]
+        coefs = np.polyfit(r_fit, dutdr_fit, 2)
+
+        # hopefully we can determine the position of the minimum from the fit
+        if coefs[0] != 0:
+            r_min = -coefs[1]/(2.*coefs[0])
+            # go back to 0th order if something has gone awry with the fit
+            if r_min < r[idx -1] or r_min > r[idx + 1]:
+                r_min = r[idx]
+
+        r_ub[bucket] = r_min
+
+    return r, ut, dutdr, r_ub
+
+def upper_bound_ut(data_path, dump_to_plot, hist_dump_min, hist_dump_max, derivative = False, r1=7.4, r2=8.4):
+
+    '''
+    Finds the upper convective boundary as defined by the steepest decline in 
+    tangential velocity. 
+
+    Subpolot(1) plots the tangential velocity as a function of radius for a single dump and 
+        displays the convective boundary
+    Subplot(2) plots a histogram of the convective boundaries for a range of dumps specified by
+        user and compares them to the selected dump
+
+    Plots Fig. 14 or 15 in paper: "Idealized hydrodynamic simulations
+    of turbulent oxygen-burning shell convection in 4 geometry"
+    by Jones, S.; Andrassy, R.; Sandalski, S.; Davis, A.; Woodward, P.; Herwig, F.
+    NASA ADS: http://adsabs.harvard.edu/abs/2017MNRAS.465.2991J
+
+    Parameters
+    ----------
+    derivative = boolean
+        True = plot dut/dr False = plot ut
+    dump_To_plot = int
+        The file number of the dump you wish to plot
+    hist_dump_min/hist_dump_max = int
+        Range of file numbers you want to use in the histogram
+    r1/r2 = float
+        This function will only search for the convective 
+        boundary in the range between r1/r2
+
+    Example
+    -------
+    data_path = "/data/ppm_rpod2/RProfiles/O-shell-M25/D15/"
+    dump_to_plot = 121
+    hist_dump_min = 101; hist_dump_max = 135
+    r1 = 7.4; r2 = 8.4
+    upper_bound_ut(data_path, derivative, dump_to_plot,\
+        hist_dump_min, hist_dump_max, r1, r2)
+
+    '''
+    cb = utils.colourblind
+    rp_set = rprof.rprofile_set(data_path)
+    rp = rp_set.get_dump(dump_to_plot)
+
+    n_dumps = len(rp_set.dumps)
+    n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
+    t = np.zeros(n_dumps)
+    r_ub = np.zeros((n_buckets, n_dumps))
+
+    for k in range(n_dumps):
+        rp = rp_set.get_dump(rp_set.dumps[k])
+        t[k] = rp.get('time')
+
+        res = analyse_dump(rp, r1, r2)
+        r = res[0]
+        ut = res[1]
+        dutdr = res[2]
+        r_ub[:, k] = res[3]
+
+    avg_r_ub = np.sum(r_ub, axis = 0)/float(n_buckets)
+    dev = np.array([r_ub[i, :] - avg_r_ub for i in range(n_buckets)])
+    sigmap_r_ub = np.zeros(n_dumps)
+    sigmam_r_ub = np.zeros(n_dumps)
+
+    for k in range(n_dumps):
+        devp = dev[:, k]
+        devp = devp[devp >= 0]
+        if len(devp) > 0:
+            sigmap_r_ub[k] = (sum(devp**2)/float(len(devp)))**0.5
+        else:
+            sigmam_r_ub[k] = None
+
+        devm = dev[:, k]
+        devm = devm[devm <= 0]
+        if len(devm) > 0:
+            sigmam_r_ub[k] = (sum(devm**2)/float(len(devm)))**0.5
+        else:
+            sigmam_r_ub[k] = None
+
+
+    hist_bins = 0.5*(r + np.roll(r, -1))
+    hist_bins[-1] = hist_bins[-2] + (hist_bins[-2] - hist_bins[-3])
+    #hist_bins = np.insert(hist_bins, 0., 0.)       # #robert - this command throws an error?!?
+
+    print "Dump {:d} (t = {:.2f} min).".format(dump_to_plot, t[dump_to_plot]/60.)
+    print "Histogram constructed using dumps {:d} (t = {:.2f} min) to {:d} (t = {:.2f} min) inclusive."\
+        .format(hist_dump_min, t[hist_dump_min]/60., hist_dump_max, t[hist_dump_max]/60.)
+
+    fig = pl.figure( figsize = (2*3.39, 2*2.8))   
+    #fig = pl.figure( figsize = (2*5, 2*4)) 
+    gs = gridspec.GridSpec(2, 1, height_ratios = [3, 1])
+    ax0 = pl.subplot(gs[0])
+
+    if derivative:
+        temp = dutdr
+        lims = (-0.49, 0.1)
+    else:
+        temp = 1e3*ut
+        lims = (-9.99, 70)
+
+    ax0.set_ylim(lims)
+
+    for bucket in range(n_buckets):
+        lbl = r'bucket data' if bucket == 0 else None
+
+        ax0.plot(r, temp[:, bucket], ls = '-', lw = 0.5, color = cb(3), \
+            label = lbl)
+
+        lines = (min(lims) + (max(lims)- min(lims))/13.3 ,\
+                 min(lims) + (max(lims)- min(lims))/13.3 + (max(lims)- min(lims))/30)
+        lbl = r'steepest decline'
+        lbl = lbl if bucket == 0 else None
+        ax0.plot((r_ub[bucket, dump_to_plot], r_ub[bucket, dump_to_plot]), lines, \
+                 ls = '-', lw = 0.5, color = cb(4), label = lbl)
+
+    ax0.axvline(x = avg_r_ub[dump_to_plot], ls = '--', lw = 1., color = cb(4), label = 'average')
+    ax0.axvline(x = avg_r_ub[dump_to_plot] - 2*sigmam_r_ub[dump_to_plot], ls = ':', lw = 1., \
+                color = cb(4), label = '2$\sigma$ fluctuations')
+    ax0.axvline(x = avg_r_ub[dump_to_plot] + 2*sigmap_r_ub[dump_to_plot], ls = ':', lw = 1., color = cb(4))
+    ax0.set_xlim((r1 - 0.4, r2))
+
+    ax0.set_ylabel(r'v$_{\!\perp}$ / km s$^{-1}$')
+    yticks = ax0.yaxis.get_major_ticks()
+    yticks[0].label1.set_visible(False)
+    ax0.legend(loc = 3, frameon = False)
+
+    #ax0.autoscale(enable=True, axis='y', tight=True)
+    ax1 = pl.subplot(gs[1])
+    ax1.hist(r_ub[:, hist_dump_min:hist_dump_max+1].flatten(), bins = hist_bins, \
+             log = True, color = cb(3), edgecolor = cb(4), lw = 0.5)
+    ax1.axvline(x = avg_r_ub[dump_to_plot], ls = '--', lw = 1., color = cb(4))
+    ax1.axvline(x = avg_r_ub[dump_to_plot] - 2*sigmam_r_ub[dump_to_plot], ls = ':', lw = 1., color = cb(4))
+    ax1.axvline(x = avg_r_ub[dump_to_plot] + 2*sigmap_r_ub[dump_to_plot], ls = ':', lw = 1., color = cb(4))
+    ax1.set_xlim((r1 - 0.4, r2))
+    #ax1.set_ylim((4e-1, 4e3))
+    ax1.set_xlabel(r'r / Mm')
+    ax1.set_ylabel(r'N')
+    ax1.minorticks_off()
+    fig.subplots_adjust(hspace = 0)
+    pl.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible = False)
+    
+def get_vr_max_evolution(prof, cycles, r1, r2):
+
+    r = prof.get('Y', fname = cycles[0], resolution = 'l')
+    idx1 = np.argmin(np.abs(r - r1))
+    idx2 = np.argmin(np.abs(r - r2))
+
+    t = np.zeros(len(cycles))
+    vr_max = np.zeros(len(cycles))
+    for k in range(len(cycles)):
+        t[k] = prof.get('t', fname = cycles[k], resolution = 'l')[-1]
+        vr_rms  = prof.get('EkY', fname = cycles[k], resolution = 'l')**0.5
+        vr_max[k] = np.max(vr_rms[idx2:idx1])
+
+    return t, vr_max
+
+def vr_evolution(cases, ymin = 4., ymax = 8.,ifig = 10):
+
+    '''
+    Compares the time evolution of the max RMS velocity of different runs
+
+    Plots Fig. 12 in paper: "Idealized hydrodynamic simulations
+    of turbulent oxygen-burning shell convection in 4 geometry"
+    by Jones, S.; Andrassy, R.; Sandalski, S.; Davis, A.; Woodward, P.; Herwig, F.
+    NASA ADS: http://adsabs.harvard.edu/abs/2017MNRAS.465.2991J
+
+    Parameters
+    ----------
+    cases : string array
+        directory names that contain the runs you wish to compare
+        assumes ppm.set_YProf_path was used, thus only the directory name
+        is necessary and not the full path ex. cases = ['D1', 'D2']
+    ymin, ymax : float
+        Boundaries of the range to look for vr_max in
+
+    '''
+    sparse = 1
+    markevery = 25
+    cb = utils.colourblind
+    yy = 0
+    
+    pl.figure(ifig)
+    
+    for case in cases:
+
+        try:
+            prof = yprofile(ppm_path+case)
+        except ValueError:
+            print "have you set the yprofile filepath using ppm.set_YProf_path?"
+
+        cycles = range(prof.cycles[0], prof.cycles[-1], sparse)
+        t, vr_max = get_vr_max_evolution(prof, cycles, ymin, ymax)
+        pl.plot(t/60.,  1e3*vr_max,  color = cb(yy),\
+                 marker = 's', markevery = markevery, label = case)
+        yy += 1
+
+    pl.title('')
+    pl.xlabel('t / min')
+    pl.ylabel(r'v$_r$ / km s$^{-1}$')
+    pl.legend(loc = 0)
+   
+def luminosity_for_dump(path, get_t = False):
+    
+    '''
+    
+    Takes a directory and returns luminosity and time vector with entry
+    corresponding to each file in the dump
+    
+    !Can take both rprofile and yprofile filepaths
+    
+    Parameters
+    ----------
+    path : string
+        Filepath for the dumps, rprofile or yprofile dumps.
+    get_t: Boolean
+        Return the time vector or not 
+
+    Returns
+    -------
+    t : 1*ndumps array
+        time vector [t/min]
+    L_H : 1*ndumps array
+        luminosity vector [L/Lsun]
+    
+    '''
+    
+    yprof = yprofile(path)
+    
+    try:
+        dumps = np.arange(min(yprof.ndumpDict.keys()),\
+                          #min(yprof.ndumpDict.keys())+100,1)
+                          max(yprof.ndumpDict.keys()) + 1, 1)
+        is_yprofile = True
+    except:
+        
+        rp_set = rprof.rprofile_set(path)
+        dumps = range(rp_set.dumps[0],\
+                      #rp_set.dumps[0]+100,1)
+                      rp_set.dumps[-1]+1,1)
+        r_rp = rp_set.get_dump(dumps[0]).get('y')
+        dV_rp = 4.*np.pi*r_rp**2*cdiff(r_rp)
+        is_yprofile = False
+        yprof = yprofile(path.replace('RProfiles','YProfiles'))
+
+    airmu = 1.39165
+    cldmu = 0.725
+    fkair = 0.203606102635
+    fkcld = 0.885906040268
+    AtomicNoair = 6.65742024965
+    AtomicNocld = 1.34228187919
+
+    patience0 = 5
+    patience = 10
+
+    nd = len(dumps)
+    t = np.zeros(nd)
+        
+    L_H = np.zeros(nd)
+    
+    t00 = time.time()
+    t0 = t00
+    k = 0
+    for i in range(nd):
+        if is_yprofile:
+            if get_t:
+                t[i] = yprof.get('t', fname = dumps[i], resolution = 'l')[-1]
+
+            L_H[i] = yprof.get('L_C12pg', fname = dumps[i], resolution = 'l', airmu = airmu, \
+                                  cldmu = cldmu, fkair = fkair, fkcld = fkcld, AtomicNoair = AtomicNoair, \
+                                  AtomicNocld = AtomicNocld, corr_fact = 1.5)
+        
+        else:
+            
+            rp = rp_set.get_dump(dumps[i])
+            enuc_rp = rp.get_table('enuc')
+            if get_t:
+                t[i] = rp.get('time')  
+            # It looks like we do not need to make a correction for the heating bug here. Strange!!!
+            L_H[i] = np.sum(enuc_rp[0, :, 0]*dV_rp)
+
+        t_now = time.time()
+        if (t_now - t0 >= patience) or \
+           ((t_now - t00 < patience) and (t_now - t00 >= patience0) and (k == 0)):
+            time_per_dump = (t_now - t00)/float(i + 1)
+            time_remaining = (nd - i - 1)*time_per_dump
+            print 'Processing will be done in {:.0f} s.'.format(time_remaining)
+            t0 = t_now
+            k += 1
+    if get_t:        
+        return t, L_H
+    else:
+        return L_H
+    
+def plot_luminosity(L_H_yp,L_H_rp,t):
+    
+    '''
+    
+    Plots two luminosity vectors against the same time vector
+        
+    Parameters
+    ----------
+    L_H_yp : 1 *ndumps vector
+             Luminosity vector for yprofile can be generated by luminosity_for_dump
+    L_H_rp : 1 *ndumps vector
+             Luminosity vector for rprofile can be generated by luminosity_for_dump
+    t : array size(L_H_rp)
+             time vector to be plotted on the x-axis
+    '''
+    cb = utils.colourblind
+    
+    L_He = 2.25*2.98384E-03
+ 
+    ifig = 1; pl.close(ifig); pl.figure(ifig)
+    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_yp, color = cb(6), \
+                 zorder = 2, label = r'L$_\mathrm{H}$')
+    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
+                zorder = 1, label = r'L$_\mathrm{He}$')
+    pl.xlabel('t / min')
+    pl.ylabel(r'L / L$_\odot$')
+    #pl.xlim((0., 2.8e3))
+    #pl.ylim((1e5, 1e10))
+    pl.legend(loc = 0)
+    pl.tight_layout()
+
+    ifig = 2; pl.close(ifig); pl.figure(ifig)
+    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_yp, color = cb(5), \
+                 lw = 2., zorder = 2, label = r'L$_\mathrm{H,yp}$')
+    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_rp, color = cb(6), \
+                 zorder = 4, label = r'L$_\mathrm{H,rp}$')
+    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
+                zorder = 1, label = r'L$_\mathrm{He}$')
+    pl.xlabel('t / min')
+    pl.ylabel(r'L / L$_\odot$')
+    #pl.xlim((0., 2.8e3))
+    #pl.ylim((1e5, 1e10))
+    pl.legend(loc = 0)
+    pl.tight_layout()
+
+def L_H_L_He_comparison(cases, ifig=101):
+    
+    yprofs = {}
+    res = {}
+    
+    for case in cases:
+        
+        try:
+            yprofs[case] = yprofile(ppm_path+case)
+        except ValueError:
+            print "have you set the yprofile filepath using ppm.set_YProf_path?"
+        
+        r = yprofs[case].get('Y', fname=0, resolution='l')
+        res[case] = 2*len(r)
+        
+    airmu = 1.39165
+    cldmu = 0.725
+    fkair = 0.203606102635
+    fkcld = 0.885906040268
+    AtomicNoair = 6.65742024965
+    AtomicNocld = 1.34228187919
+
+    cb = utils.colourblind
+
+    patience0 = 5
+    patience = 60
+
+    sparse = 1
+    dumps = {}
+    nd = {}
+    t = {}
+    L_H = {}
+    L_He = 2.25*2.98384E-03
+
+    for this_case in cases:
+        print 'Processing {:s}...'.format(this_case)
+
+        dumps[this_case] = np.arange(min(yprofs[case].ndumpDict.keys()),\
+           max(yprofs[case].ndumpDict.keys()) + 1, sparse)
+        #dumps[this_case] = np.arange(min(yprofs[case].ndumpDict.keys()),\
+        #   min(yprofs[case].ndumpDict.keys()) + 10, sparse)
+        #n_dumps = len(rp_set.dumps)
+        nd[this_case] = len(dumps[this_case])
+        t[this_case] = np.zeros(nd[this_case])
+        L_H[this_case] = np.zeros(nd[this_case])
+
+        t00 = time.time()
+        t0 = t00
+        k = 0
+        for i in range(nd[this_case]):
+            t[this_case][i] = yprofs[this_case].get('t', fname = dumps[this_case][i], \
+                              resolution = 'l')[-1]
+            L_H[this_case][i] = yprofs[this_case].get('L_C12pg', fname = dumps[this_case][i], \
+                                resolution = 'l', airmu = airmu, cldmu = cldmu, \
+                                fkair = fkair, fkcld = fkcld,  AtomicNoair = AtomicNoair, \
+                                AtomicNocld = AtomicNocld, corr_fact = 1.5)
+
+            t_now = time.time()
+            if (t_now - t0 >= patience) or \
+               ((t_now - t00 < patience) and (t_now - t00 >= patience0) and (k == 0)):
+                time_per_dump = (t_now - t00)/float(i + 1)
+                time_remaining = (nd[this_case] - i - 1)*time_per_dump
+                print 'Processing will be done in {:.0f} s.'.format(time_remaining)
+                t0 = t_now
+                k += 1
+
+    pl.close(ifig); pl.figure(ifig)
+    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
+        label = r'L$_\mathrm{He}$')
+    
+    for this_case in cases:
+        lbl = r'{:s} $\left({:d}^3\right)$'.format(this_case, res[this_case])
+        pl.semilogy(t[this_case]/60., (1e43/ast.lsun_erg_s)*L_H[this_case], \
+            ls = '-', color = cb(cases.index(this_case)), marker= 's', markevery=250/sparse, \
+            label = case)
+        
+    pl.xlabel('t / min')
+    pl.ylabel(r'L$_H$ / L$_\odot$')
+    pl.legend(loc=0, ncol=2)
+    pl.tight_layout()
+    pl.savefig('L_H-L_He_F4_F5_F13.pdf')
