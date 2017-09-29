@@ -5532,3 +5532,144 @@ def L_H_L_He_comparison(cases, ifig=101):
     pl.legend(loc=0, ncol=2)
     pl.tight_layout()
     pl.savefig('L_H-L_He_F4_F5_F13.pdf')
+
+def get_upper_bound(data_path, dump_to_plot, r1, r2):
+
+    '''
+    Returns information about the upper convective boundary
+    
+    Parameters
+    ----------
+    r1/r2 = float
+        This function will only search for the convective 
+        boundary in the range between r1/r2
+    
+    Output
+    ------
+    [all arrays]
+    avg_r_ub : average radius of upper boundary
+    sigmam_r_ub/sigmap_r_ub: 2 \sigma fluctuations in upper boundary
+    r_ub : upper boundary
+    t: time
+    
+    '''
+
+    rp_set = rprof.rprofile_set(data_path)
+    rp = rp_set.get_dump(dump_to_plot)
+
+    n_dumps = len(rp_set.dumps)
+    n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
+    t = np.zeros(n_dumps)
+    r_ub = np.zeros((n_buckets, n_dumps))
+
+    for k in range(n_dumps):
+        rp = rp_set.get_dump(rp_set.dumps[k])
+        t[k] = rp.get('time')
+
+        res = analyse_dump(rp, r1, r2)
+        r = res[0]
+        ut = res[1]
+        dutdr = res[2]
+        r_ub[:, k] = res[3]
+
+    avg_r_ub = np.sum(r_ub, axis = 0)/float(n_buckets)
+    dev = np.array([r_ub[i, :] - avg_r_ub for i in range(n_buckets)])
+    sigmap_r_ub = np.zeros(n_dumps)
+    sigmam_r_ub = np.zeros(n_dumps)
+
+    for k in range(n_dumps):
+        devp = dev[:, k]
+        devp = devp[devp >= 0]
+        if len(devp) > 0:
+            sigmap_r_ub[k] = (sum(devp**2)/float(len(devp)))**0.5
+        else:
+            sigmam_r_ub[k] = None
+
+        devm = dev[:, k]
+        devm = devm[devm <= 0]
+        if len(devm) > 0:
+            sigmam_r_ub[k] = (sum(devm**2)/float(len(devm)))**0.5
+        else:
+            sigmam_r_ub[k] = None
+            
+    return(avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t)
+    
+def plot_boundary_evolution(data_path, dump_to_plot, show_fits = False, r1=7.4, r2=8.4, t_fit_start=700):
+    
+    '''
+
+    Displays the time evolution of the convective boundary
+
+    Plots Fig. 14 or 15 in paper: "Idealized hydrodynamic simulations
+    of turbulent oxygen-burning shell convection in 4 geometry"
+    by Jones, S.; Andrassy, R.; Sandalski, S.; Davis, A.; Woodward, P.; Herwig, F.
+    NASA ADS: http://adsabs.harvard.edu/abs/2017MNRAS.465.2991J
+
+    Parameters
+    ----------
+    data_path = string
+        data path
+    show_fits = boolean
+        show the fits used in finding the upper boundary
+    r1/r2 = float
+        This function will only search for the convective 
+        boundary in the range between r1/r2
+    t_fit_start = int
+        The time to start the fit for upper boundary fit takes 
+        range t[t_fit_start:-1] and computes average boundary
+    '''
+    cb = utils.colourblind
+    
+    rp_set = rprof.rprofile_set(data_path)
+    rp = rp_set.get_dump(dump_to_plot)
+
+    n_dumps = len(rp_set.dumps)
+    n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
+    t = np.zeros(n_dumps)
+    r_ub = np.zeros((n_buckets, n_dumps))
+    avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t = get_upper_bound(data_path, dump_to_plot, r1, r2)
+    
+    idx_fit_start = np.argmin(np.abs(t - t_fit_start))
+    t_fit_start = t[idx_fit_start]
+
+    # fc = fit coefficients
+    fc_avg = np.polyfit(t[idx_fit_start:-1], avg_r_ub[idx_fit_start:-1], 1)
+    avg_fit = fc_avg[0]*t + fc_avg[1]
+    fc_plus = np.polyfit(t[idx_fit_start:-1], 2.*sigmap_r_ub[idx_fit_start:-1], 1)
+    plus_fit = fc_plus[0]*t + fc_plus[1]
+    fc_minus = np.polyfit(t[idx_fit_start:-1], 2.*sigmam_r_ub[idx_fit_start:-1], 1)
+    minus_fit = fc_minus[0]*t + fc_minus[1]
+
+    ifig = 5; pl.close(ifig); fig = pl.figure(ifig)#, figsize = (6.0, 4.7))
+    for bucket in range(n_buckets):
+        lbl = 'bucket data' if bucket == 0 else None
+        pl.plot(t/60., r_ub[bucket, :], ls = '-', lw = 0.5, color = cb(3), \
+                 label = lbl)
+    pl.plot(t/60., avg_r_ub, ls = '-', lw = 1., color = cb(4),\
+             label = 'mean')
+    pl.plot(t/60., avg_r_ub + 2*sigmap_r_ub, ls = '--', lw = 1., \
+             color = cb(4), label = r'2$\sigma$ fluctuations')
+    pl.plot(t/60., avg_r_ub - 2*sigmam_r_ub, ls = '--', lw = 1., \
+             color = cb(4))
+    if show_fits:
+        pl.plot(t/60., avg_fit, ls = '-', lw = 0.5, color = cb(4), \
+                label = r'$\mathregular{linear\ fits}$')
+        pl.plot(t/60., avg_fit + plus_fit, ls = '-', lw = 0.5, color = cb(4))
+        pl.plot(t/60., avg_fit - minus_fit, ls = '-', lw = 0.5, color = cb(4))
+    pl.xlim((0., np.max(t)/60.))
+    #plt.ylim((7.4, 8.6))
+    pl.xlabel('t / min')
+    pl.ylabel(r'r$_\mathrm{ub}$ / Mm')
+    pl.legend(loc = 0, frameon = False)
+    #fig.tight_layout()
+
+    print 'The fitting starts at t = {:.1f} s = {:.1f} min.'.format(t_fit_start, t_fit_start/60.)
+    print ''
+    print 'Average:'
+    print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_avg[1], fc_avg[0])
+    print ''
+    print 'Positive fluctuations:'
+    print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_plus[1], fc_plus[0])
+    print ''
+    print 'Negative fluctuations:'
+    print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0])
