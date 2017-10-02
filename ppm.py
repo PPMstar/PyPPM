@@ -5254,22 +5254,29 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min, hist_dump_max, deriva
     fig.subplots_adjust(hspace = 0)
     pl.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible = False)
     
-def get_vr_max_evolution(prof, cycles, r1, r2):
+def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
 
     r = prof.get('Y', fname = cycles[0], resolution = 'l')
     idx1 = np.argmin(np.abs(r - r1))
     idx2 = np.argmin(np.abs(r - r2))
 
     t = np.zeros(len(cycles))
-    vr_max = np.zeros(len(cycles))
+    v = np.zeros(len(cycles))
     for k in range(len(cycles)):
         t[k] = prof.get('t', fname = cycles[k], resolution = 'l')[-1]
-        vr_rms  = prof.get('EkY', fname = cycles[k], resolution = 'l')**0.5
-        vr_max[k] = np.max(vr_rms[idx2:idx1])
+        if comp == 'radial':
+            v_rms  = prof.get('EkY', fname = cycles[k], resolution = 'l')**0.5
+        elif comp == 'tangential':
+            v_rms  = prof.get('EkXZ', fname = cycles[k], resolution = 'l')**0.5
+        if RMS == 'mean':
+            v[k] = np.mean(v_rms[idx2:idx1])
+        elif RMS == 'min':
+            v[k] = np.min(v_rms[idx2:idx1])
+        elif RMS == 'max':
+            v[k] = np.max(v_rms[idx2:idx1])                
+    return t, v
 
-    return t, vr_max
-
-def vr_evolution(cases, ymin = 4., ymax = 8.,ifig = 10):
+def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25):
 
     '''
     Compares the time evolution of the max RMS velocity of different runs
@@ -5287,29 +5294,37 @@ def vr_evolution(cases, ymin = 4., ymax = 8.,ifig = 10):
         is necessary and not the full path ex. cases = ['D1', 'D2']
     ymin, ymax : float
         Boundaries of the range to look for vr_max in
+    comp : string
+        component that the velocity is in. option: 'radial', 'tangential'
+    RMS : string
+        options: 'min', 'max' or 'mean'. What aspect of the RMS velocity
+        to look at
+    
+    Example
+    -------
+    
+    ppm.set_YProf_path('/data/ppm_rpod2/YProfiles/O-shell-M25/',YProf_fname='YProfile-01-0000.bobaaa')
+    v_evolution(['D15','D2','D1'], 4., 8.,'max','radial')
 
     '''
     sparse = 1
     markevery = 25
     cb = utils.colourblind
+    ls = utils.linestylecb
     yy = 0
-    
-    pl.figure(ifig)
-    
     for case in cases:
 
         try:
-            prof = yprofile(ppm_path+case)
+            prof = ppm.yprofile(ppm.ppm_path+case)
         except ValueError:
             print "have you set the yprofile filepath using ppm.set_YProf_path?"
 
         cycles = range(prof.cycles[0], prof.cycles[-1], sparse)
-        t, vr_max = get_vr_max_evolution(prof, cycles, ymin, ymax)
+        t, vr_max = get_v_evolution(prof, cycles, ymin, ymax, comp, RMS)
         pl.plot(t/60.,  1e3*vr_max,  color = cb(yy),\
-                 marker = 's', markevery = markevery, label = case)
+                 marker = ls(yy)[1], markevery = markevery, label = case)
         yy += 1
 
-    pl.title('')
     pl.xlabel('t / min')
     pl.ylabel(r'v$_r$ / km s$^{-1}$')
     pl.legend(loc = 0)
