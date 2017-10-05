@@ -374,7 +374,7 @@ class yprofile(data_plot.DataPlot):
             print 'Ndump values range from '+str(min(self.ndumpDict.keys()))+' to '+str(max(self.ndumpDict.keys()))
             t=self.get('t',max(self.ndumpDict.keys()))
             t1=self.get('t',min(self.ndumpDict.keys()))
-            print 'Time values range from '+ str(t1[-1])+' to '+str(t[-1])
+            print 'Time values range from '+ str(t1)+' to '+str(t)
             self.cycles=self.ndumpDict.keys()
         return None
 
@@ -477,8 +477,8 @@ class yprofile(data_plot.DataPlot):
             isHead = True
 
         # directing to proper get method
-        if isCyc:
-            return self.getCycleData(attri,fname, numtype, resolution=resolution, \
+        if isCyc:                               # edit: included single = true
+            return self.getCycleData(attri,fname, numtype, resolution=resolution, Single = True, \
                                      silent=silent)
         if isCol:
             return self.getColData(attri,fname, numtype, resolution=resolution, \
@@ -583,11 +583,13 @@ class yprofile(data_plot.DataPlot):
             data= self.getColData( attri,filename,'file',resolution, True)
 
             return data
+        #if Single and isCyc:
+        #   data = self.readTop(attri,self.files[FName],self.sldir)
         if Single and isCyc:
 
             data= self.getColData( attri,filename,'file',resolution, True)
-            if data==None:
-                return None
+            #if data==None:
+            #    return None
             index=len(data)-1
             return data[index]
         if not Single and not isCyc:
@@ -674,9 +676,9 @@ class yprofile(data_plot.DataPlot):
         numList=[]   # holds a single column of data
         boo=False     #temp boolean
         tmp=''
-
+        print(FName)
         FName=self.findFile(FName, numType, silent=silent)
-        #print FName
+
         stddir=self.sldir
         resolution=resolution.capitalize()
         if stddir.endswith('/'):  # Makeing sure that the standard dir ends with a slash
@@ -988,14 +990,13 @@ class yprofile(data_plot.DataPlot):
                 if not silent:
                     print 'A negative time does not exist, choosing a time = 0 instead'
                 FName=0
-            timeData=self.get('t',self.ndumpDict[max(self.ndumpDict.keys())],numtype='file')
-            print(timeData)
             keys=self.ndumpDict.keys()
             keys.sort()
             print(keys)
             tmp=[]
             for i in xrange(len(keys)):
-                tmp.append(timeData[keys[i]])
+                timeData=self.get('t',i)
+                tmp.append(timeData)
 
             timeData=tmp
             time= float(FName)
@@ -1307,11 +1308,11 @@ class rprofile(object):
   
   #def get(self, attri, dump, globals_only = False):
     """ Get a new `rprofile` instance for `dump`. These are NOT cached internally."""
+    
   def get(self, attri, fname=None, numtype='ndump', resolution='H', \
             silent=False, globals_only = True):
     
     dump = self.findFile(fname, numType = numtype, silent=silent)
-    print(dump)
     if self.dumps and dump is None:
       dump = self.dumps[-1]
     elif dump not in self.dump_map:
@@ -1319,7 +1320,16 @@ class rprofile(object):
     
     rpof = self.ray_profiles.get(dump, rprofile_file(self.dump_map[dump], lazy=self.lazy, logging=self._logging)) 
     
-    return rpof.get(attri, globals_only)
+    if attri in rpof.header_attrs:
+      return rpof.header_attrs.get(attri)
+
+    offset, dtype, count, shape = rpof._variable_map[attri]
+    data = rpof.get(attri, globals_only = globals_only)
+    
+    if shape[0] == 4:
+        data = data[0,:]
+    data = np.flip(data,0)# yprofile goes t0 -> tf rprof: tf -> t0
+    return data
 
   def findFile(self, FName, numType='FILE', silent=False):
         """ 
@@ -1381,22 +1391,17 @@ class rprofile(object):
                     print 'A negative time does not exist, choosing a time = 0 instead'
                 FName=0
             dump = self.file_map[max(self.file_map.keys())]
-            print(dump)
             #timeData=self.get('time',self.file_map[max(self.file_map.keys())],numtype='file')
             keys=self.file_map.values()
-            print(keys)
             keys.sort()
             tmp=[]
             for i in xrange(len(keys)):
-                print(xrange(len(keys)))
                 rpof = self.ray_profiles.get(i,\
                    rprofile_file(self.dump_map[i], lazy=self.lazy, logging=self._logging)) 
                 timeData = rpof.get('t', True)
                 tmp.append(timeData)
-            print(tmp)
             timeData=tmp
             time= float(FName)
-            print(FName)
             for i in range(len(timeData)): #for all the values of time in the list, find the Ndump that has the closest time to FName
                 if timeData[i]>time and i ==0:
                     indexH=i
@@ -1411,8 +1416,6 @@ class rprofile(object):
                     indexL=i-1
             high=float(timeData[indexH])
             low= float(timeData[indexL])
-            print(high)
-            print(low)
             high=high-time
             low=time-low
 
@@ -1743,7 +1746,7 @@ class rprofile_file(object):
       self._corners = np.fromfile(f, dtype=np.float64, count=9*nbuckets).reshape((3, 3, -1), order='F')
  
     
-  def get(self, var, global_only):
+  def get(self, var, globals_only = False):
     """Get the global bucket for variable `var` or  get header attribute `var`.
 
     Use `get_table(self, var)` to get the same variable but for all buckets.
@@ -1772,7 +1775,7 @@ class rprofile_file(object):
 
     if global_only and len(shape) == 3 and shape[2] == self.bucket_count + 1:
       count = shape[0] * shape[1]
-      shape = shape[:2]
+      shape = shape[:2] #used to be shape[:2]
 
     if self.lazy:
       f = open(self._filename, 'r')
@@ -3484,13 +3487,12 @@ def prof_time(profile, fname,yaxis_thing='vY',num_type='ndump',logy=False,
             y = profile.get(yaxis_thing,fname=dump,numtype=num_type,resolution='L', **kwargs)
             ylab = yaxis_thing
             if logy: ylab = 'log '+ylab
-
         if num_type is 'ndump':
             lab = label_case+', '+str(dump)
             leg_tit = num_type
         elif num_type is 'time':
-            idx = np.abs(profile.get('time')-dump).argmin()
-            time = profile.get('time')[idx]
+            #idx = np.abs(profile.get('t')-dump).argmin()
+            time = profile.get('t')#[idx]
             time_min = time/60.
             lab=label_case+', '+str("%.3f" % time_min)
             leg_tit = 'time / min'
