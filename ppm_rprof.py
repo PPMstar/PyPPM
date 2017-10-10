@@ -431,7 +431,7 @@ class yprofile(data_plot.DataPlot):
         return data
 
     def get(self, attri, fname=None, numtype='ndump', resolution='H', \
-            silent=False, **kwargs):
+            silent=False, metric = None, **kwargs):
         """ 
         Method that dynamically determines the type of attribute that is
         passed into this method.  Also it then returns that attribute's
@@ -676,7 +676,6 @@ class yprofile(data_plot.DataPlot):
         numList=[]   # holds a single column of data
         boo=False     #temp boolean
         tmp=''
-        print(FName)
         FName=self.findFile(FName, numType, silent=silent)
 
         stddir=self.sldir
@@ -992,7 +991,6 @@ class yprofile(data_plot.DataPlot):
                 FName=0
             keys=self.ndumpDict.keys()
             keys.sort()
-            print(keys)
             tmp=[]
             for i in xrange(len(keys)):
                 timeData=self.get('t',i)
@@ -1014,8 +1012,6 @@ class yprofile(data_plot.DataPlot):
                     indexL=i-1
             high=float(timeData[indexH])
             low= float(timeData[indexL])
-            print high
-            print low
             high=high-time
             low=time-low
 
@@ -1036,7 +1032,6 @@ class yprofile(data_plot.DataPlot):
 
         if boo:#here i assume all yprofile files start like 'YProfile-01-'
             FName=self.ndumpDict[FName]
-        print(FName)
         return FName
 
     def _splitHeader(self):
@@ -1310,7 +1305,7 @@ class rprofile(object):
     """ Get a new `rprofile` instance for `dump`. These are NOT cached internally."""
     
   def get(self, attri, fname=None, numtype='ndump', resolution='H', \
-            silent=False, globals_only = True):
+            silent=False, globals_only = True, metric = 0):
     
     dump = self.findFile(fname, numType = numtype, silent=silent)
     if self.dumps and dump is None:
@@ -1327,7 +1322,7 @@ class rprofile(object):
     data = rpof.get(attri, globals_only = globals_only)
     
     if shape[0] == 4:
-        data = data[0,:]
+        data = data[metric,:]
     data = np.flip(data,0)# yprofile goes t0 -> tf rprof: tf -> t0
     return data
 
@@ -3376,7 +3371,7 @@ def plot_boundary_evolution(data_path, dump_to_plot, show_fits = False, r1=7.4, 
     print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0])
     
 def prof_time(profile, fname,yaxis_thing='vY',num_type='ndump',logy=False,
-              radbase=None,radtop=None,ifig=101,ls_offset=0,label_case="",
+              radbase=None,radtop=None,ifig=101,ls_offset=0,label_case="",metric = 0,
               **kwargs):
     """
     Plot the time evolution of a profile from multiple
@@ -3468,7 +3463,9 @@ def prof_time(profile, fname,yaxis_thing='vY',num_type='ndump',logy=False,
             else:
                 ylab = '$<u>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'        
         elif yaxis_thing is 'vY':
-            EkY  = profile.get('EkY',fname=dump,numtype=num_type,resolution='l')
+
+            EkY  = profile.get('EkY',fname=dump,numtype=num_type,resolution='l', metric = metric)
+
             vY = np.sqrt(array(EkY,dtype=float))  # no factor 2 for v_Y and v_XZ
             y = vY*1000
             if logy:
@@ -3492,7 +3489,7 @@ def prof_time(profile, fname,yaxis_thing='vY',num_type='ndump',logy=False,
             leg_tit = num_type
         elif num_type is 'time':
             #idx = np.abs(profile.get('t')-dump).argmin()
-            time = profile.get('t')#[idx]
+            time = profile.get('t', fname=dump, numtype=num_type)#[idx]
             time_min = time/60.
             lab=label_case+', '+str("%.3f" % time_min)
             leg_tit = 'time / min'
