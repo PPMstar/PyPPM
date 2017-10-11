@@ -130,6 +130,7 @@ import matplotlib.pylab as pyl
 import matplotlib.pyplot as pl
 from matplotlib import rcParams
 from matplotlib import gridspec
+import nugridpy.mesa as ms
 import os
 import re
 import nugridpy.astronomy as ast
@@ -302,7 +303,7 @@ class yprofile(DataPlot):
         
     """
 
-    def __init__(self, sldir='.', filename_offset=0):
+    def __init__(self, sldir='.', filename_offset=0, silent = True):
         """ 
         init method
 
@@ -344,7 +345,8 @@ class yprofile(DataPlot):
                 return None
             slname=self.files[len(self.files)-1] #
             self.slname = slname
-            print "Reading attributes from file ",slname
+            if not silent:
+                print "Reading attributes from file ",slname
             self.hattrs,self.dcols, self._cycle=self._readFile()
             # split the header into header attributes and top attributes
             self._splitHeader()
@@ -356,11 +358,13 @@ class yprofile(DataPlot):
             self.ndumpDict=self.ndumpDict(self.files, filename_offset=filename_offset)
             self.radbase = float(self.hattrs['At base of the convection zone R'])
             self.radtop  = float(self.hattrs['Thickness (Mm) of transition from convection to stability '].split()[4])
-            print 'There are '+str(len(self.files))+' YProfile files in the ' +self.sldir+' directory.'
-            print 'Ndump values range from '+str(min(self.ndumpDict.keys()))+' to '+str(max(self.ndumpDict.keys()))
+            if not silent:
+                print 'There are '+str(len(self.files))+' YProfile files in the ' +self.sldir+' directory.'
+                print 'Ndump values range from '+str(min(self.ndumpDict.keys()))+' to '+str(max(self.ndumpDict.keys()))
             t=self.get('t',max(self.ndumpDict.keys()))
             t1=self.get('t',min(self.ndumpDict.keys()))
-            print 'Time values range from '+ str(t1[-1])+' to '+str(t[-1])
+            if not silent:
+                print 'Time values range from '+ str(t1[-1])+' to '+str(t[-1])
             self.cycles=self.ndumpDict.keys()
         return None
 
@@ -417,7 +421,7 @@ class yprofile(DataPlot):
         return data
 
     def get(self, attri, fname=None, numtype='ndump', resolution='H', \
-            silent=False, **kwargs):
+            silent=True, **kwargs):
         """ 
         Method that dynamically determines the type of attribute that is
         passed into this method.  Also it then returns that attribute's
@@ -1402,7 +1406,7 @@ class yprofile(DataPlot):
         headers=self.hattrs
         dic={}
         i=0
-        print "Analyzing headers ..."
+        #print "Analyzing headers ..."
         while i < len(headers):
             if i ==0: # If it is the Stellar Luminosity attribute
                 tmp=headers[i][1]
@@ -1483,7 +1487,7 @@ class yprofile(DataPlot):
 # server utils/YProfPy directory
     
     def prof_time(self,fname,yaxis_thing='vY',num_type='ndump',logy=False,
-                  radbase=None,radtop=None,ifig=101,ls_offset=0,label_case="",
+                  radbase=None,radtop=None,ifig=101,ls_offset=0,label_case="",markevery = None,
                   **kwargs):
         """
         Plot the time evolution of a profile from multiple
@@ -1565,6 +1569,7 @@ class yprofile(DataPlot):
                 
             # else:
             Y=self.get('Y',fname=dump,resolution='L')
+            cb = utils.colourblind
             
             if yaxis_thing is 'v':
                 Ek = self.get('Ek',fname=dump,numtype=num_type,resolution='l')
@@ -1590,6 +1595,14 @@ class yprofile(DataPlot):
                     ylab = '$\log <u_{\\theta,\phi}>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
                 else:
                     ylab = '$<u_{\\theta,\phi}>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
+                 
+            elif yaxis_thing is 'FV':
+                y = self.get('FV H+He',fname=dump,numtype=num_type,resolution='l')
+                if logy:
+                    ylab = '$\log_{10}$ fractional volume'
+                else:
+                    ylab = 'fractional volume'
+                    
             else:
                 y = self.get(yaxis_thing,fname=dump,numtype=num_type,resolution='L', **kwargs)
                 ylab = yaxis_thing
@@ -1604,13 +1617,19 @@ class yprofile(DataPlot):
                 time_min = time/60.
                 lab=label_case+', '+str("%.3f" % time_min)
                 leg_tit = 'time / min'
-
+            
+            if markevery is not None:
+                markevery = markevery
+            else:
+                markevery = utils.linestyle(i+ls_offset)[1]
             if logy:
                 pl.plot(Y,np.log10(y),utils.linestyle(i+ls_offset)[0],
-                        markevery=utils.linestyle(i+ls_offset)[1],label=lab)
+                        markevery= markevery,label=lab,
+                       color = cb(i))
             else:
                 pl.plot(Y,y,utils.linestyle(i+ls_offset)[0],
-                        markevery=utils.linestyle(i+ls_offset)[1],label=lab)
+                        markevery=markevery,label=lab,
+                       color = cb(i))
 
             if radbase is not None and dump is fname[0]:
                 pl.axvline(radbase,linestyle='dashed',color='k')
@@ -1639,7 +1658,7 @@ class yprofile(DataPlot):
 
     def vprofs(self,fname,log_logic=False,lims=None,save=False,
                prefix='PPM',format='pdf',initial_conv_boundaries=True,
-               lw=1., label=True):
+               lw=1., label=True, ifig = 11):
         """
         Plot velocity profiles v_tot, v_Y and v_XZ for a given cycle number
         or list of cycle numbers (fname).
@@ -1700,7 +1719,8 @@ class yprofile(DataPlot):
         ## 'ytick.labelsize':   fsize*0.8,
         ## 'text.usetex':       False}
         ## pl.rcParams.update(params)
-
+        
+        pl.close(ifig),pl.figure(ifig)
         if type(fname) is not list:
             fname = [fname]
         
@@ -2385,7 +2405,7 @@ class yprofile(DataPlot):
         D = D0 * np.exp(-2. * (r[idx:] - r0) / f / Hp0)
         return r[idx:] / 1.e8, D
 
-    def Dov2(self,r0,D0,f1=0.2,f2=0.05,fname=1):
+    def Dov2(self,r0,D0,f1=0.2,f2=0.05,fname=1, silent = True):
         '''
         Calculate and plot an 2-parameter exponentially decaying diffusion coefficient
         given an r0, D0 and f1 and f2.
@@ -2421,8 +2441,8 @@ class yprofile(DataPlot):
         idx = np.abs(r - r0*1.e8).argmin()
         r0 = r[idx]
         Hp0 = Hp[idx]
-        
-        print r0, Hp0, idx
+        if not silent:
+            print r0, Hp0, idx
                 
         D = 2. * D0 * 1./(1./(np.exp(-2. * (r - r0) / f1 / Hp0)) +
                          1./(np.exp(-2. * (r - r0) / f2 / Hp0))
@@ -2431,7 +2451,7 @@ class yprofile(DataPlot):
     
     def Dinv(self,fname1,fname2,fluid='FV H+He',numtype='ndump',newton=False,
              niter=3,debug=False,grid=False,FVaverage=False,tauconv=None,
-             returnY=False,plot_Dlt0=True):
+             returnY=False,plot_Dlt0=True, silent = True, initial_conv_boundaries = True):
         '''
         Solve inverted diffusion equation to see what diffusion coefficient
         profile would have been appropriate to mimic the mixing of species
@@ -2576,7 +2596,8 @@ class yprofile(DataPlot):
         # rare inside the computational domain and limited to only
         # a very small number of zones
         indexarray = np.where(np.diff(y1) == 0)[0]
-        print 'removing zones:', indexarray
+        if not silent:
+            print 'removing zones:', indexarray
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
@@ -2598,7 +2619,8 @@ class yprofile(DataPlot):
         y1 = y1[101:]
 
         if debug : print y0, y1, deltat
-        print 'deltat = ', deltat, 's'
+        if not silent:
+            print 'deltat = ', deltat, 's'
         p = np.zeros(len(x))
         q = np.zeros(len(x))
         
@@ -2636,8 +2658,8 @@ class yprofile(DataPlot):
             # Trying new boundary conditions:
             p[0] = (y1[0] - y1l) * alpha
             q[0] = (y1[0] - y1[1]) * alpha
-
-            print 'p0, q0 = ', p[0],q[0]
+            if not silent:
+                print 'p0, q0 = ', p[0],q[0]
             
             # surface (right) boundary:
             xdum[0] = x[m-1]
@@ -2648,15 +2670,16 @@ class yprofile(DataPlot):
 #            q[m] = 0
             p[m] = (y1[m] - y1[m-1]) * alpha
             q[m] = 0.
-
-            print 'pm, qm = ', p[m],q[m]
+            if not silent:
+                print 'pm, qm = ', p[m],q[m]
             
             G = np.zeros([len(x),len(x)])
             
             # set up matrix:
             
             for i in range(len(x)):
-                print 'p[i] = ', p[i]
+                if not silent:
+                    print 'p[i] = ', p[i]
                 G[i,i] = p[i]
                 if debug : print G[i,i]
                 if i != len(x)-1 :
@@ -2664,9 +2687,9 @@ class yprofile(DataPlot):
                     if debug : print G[i,i+1]
         
             A = np.array( [ G[i,:] for i in range(len(x)) ] )
-        
-            print A[0]
-            print 'determinant = ', np.linalg.det(A)
+            if not silent:
+                print A[0]
+                print 'determinant = ', np.linalg.det(A)
             return A
         
         
@@ -2689,9 +2712,10 @@ class yprofile(DataPlot):
                 corr = np.abs(xnp1 - xn) / xn
                 cmax = max(corr)
                 cmin = min(corr)
-                print 'NEWTON: iter '+str(i)
-                print 'max. correction = ', cmax
-                print 'min. correction = ', cmin
+                if not silent:
+                    print 'NEWTON: iter '+str(i)
+                    print 'max. correction = ', cmax
+                    print 'min. correction = ', cmin
                 xn = xnp1
             
             D = xnp1
@@ -2720,7 +2744,9 @@ class yprofile(DataPlot):
         pl.twinx()
         pl.plot(x/1.e8,np.log10(D),'k-',\
                 label='$D$') #'$D > 0$')
-
+        if initial_conv_boundaries:
+                pl.axvline(self.radbase,linestyle='dashed',color='k')
+                pl.axvline(self.radtop,linestyle='dashed',color='k')
         if plot_Dlt0:
             pl.plot(x/1.e8,np.log10(-D),'k--',\
                     label='$D < 0$')
@@ -2968,7 +2994,8 @@ class yprofile(DataPlot):
     def Dsolvedown(self,fname1,fname2,fluid='FV H+He',numtype='ndump',
        newton=False,niter=3,debug=False,grid=False,FVaverage=False,
        tauconv=None,returnY=False,smooth=False,plot_Dlt0=True,
-       sinusoidal_FV=False, log_X=True, Xlim=None, Dlim=None):
+       sinusoidal_FV=False, log_X=True, Xlim=None, Dlim=None,
+       silent = True):
         '''
         Solve diffusion equation sequentially by iterating over the spatial
         domain inwards from the upper boundary.        
@@ -3253,19 +3280,22 @@ class yprofile(DataPlot):
             # restrict the computational domain to only where the regions are mixed
             idxu = np.where( y1 != 1. )[0][-1] + 1
             idxl = np.where( y1 != 0. )[0][0] - 1
-        print idxl, idxu
-        print y1
+        if not silent:
+            print idxl, idxu
+            print y1
         y1 = y1[idxl:idxu]
         y0 = y0[idxl:idxu]
         x = x[idxl:idxu]
-        print x[0], x[-1]
+        if not silent:
+            print x[0], x[-1]
 
         # now we want to exclude any zones where the abundances
         # of neighboring cells are the same. This is hopefully
         # rare inside the computational domain and limited to only
         # a very small number of zones
         indexarray = np.where(np.diff(y1) == 0)[0]
-        print 'removing zones:', indexarray
+        if not silent:
+            print 'removing zones:', indexarray
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
@@ -3290,7 +3320,8 @@ class yprofile(DataPlot):
         
                     
         D = D * 1.e16 # Mm^2/s ==> cm^2/s
-        print D
+        if not silent:
+            print D
         x = x * 1e8   # Mm ==> cm
 
         cb = utils.colourblind
@@ -3942,7 +3973,7 @@ class yprofile(DataPlot):
     def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False, 
                          integrate_upwards=False, show_output=True, ifig0=1, \
-                         show_fits=True, mdot_curve_label=None, file_name=None,
+                         silent =True, mdot_curve_label=None, file_name=None,
                          return_time_series=False):
         def regrid(x, y, x_int):
             int_func = interpolate.CubicSpline(x[::-1], y[::-1])
@@ -4037,9 +4068,8 @@ class yprofile(DataPlot):
             pl.close(ifig0); fig1 = pl.figure(ifig0)
             pl.plot(time/60., r_top, color = cb(5), ls = '-', label = r'r$_\mathrm{top}$')
             pl.plot(time/60., r_b, color = cb(8), ls = '--', label = r'r$_\mathrm{b}$')
-            if show_fits:
-                pl.plot(timelong/60., r_top_fit, color = cb(4), ls = '-', lw = 0.5)
-                pl.plot(timelong/60., r_b_fit, color = cb(4), ls = '-', lw = 0.5)
+            pl.plot(timelong/60., r_top_fit, color = cb(4), ls = '-', lw = 0.5)
+            pl.plot(timelong/60., r_b_fit, color = cb(4), ls = '-', lw = 0.5)
             pl.xlabel('t / min')
             pl.ylabel('r / Mm')
             xfmt = ScalarFormatter(useMathText = True)
@@ -4047,7 +4077,7 @@ class yprofile(DataPlot):
             pl.legend(loc = 0)
             fig1.tight_layout()
 
-            if show_fits:
+            if not silent:
                 print 'r_b is the radius of the convective boundary.'
                 print 'r_b_fc = ', r_b_fc
                 print 'dr_b/dt = {:.2e} km/s\n'.format(1e3*r_b_fc[0])
@@ -4055,8 +4085,8 @@ class yprofile(DataPlot):
                 print 'dr_top/dt = {:.2e} km/s'.format(1e3*r_top_fc[0])
             
             max_val = np.max(m_ir)
-            if show_fits:
-                max_val = np.max((max_val, np.max(m_ir_fit)))
+            #if show_fits:
+            max_val = np.max((max_val, np.max(m_ir_fit)))
             max_val *= 1.1 # allow for some margin at the top
             oom = int(np.floor(np.log10(max_val)))
             
@@ -4066,14 +4096,14 @@ class yprofile(DataPlot):
             parts = mdot_str.split('e')
             mantissa = float(parts[0])
             exponent = int(parts[1])
-            if show_fits:
-                if integrate_upwards:
-                    lbl = r'$\dot{{\mathrm{{M}}}}_\mathrm{{a}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
+            #if show_fits:
+            if integrate_upwards:
+                lbl = r'$\dot{{\mathrm{{M}}}}_\mathrm{{a}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
                           format(-mantissa, exponent)
-                else:
-                    lbl = r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
+            else:
+                lbl = r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
                           format(mantissa, exponent)
-                pl.plot(timelong/60., m_ir_fit/10**oom, color = cb(4), ls = '-', lw = 0.5, label = lbl)
+            pl.plot(timelong/60., m_ir_fit/10**oom, color = cb(4), ls = '-', lw = 0.5, label = lbl)
             pl.xlabel('t / min')
             if integrate_upwards:
                 sub = 'a'
@@ -4095,7 +4125,7 @@ class yprofile(DataPlot):
             if file_name is not None:
                 fig2.savefig(file_name)
         
-            if show_fits:
+            if not silent:
                 print 'Resolution: {:d}^3'.format(2*len(r))
                 print 'm_ir_fc = ', m_ir_fc
                 print 'Entrainment rate: {:.3e} M_Sun/s'.format(mdot)
@@ -5115,7 +5145,8 @@ def analyse_dump(rp, r1, r2):
 
     return r, ut, dutdr, r_ub
 
-def upper_bound_ut(data_path, dump_to_plot, hist_dump_min, hist_dump_max, derivative = False, r1=7.4, r2=8.4):
+def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,\
+                   hist_dump_max, derivative = False, r1=7.4, r2=8.4, silent = True):
 
     '''
     Finds the upper convective boundary as defined by the steepest decline in 
@@ -5196,10 +5227,10 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min, hist_dump_max, deriva
     hist_bins = 0.5*(r + np.roll(r, -1))
     hist_bins[-1] = hist_bins[-2] + (hist_bins[-2] - hist_bins[-3])
     #hist_bins = np.insert(hist_bins, 0., 0.)       # #robert - this command throws an error?!?
-
-    print "Dump {:d} (t = {:.2f} min).".format(dump_to_plot, t[dump_to_plot]/60.)
-    print "Histogram constructed using dumps {:d} (t = {:.2f} min) to {:d} (t = {:.2f} min) inclusive."\
-        .format(hist_dump_min, t[hist_dump_min]/60., hist_dump_max, t[hist_dump_max]/60.)
+    if not silent:
+        print "Dump {:d} (t = {:.2f} min).".format(dump_to_plot, t[dump_to_plot]/60.)
+        print "Histogram constructed using dumps {:d} (t = {:.2f} min) to {:d} (t = {:.2f} min) inclusive."\
+            .format(hist_dump_min, t[hist_dump_min]/60., hist_dump_max, t[hist_dump_max]/60.)
 
     fig = pl.figure( figsize = (2*3.39, 2*2.8))   
     #fig = pl.figure( figsize = (2*5, 2*4)) 
@@ -5276,7 +5307,7 @@ def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
             v[k] = np.max(v_rms[idx2:idx1])                
     return t, v
 
-def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25):
+def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig = 12):
 
     '''
     Compares the time evolution of the max RMS velocity of different runs
@@ -5307,15 +5338,14 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25):
     v_evolution(['D15','D2','D1'], 4., 8.,'max','radial')
 
     '''
-    sparse = 1
-    markevery = 25
+    pl.close(ifig),pl.figure(ifig)
     cb = utils.colourblind
     ls = utils.linestylecb
     yy = 0
     for case in cases:
 
         try:
-            prof = ppm.yprofile(ppm.ppm_path+case)
+            prof = yprofile(ppm_path+case)
         except ValueError:
             print "have you set the yprofile filepath using ppm.set_YProf_path?"
 
@@ -5609,7 +5639,8 @@ def get_upper_bound(data_path, dump_to_plot, r1, r2):
             
     return(avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t)
     
-def plot_boundary_evolution(data_path, dump_to_plot, show_fits = False, r1=7.4, r2=8.4, t_fit_start=700):
+def plot_boundary_evolution(data_path, dump_to_plot, r1, r2, t_fit_start=700,\
+                            silent = True, show_fits = False):
     
     '''
 
@@ -5677,17 +5708,63 @@ def plot_boundary_evolution(data_path, dump_to_plot, show_fits = False, r1=7.4, 
     pl.ylabel(r'r$_\mathrm{ub}$ / Mm')
     pl.legend(loc = 0, frameon = False)
     #fig.tight_layout()
+    if not silent:
+        print 'The fitting starts at t = {:.1f} s = {:.1f} min.'.format(t_fit_start, t_fit_start/60.)
+        print ''
+        print 'Average:'
+        print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_avg[1], fc_avg[0])
+        print ''
+        print 'Positive fluctuations:'
+        print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_plus[1], fc_plus[0])
+        print ''
+        print 'Negative fluctuations:'
+        print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0])
 
-    print 'The fitting starts at t = {:.1f} s = {:.1f} min.'.format(t_fit_start, t_fit_start/60.)
-    print ''
-    print 'Average:'
-    print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_avg[1], fc_avg[0])
-    print ''
-    print 'Positive fluctuations:'
-    print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_plus[1], fc_plus[0])
-    print ''
-    print 'Negative fluctuations:'
-    print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0])
+def compare_entrained_material(yps, labels, fname):
+    
+    '''
+    Compares the entrainment rate of two seperate yprofile objects
+    
+    Parameters
+    ----------
+    yps: yprofile objects
+        yprofiles to compare
+    labels : string array matching yp array
+        labels for yp objects
+    fname
+        specific dump to access information from
+        
+    Example
+    -------
+    import ppm
+    yp1 = yprofile('/data/ppm_rpod2/YProfiles/agb-entrainment-convergence/H1')
+    yp2 = yprofile('/data/ppm_rpod2/YProfiles/O-shell-M25/D2')
+    compare_entrained_material([yp1,yp2],['O shell','AGB'], fname = 271)
+    '''
+
+    ifig = 1; pl.close(ifig); fig = pl.figure(ifig)
+    cb = utils.colourblind
+    ls = utils.linestylecb
+    me = 0.1
+    yy = 0
+    for yp in yps:
+        pl.plot( yp.get('j',resolution='L', fname = fname),
+              yp.get('FV H+He',resolution='L', fname = fname), \
+              color = cb(yy), label=labels[yy],
+              marker=ls(yy)[1], markevery = me,
+              markeredgecolor = 'w')
+        yy += 1
+    pl.legend(loc=(.6,.1))
+
+    pl.ylabel('$\mathrm{FV}\,\mathcal{F}_1$')
+    pl.xlabel('grid cell number')
+
+
+    ax=pl.gca()
+    ax.set_yscale('log')
+    #yticks = ax.yaxis.get_major_ticks()
+    pl.yticks(10.**np.linspace(-12,0,7))
+    fig.subplots_adjust( left = 0.17 )
     
 ########################################################################
 # Plotting funcitons that dont have supported dependencies
@@ -5914,10 +5991,10 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
 
     #ifig = 1; plt.close(ifig); fig = plt.figure(ifig, figsize = (9, 4))
     #ifig = 1; plt.close(ifig); fig = plt.figure(ifig, figsize = (3.39, 2.4))
-    plt.clf()
+    pl.clf()
     gs = gridspec.GridSpec(2, 1, height_ratios = [12, 1]) 
-    ax0 = plt.subplot(gs[0])
-    ax1 = plt.subplot(gs[1])
+    ax0 = pl.subplot(gs[0])
+    ax1 = pl.subplot(gs[1])
     m = Basemap(projection = 'moll', lon_0 = 0., ax = ax0)
     
     cmap_min = np.min(quantity)
@@ -5976,10 +6053,10 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
                       format = ticker.FuncFormatter(fmt), orientation='horizontal')
     cb.set_label(r'$\Delta$r$_\mathrm{ub}$ / Mm')
     #ropplt.tight_layout(h_pad = 2.)
-    plt.show()
+    pl.show()
     if file_name is not None:
         #plt.savefig(file_name + '_' + cmap_name + '.pdf', bbox_inches = 'tight', facecolor = 'w', dpi = 332.7)
-        plt.savefig(file_name, bbox_inches = 'tight', facecolor = 'w', dpi = 332.7)
+        pl.savefig(file_name, bbox_inches = 'tight', facecolor = 'w', dpi = 332.7)
 
 def plot_Mollweide(rp_set, dump_min, dump_max, r1, r2, output_dir = None, Filename = None, ifig = 2):
     
@@ -6005,7 +6082,7 @@ def plot_Mollweide(rp_set, dump_min, dump_max, r1, r2, output_dir = None, Filena
     plot_Mollweide(rp_set, 100,209,7.4,8.4)
     '''
     
-    plt.close(ifig); fig = plt.figure(ifig, figsize = (3.384, 2.))
+    pl.close(ifig); fig = pl.figure(ifig, figsize = (3.384, 2.))
     fig.patch.set_facecolor('w')
     fig.patch.set_alpha(1.)
     dr_ub_avg = np.zeros(80)
@@ -6026,3 +6103,310 @@ def plot_Mollweide(rp_set, dump_min, dump_max, r1, r2, output_dir = None, Filena
         filename = None
         
     bucket_map(rp, dr_ub_avg, file_name = filename)
+    
+#####################################################
+# Files with mesa dependancy
+#####################################################
+
+def get_N2(yp, dump):
+    '''
+    squared Brunt-Vaisala frequency N^2
+
+    Parameters
+    ----------
+    yp = yprofile object
+        yprofile to use
+    dump = int
+        dump to analyze
+    
+    Output
+    ------
+    N2 = vector
+        Brunt Vaisala frequency [rad^2 s^-1]
+    '''
+    
+    G_code = ast.grav_const/1e-3
+    nabla_ad = 0.4
+    
+    R_bot = float(yp.hattrs['At base of the convection zone R'])
+    g_bot = float(yp.hattrs['At base of the convection zone g'])
+    
+    r = yp.get('Y', fname = dump, resolution = 'l')
+    p = yp.get('P', fname = dump, resolution = 'l')
+    rho = yp.get('Rho', fname = dump, resolution = 'l')
+    
+    # centre R_bot on the nearest cell
+    idx_bot = np.argmin(np.abs(r - R_bot))
+    
+    # mass below R_bot
+    # (using r[idx_bot] instead of R_bot makes g[idx_bot] == g_bot)
+    M_bot = g_bot*(r[idx_bot]**2)/G_code
+    dr = 0.5*(np.roll(r, -1) - np.roll(r, +1))
+    dm = 4.*np.pi*(r**2)*dr*rho
+    m = np.cumsum(dm) # get the mass profile by integration
+    # shift the mass profile to make sure that m[idx_bot] == M_bot
+    # the mass profile at small radii won't make sense, because
+    # the core is artificial with no gravity
+    m += M_bot - m[idx_bot]
+    
+    g = G_code*m/(r**2) # gravity profile (see the note above)
+    H_p = p/(rho*g) # pressure scale height (assuming hydrostatic equilibrium)
+    
+    logrho = np.log(rho)
+    dlogrho = 0.5*(np.roll(logrho, -1) - np.roll(logrho, +1))
+    logp = np.log(p)
+    dlogp = 0.5*(np.roll(logp, -1) - np.roll(logp, +1))
+    nabla_rho = dlogrho/dlogp
+    
+    # N^2 for an ideal gas
+    N2 = (g/H_p)*(nabla_ad - 1. + nabla_rho)
+    
+    return N2
+
+def plot_N2(case, dump1, dump2, mesa_A_model_num = 29350, mesa_B_model_num = 28950):
+
+    '''
+        plots squared Brunt-Vaisala frequency N^2
+
+        Parameters
+        ----------
+        case = string 
+            Name of run eg. 'D1'
+        dump1/ dump2 = int
+            dump to analyze
+        mesa_A_model_num = int
+            number for mesa model
+
+        Example
+        ------
+        import ppm
+        set_YProf_path('/data/ppm_rpod2/YProfiles/O-shell-M25/')
+        plot_N2('D1', 0, 132, mesa_A_model_num = 29350, mesa_B_model_num = 28950)
+        '''
+    ppm_run= case
+    yp = yprofile(ppm_path + case)
+    mesa_logs_path = '/data/ppm_rpod2/Stellar_models/O-shell-M25/M25Z0.02/LOGS_N2b'
+    mesa_A_prof = ms.mesa_profile(mesa_logs_path, mesa_A_model_num)
+    # convert the mesa variables to code units
+    mesa_A_r = (ast.rsun_cm/1e8)*mesa_A_prof.get('radius')
+    mesa_A_N2 = mesa_A_prof.get('brunt_N2')
+    mesa_A_N2_mu = mesa_A_prof.get('brunt_N2_composition_term')
+    mesa_A_N2_T = mesa_A_prof.get('brunt_N2_structure_term')
+    mesa_A_mu = mesa_A_prof.get('mu')
+
+    mesa_B_prof = ms.mesa_profile(mesa_logs_path, mesa_B_model_num)
+    # convert the mesa variables to code units
+    mesa_B_r = (ast.rsun_cm/1e8)*mesa_B_prof.get('radius')
+    mesa_B_N2 = mesa_B_prof.get('brunt_N2')
+    mesa_B_mu = mesa_B_prof.get('mu')
+
+    # get the PPM models
+    ppm_prof = yp
+    ppm_r = ppm_prof.get('Y', fname = 0, resolution = 'l')
+    ppm_dump_num_A = dump1
+    ppm_t_A = ppm_prof.get('t', fname = ppm_dump_num_A, resolution = 'l')[-1]
+    ppm_N2_A = get_N2(ppm_prof, ppm_dump_num_A)
+    ppm_dump_num_B = dump2
+    ppm_t_B = ppm_prof.get('t', fname = ppm_dump_num_B, resolution = 'l')[-1]
+    ppm_N2_B = get_N2(ppm_prof, ppm_dump_num_B)
+
+    cb = utils.colourblind
+
+    ifig = 1; pl.close(ifig); fig = pl.figure(ifig)
+
+    ax1 = fig.add_subplot(111)
+    ax1.plot(mesa_A_r, mesa_A_N2, ls = '-', lw = 0.5, color = cb(4), label = "MESA A")
+    ax1.plot(mesa_B_r, mesa_B_N2, ls = '-.', lw = 0.5, color = cb(4), label = "MESA B")
+    lbl = "{:s}, t = {:.0f} min.".format(ppm_run, ppm_t_A/60.)
+    ax1.plot(ppm_r, ppm_N2_A, ls = ':', color = cb(5), label = lbl)
+    lbl = "{:s}, t = {:.0f} min.".format(ppm_run, ppm_t_B/60.)
+    ax1.plot(ppm_r, ppm_N2_B, ls = '-', color = cb(8), label = lbl)
+    ax1.set_xlim((3.5, 9.))
+    ax1.set_ylim((-0.5, 8.))
+    ax1.set_xlabel('r / Mm')
+    ax1.set_ylabel(r'N$^2$ / rad$^2\,$s$^{-2}$')
+    ax1.legend(loc = 0)
+
+    left, bottom, width, height = [0.34, 0.3, 0.4, 0.4]
+    ax2 = fig.add_axes([left, bottom, width, height])
+    ax2.plot(mesa_A_r, mesa_A_N2, ls = '-', lw = 0.5, color = cb(4))
+    ax2.plot(mesa_B_r, mesa_B_N2, ls = '-.', lw = 0.5, color = cb(4))
+    ax2.plot(ppm_r, ppm_N2_A, ls = ':', color = cb(5))
+    ax2.plot(ppm_r, ppm_N2_B, ls = '-', color = cb(8))
+    ax2.set_xlim((7.7, 8.7))
+    ax2.set_ylim((-0.15, 1.3))
+
+def energy_comparison(yprof,mesa_model,xthing = 'm',ifig = 2, sient = True):
+    '''
+    Nuclear  energy  generation  rate (enuc) thermal  neutrino   
+    energy   loss   rate (enu) and   luminosity   profiles (L) for MESA
+    plotted with ppmstar energy estimation (eppm)
+    
+    Parameters
+    ----------
+    yprof: yprofile object
+        yprofile to examine
+    mesa_model
+        mesa model to examine
+    xthing: string
+        x axis as mass, 'm' or radius, 'r'
+    silent: boolean
+        suppress output or not
+    
+    Example
+    -------
+    import ppm
+    import nugrid.mesa as ms
+    mesa_A_model_num = 29350
+    mesa_logs_path = '/data/ppm_rpod2/Stellar_models/O-shell-M25/M25Z0.02/LOGS_N2b'
+    mesa_model = ms.mesa_profile(mesa_logs_path, mesa_A_model_num)
+    yprof = yprofile('/data/ppm_rpod2/YProfiles/O-shell-M25/D1')
+    energy_comparison(yprof,mesa_model)
+    
+    '''
+    p = mesa_model
+    xthing = 'm'
+    silent = True
+    # function giving PPM heating curve given PPM profile
+
+    # figure vs mass
+    ifig = 2; pl.close(ifig); fig = pl.figure(ifig)
+    m = p.get('mass')
+
+    eps_nuc = np.log10(p.get('eps_nuc'))
+    eps_neu = np.log10(p.get('non_nuc_neu'))
+    lum = p.get('logL')
+
+    # plot conv zone boundaries
+    rlconv = 1.1593
+    ruconv = 1.8553
+    pl.fill_between( [ rlconv, ruconv ], 0, 100, color= '#fffdd8' ) 
+
+    rlconv = 2.0824
+    ruconv = 2.50
+    pl.fill_between( [ rlconv, ruconv ], 0, 100, color='#b39eb5' )
+
+    res = get_heat_source(yprof)
+    r_ppm = res[:, 0]
+    m_ppm = res[:, 1]
+    m_ppm = m_ppm * 5.025e-07 # code unit --> solar masses
+    eps_ppm = res[:, 2]
+    eps_ppm = eps_ppm * 1.e16 # code units --> erg/g/s
+    eps_ppm = np.log10(eps_ppm)
+
+    # trim mess off eps_nuc below O-shell
+    idx = np.abs(m - 1.0).argmin()
+
+    # plot simulation boundaries
+    rad1 = 3.0 # Mm
+    rad2 = 9.8 # Mm
+    rad  = 10. ** p.get('logR') * ast.rsun_cm / 1.e8
+    if not silent:
+        print rad
+
+    idx1 = np.abs(rad - rad1).argmin()
+    idx2 = np.abs(rad - rad2).argmin()
+    m1   = m[idx1]
+    m2   = m[idx2]
+
+    if not silent:
+        print m1, m2
+
+    if xthing == 'm':
+        xthing = m
+        xthing_ppm = m_ppm
+    else:
+        xthing = r
+        xthing_ppm = r_ppm
+
+    #semilogy(m[:idx],eps_nuc[:idx],
+    pl.plot(xthing[:idx],eps_nuc[:idx],
+        label='$\epsilon_\mathrm{nuc}$',
+        color=utils.colourblind(8),
+        linestyle='-')
+
+    #semilogy(m,eps_neu,
+    pl.plot(xthing,eps_neu,
+        label='$\epsilon_\\nu$',
+        color=utils.colourblind(4),
+        linestyle='--')
+
+    #semilogy(m,lum,
+    pl.plot(xthing,lum,
+        label='$L$',
+        color=utils.colourblind(0),
+        linestyle='-.')
+
+    #semilogy(m_ppm,eps_ppm,
+    pl.plot(xthing_ppm,eps_ppm,
+        label='$\epsilon_\mathrm{PPM}$',
+        color=utils.colourblind(4),
+        linestyle='-',
+        marker='.',
+        markevery=.3)
+
+
+    #pl.ylabel('$\epsilon\,/\,\mathrm{erg\,g}^{-1}\,\mathrm{s}^{-1}\,;\,L\,/\,L_\odot$')
+    if xthing is 'm':
+        pl.ylabel('$\log_{10}(\epsilon\,/\,\mathrm{erg\,g}^{-1}\,\mathrm{s}^{-1}\,;\,L\,/\,L_\odot)$')
+        pl.xlabel('$\mathrm{Mass\,/\,M}_\odot$')
+    else:
+        pl.ylabel('$\log_{10}(\epsilon\,/\,\mathrm{erg\,g}^{-1}\,\mathrm{s}^{-1}\,;\,L\,/\,L_\odot)$')
+        pl.xlabel('$\mathrm{r\,/\,Mm}$')
+
+    pl.legend(loc='upper left')
+
+    #pl.xlim(1.,2.5)
+    pl.xlim(0.5,2.5)
+    #pl.ylim(1.e8,1.e13)
+    pl.ylim(8,13)
+    
+def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153):
+    '''
+    returns estimation of yprofiles energy
+    
+    # values from setup.txt
+    radbase = 4.1297
+    dlayerbot = 0.5
+    totallum = 20.153
+    
+    Parameters
+    ----------
+    yprof: yprofile object
+        yprofile to examine
+    '''
+    G_code = ast.grav_const/1e-3
+
+    r = yprof.get('Y', fname = 0, resolution = 'l')
+    rho = yprof.get('Rho', fname = 0, resolution = 'l')
+    r_bot = float(yprof.hattrs['At base of the convection zone R'])
+    g_bot = float(yprof.hattrs['At base of the convection zone g'])
+
+    dr = -0.5*(np.roll(r, -1) - np.roll(r, +1))
+    dr[0] = dr[1]; dr[-1] = dr[-2]
+    
+    # centre r_bot on the nearest cell
+    idx_bot = np.argmin(np.abs(r - r_bot))
+    # mass below r_bot
+    m_bot = g_bot*(r[idx_bot]**2)/G_code
+
+    dV = 4.*np.pi*(r**2)*dr
+    dm = rho*dV
+    m = -np.cumsum(dm) # get the mass profile by integration
+    # shift the mass profile to make sure that m[idx_bot] == m_bot
+    m += m_bot - m[idx_bot]
+
+    radminbase = radbase + 0.5*dlayerbot
+    radmaxbase = radbase + 1.5*dlayerbot
+
+    # PPMstar computes this integral numerically
+    heatsum = 4.*pi*(-(radmaxbase**5 - radminbase**5)/5. + \
+                     (radminbase + radmaxbase)*(radmaxbase**4 - radminbase**4)/4. - \
+                     radminbase*radmaxbase*(radmaxbase**3 - radminbase**3)/3.)
+    dist = np.maximum(0.*r, r - radminbase)*np.maximum(0.*r, radmaxbase - r)*dV/heatsum
+    
+    # the tiny offset of 1e-100 makes sure lines don't end suddenly in a logarithmic plot
+    # 2.25 is the correction factor to account for the heating bug in PPMstar
+    eps = 2.25*totallum*dist/dm + 1e-100
+    
+    return np.transpose(np.array([r, m, eps]))
