@@ -2995,7 +2995,7 @@ class yprofile(DataPlot):
        newton=False,niter=3,debug=False,grid=False,FVaverage=False,
        tauconv=None,returnY=False,smooth=False,plot_Dlt0=True,
        sinusoidal_FV=False, log_X=True, Xlim=None, Dlim=None,
-       silent = True):
+       silent=True):
         '''
         Solve diffusion equation sequentially by iterating over the spatial
         domain inwards from the upper boundary.        
@@ -6236,7 +6236,10 @@ def plot_N2(case, dump1, dump2, mesa_A_model_num = 29350, mesa_B_model_num = 289
     ax2.set_xlim((7.7, 8.7))
     ax2.set_ylim((-0.15, 1.3))
 
-def energy_comparison(yprof,mesa_model,xthing = 'm',ifig = 2, sient = True):
+def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,
+                     range_conv1 = None , range_conv2 = None,
+                     xlim = [0.5,2.5] , ylim = [8,13], radbase = 4.1297, 
+                     dlayerbot = 0.5, totallum = 20.153):
     '''
     Nuclear  energy  generation  rate (enuc) thermal  neutrino   
     energy   loss   rate (enu) and   luminosity   profiles (L) for MESA
@@ -6252,6 +6255,17 @@ def energy_comparison(yprof,mesa_model,xthing = 'm',ifig = 2, sient = True):
         x axis as mass, 'm' or radius, 'r'
     silent: boolean
         suppress output or not
+    range_conv1: range or None
+        range to shade for convection zone 1
+    range_conv2: range or None
+        range to shade for convection zone 2
+    xlim: range
+    ylim: range
+   
+    values from setup.txt
+    radbase = 4.1297
+    dlayerbot = 0.5
+    totallum = 20.153
     
     Example
     -------
@@ -6266,7 +6280,6 @@ def energy_comparison(yprof,mesa_model,xthing = 'm',ifig = 2, sient = True):
     '''
     p = mesa_model
     xthing = 'm'
-    silent = True
     # function giving PPM heating curve given PPM profile
 
     # figure vs mass
@@ -6278,15 +6291,17 @@ def energy_comparison(yprof,mesa_model,xthing = 'm',ifig = 2, sient = True):
     lum = p.get('logL')
 
     # plot conv zone boundaries
-    rlconv = 1.1593
-    ruconv = 1.8553
-    pl.fill_between( [ rlconv, ruconv ], 0, 100, color= '#fffdd8' ) 
+    if range_conv1 is not None:
+        rlconv = 1.1593
+        ruconv = 1.8553
+        pl.fill_between( range_conv1 , 0, 100, color= '#fffdd8' )
+        
+    if range_conv2 is not None:
+        rlconv = 2.0824
+        ruconv = 2.50
+        pl.fill_between( range_conv2 , 0, 100, color='#b39eb5' )
 
-    rlconv = 2.0824
-    ruconv = 2.50
-    pl.fill_between( [ rlconv, ruconv ], 0, 100, color='#b39eb5' )
-
-    res = get_heat_source(yprof)
+    res = get_heat_source(yprof, radbase = radbase, dlayerbot = dlayerbot, totallum = totallum)
     r_ppm = res[:, 0]
     m_ppm = res[:, 1]
     m_ppm = m_ppm * 5.025e-07 # code unit --> solar masses
@@ -6357,9 +6372,9 @@ def energy_comparison(yprof,mesa_model,xthing = 'm',ifig = 2, sient = True):
     pl.legend(loc='upper left')
 
     #pl.xlim(1.,2.5)
-    pl.xlim(0.5,2.5)
+    pl.xlim(xlim)
     #pl.ylim(1.e8,1.e13)
-    pl.ylim(8,13)
+    pl.ylim(ylim)
     
 def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153):
     '''
@@ -6374,6 +6389,11 @@ def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153)
     ----------
     yprof: yprofile object
         yprofile to examine
+        
+    Returns
+    -------
+    array
+        array with vectors [radius, mass, energy estimate]
     '''
     G_code = ast.grav_const/1e-3
 
