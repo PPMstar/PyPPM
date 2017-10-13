@@ -6398,13 +6398,9 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,
 
     # plot conv zone boundaries
     if range_conv1 is not None:
-        rlconv = 1.1593
-        ruconv = 1.8553
         pl.fill_between( range_conv1 , 0, 100, color= '#fffdd8' )
         
     if range_conv2 is not None:
-        rlconv = 2.0824
-        ruconv = 2.50
         pl.fill_between( range_conv2 , 0, 100, color='#b39eb5' )
 
     res = get_heat_source(yprof, radbase = radbase, dlayerbot = dlayerbot, totallum = totallum)
