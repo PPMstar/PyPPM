@@ -3107,7 +3107,7 @@ class yprofile(DataPlot):
        newton=False,niter=3,debug=False,grid=False,FVaverage=False,
        tauconv=None,returnY=False,smooth=False,plot_Dlt0=True,
        sinusoidal_FV=False, log_X=True, Xlim=None, Dlim=None,
-       silent=True):
+       silent=True,showfig=True):
         '''
         Solve diffusion equation sequentially by iterating over the spatial
         domain inwards from the upper boundary.        
@@ -3438,48 +3438,48 @@ class yprofile(DataPlot):
 
         cb = utils.colourblind
         lsty = utils.linestyle
-        
-        pl.figure()
-        yplot = np.log10(y0long) if log_X else y0long
-        pl.plot(xlong,yplot,\
-                marker='o',
-                color=cb(8),\
-                markevery=lsty(1)[1],\
-                mec = cb(8),
-                mew = 1.,
-                mfc = 'w',
-                label='$X_{'+str(fname1)+'}$')
-        yplot = np.log10(y1long) if log_X else y1long
-        pl.plot(xlong,yplot,\
-                marker='o',\
-                color=cb(9),\
-                lw=0.5,
-                markevery=lsty(2)[1],\
-                label='$X_{'+str(fname2)+'}$')
-        lbl = '$\log_{10}\,X$ ' if log_X else '$X$ '
-        pl.ylabel(lbl)
-        pl.xlabel('$\mathrm{r\,/\,Mm}$')
-        if Xlim is not None:
-            pl.ylim(Xlim)
-        else:
-           pl.ylim(-8,0.1)
-        pl.legend(loc='center right').draw_frame(False)
-        if grid:
-            pl.grid()
-        pl.twinx()
-        pl.plot(x/1.e8,np.log10(D),'k-',\
-                label='$D$') #'$D > 0$')
+        if showfig:
+            pl.figure()
+            yplot = np.log10(y0long) if log_X else y0long
+            pl.plot(xlong,yplot,\
+                    marker='o',
+                    color=cb(8),\
+                    markevery=lsty(1)[1],\
+                    mec = cb(8),
+                    mew = 1.,
+                    mfc = 'w',
+                    label='$X_{'+str(fname1)+'}$')
+            yplot = np.log10(y1long) if log_X else y1long
+            pl.plot(xlong,yplot,\
+                    marker='o',\
+                    color=cb(9),\
+                    lw=0.5,
+                    markevery=lsty(2)[1],\
+                    label='$X_{'+str(fname2)+'}$')
+            lbl = '$\log_{10}\,X$ ' if log_X else '$X$ '
+            pl.ylabel(lbl)
+            pl.xlabel('$\mathrm{r\,/\,Mm}$')
+            if Xlim is not None:
+                pl.ylim(Xlim)
+            else:
+               pl.ylim(-8,0.1)
+            pl.legend(loc='center right').draw_frame(False)
+            if grid:
+                pl.grid()
+            pl.twinx()
+            pl.plot(x/1.e8,np.log10(D),'k-',\
+                    label='$D$') #'$D > 0$')
 
-        if plot_Dlt0:
-            pl.plot(x/1.e8,np.log10(-D),'k--',\
-                    label='$D < 0$')
-        pl.xlim((3.5, 9.5))
-        if Dlim is not None:
-            pl.ylim(Dlim)
-        else:
-            pl.ylim((8., 18.))
-        pl.ylabel('$\log_{10}(D\,/\,{\\rm cm}^2\,{\\rm s}^{-1})$')
-        pl.legend(loc='upper right').draw_frame(False)
+            if plot_Dlt0:
+                pl.plot(x/1.e8,np.log10(-D),'k--',\
+                        label='$D < 0$')
+            pl.xlim((3.5, 9.5))
+            if Dlim is not None:
+                pl.ylim(Dlim)
+            else:
+                pl.ylim((8., 18.))
+            pl.ylabel('$\log_{10}(D\,/\,{\\rm cm}^2\,{\\rm s}^{-1})$')
+            pl.legend(loc='upper right').draw_frame(False)
 
         if returnY:
             return x/1.e8, D, y0, y1
@@ -4314,7 +4314,7 @@ class yprofile(DataPlot):
 
         
 
-    def vaverage(self,vi='v',transient=0.,sparse=1):
+    def vaverage(self,vi='v',transient=0.,sparse=1,showfig = False):
         '''
         plots and returns the average velocity profile for a given
         orientation (total, radial or tangential) over a range of dumps
@@ -4351,10 +4351,11 @@ class yprofile(DataPlot):
             
         vav = vav * 1.e8 / len(cycs) # average in cm / s
         
-        pl.figure()
-        pl.plot(Y,np.log10(vav),'r-')
-        pl.ylabel(ylab)
-        pl.xlabel('r / Mm')
+        if showfig:
+            pl.figure()
+            pl.plot(Y,np.log10(vav),'r-')
+            pl.ylabel(ylab)
+            pl.xlabel('r / Mm')
 
         return vav
 
@@ -5398,7 +5399,23 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,\
     pl.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible = False)
     
 def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
-
+    '''
+    Finds a velocity vector and a time vector for a range of cycles
+    
+    Parameters
+    ----------
+    prof : yprofile object
+        prof to look at
+    cycles : range
+        cycles to look at
+    r1/r1 : float
+        boundaries of the range to look for v max in
+    comp : string
+        velocity component to look for 'radial' or 'tangential'
+    RMS : string
+        'mean' 'min' or 'max velocity
+    '''
+        
     r = prof.get('Y', fname = cycles[0], resolution = 'l')
     idx1 = np.argmin(np.abs(r - r1))
     idx2 = np.argmin(np.abs(r - r2))
@@ -6532,3 +6549,323 @@ def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153)
     eps = 2.25*totallum*dist/dm + 1e-100
     
     return np.transpose(np.array([r, m, eps]))
+
+def get_mesa_time_evo(mesa_path,mesa_logs,t_end,save = False):
+    '''Function to generate data for figure 5 in O-shell paper.
+    
+    Parameters
+    ----------
+    mesa_path : string 
+        path to the mesa data
+    mesa_logs : range 
+        cycles you would like to include in the plot
+    t_end : float
+        time of core collapse
+    save : boolean,optional
+        save the output into data files
+        
+    Returns (all arrays)
+    -------
+    agearr : age yrs
+    ltlarr  : time until core collapse
+    rbotarr : radius of lower convective boundary
+    rtoparr : radius of top convective boundary
+    muarr : mean molecular weight in convective region
+    peakLarr : peak luminosity
+    peakL_Lsunarr : peak luminosity units Lsun
+    peakepsgravarr :
+    '''
+    tag = 'shell1'
+    #tag = 'shell2'
+
+    s = ms.history_data(mesa_path)
+ 
+    #logs=range(825,1000)
+
+    agearr         = []
+    ltlarr         = []
+    rbotarr        = []
+    rtoparr        = []
+    muarr          = []
+    peakLarr       = []
+    peakL_Lsunarr  = []
+    peakepsgravarr = []
+
+    # latex table file:
+    if save:
+        f=open('table.tex','w')
+    for log in mesa_logs:
+        p=ms.mesa_profile(mesa_path,log,num_type='profile_num')
+        mass = p.get('mass')
+        idxl = np.abs( mass - 1. ).argmin()
+        idxu = np.abs( mass - 2. ).argmin()
+        mass = mass[idxu:idxl]
+        rad = 10.**p.get('logR')[idxu:idxl]
+        mt = p.get('mixing_type')[idxu:idxl]
+        L = 10.**p.get('logL')[idxu:idxl]
+        epsgrav = p.get('eps_grav')[idxu:idxl]
+        peakL_Lsun = np.max(L)/1.e10
+        peakL = peakL_Lsun*1.e10*ast.lsun_erg_s/1.e44
+        peakepsgrav = np.max(epsgrav)
+        ipL = L.argmax()
+        mu = p.get('mu')[idxu:idxl]
+        try:
+            itop = np.where(mt[:ipL]!=1)[0][-1]
+        except:
+            continue
+        rtop = rad[:ipL][itop]*ast.rsun_cm/1.e8
+        mtop = mass[itop]
+        ibot = np.where(mt==1)[0][-1]
+        rbot = rad[ibot]*ast.rsun_cm/1.e8
+        mbot = mass[ibot]
+        mu = mu[(itop+ibot)/2]
+        # time from end of core O burning
+        iaoe = np.where(s.get('center_o16')>1e-3)[0][-1] #was 's'?
+        aoe = s.get('star_age')[iaoe] #was 's'?
+        age = ( p.header_attr['star_age'] - aoe ) * 365.
+        ltl = np.log10( t_end - p.header_attr['star_age'] )
+
+        agearr.append( age )
+        ltlarr.append( ltl )
+        rbotarr.append( rbot )
+        rtoparr.append( rtop )
+        muarr.append( mu )
+        peakLarr.append( peakL )
+        peakepsgravarr.append( peakepsgrav )
+        peakL_Lsunarr.append( peakL_Lsun )
+        if save:
+            for x in [age,ltl,rbot,rtop,mu,peakL,peakL_Lsun]:
+                f.write("{0:.3f}".format(x) + ' & ')
+            f.write(' \\ \n')
+    if save:
+        f.close()
+
+        #save arrays for making some plots
+        np.save( tag+'_age.npy', np.array( agearr ) )
+        np.save( tag+'_ltl.npy', np.array( ltlarr ) )
+        np.save( tag+'_rbot.npy', np.array( rbotarr ) )
+        np.save( tag+'_rtop.npy', np.array( rtoparr ) )
+        np.save( tag+'_mu.npy', np.array( muarr ) )
+        np.save( tag+'_peakL.npy', np.array( peakLarr ) )
+        np.save( tag+'_peakL_Lsun.npy', np.array( peakL_Lsunarr ) )
+        np.save( tag+'_peakepsgrav.npy', np.array( peakepsgravarr ) )
+
+    return agearr,ltlarr,rbotarr,rtoparr,muarr,peakLarr,peakL_Lsunarr,peakepsgravarr
+
+def plot_mesa_time_evo(mesa_path,mesa_logs,t_end,ifig=21):
+    '''
+    Function to plot data for figure 5 in O-shell paper.
+    
+    Parameters
+    ----------
+    mesa_path : string 
+        path to the mesa data
+    mesa_logs : range 
+        cycles you would like to include in the plot
+    t_end : float
+        time of core collapse
+    save : boolean,optional
+        save the output into data files
+        
+    Example
+    -------
+    plot_mesa_time_evo('/data/ppm_rpod2/Stellar_models/O-shell-M25/M25Z0.02/LOGS',
+                   range(550,560),7.5829245098141646E+006,ifig=21)
+    '''
+    cb = utils.colourblind
+    #pl.close(ifig),pl.figure(ifig)
+    f, (ax1, ax2, ax3) = pl.subplots(3, sharex=True, figsize=(3.39,5))
+    # Fine-tune figure; make subplots close to each other and hide x ticks for
+    # all but bottom plot.
+    f.subplots_adjust(hspace=0.1)
+    pl.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
+
+    # load arrays
+    
+    data = get_mesa_time_evo(mesa_path,mesa_logs,t_end)
+    
+    age = data[0]
+    ltl = data[1]
+    mu = data[4]
+    peakL_Lsun = data[6]
+    peakL = data[5]
+    rbot = data[2]
+    rtop = data[3]
+    epsgrav = data[7]
+    '''
+    age = np.load(tag+'age.npy')
+    ltl = np.load(tag+'ltl.npy')
+    mu = np.load(tag+'mu.npy')
+    peakL_Lsun = np.load(tag+'peakL_Lsun.npy')
+    peakL = np.load(tag+'peakL.npy')
+    rbot = np.load(tag+'rbot.npy')
+    rtop = np.load(tag+'rtop.npy')
+    epsgrav = np.load(tag+'peakepsgrav.npy')
+    '''
+    xax = ltl
+    #xax = age
+
+    #xlim(-1.4,-1.9)
+
+    # make plots
+    pl.subplot(ax1)
+    pl.plot(xax,mu,color=cb(5))
+    pl.ylabel('$\mu$')
+    #pl.ylim(1.82,1.88)
+    #pl.yticks(linspace(1.82,1.88,4))
+
+    pl.subplot(ax2)
+    pl.plot(xax, rbot, color=cb(5), label='$r_\mathrm{lb}$')
+    pl.plot(xax, rtop, ls='--', color=cb(8), label='$r_\mathrm{ub}$')
+    #pl.ylim(3,9)
+    #pl.yticks(np.linspace(3,9,4))
+    pl.ylabel('$\mathrm{r\,/\,Mm}$')
+    pl.legend(loc='best')
+
+    pl.subplot(ax3)
+    pl.plot(xax, peakL_Lsun, color=cb(5) )
+    pl.ylabel('$L\,/\,10^{10}L_\odot$')
+    pl.xlabel('$\log_{10}(t^*\,/\,\mathrm{yr})$')
+    #pl.ylim(4,8)
+    #pl.yticks(linspace(4,8,5))
+
+    pl.subplots_adjust(bottom=0.1)
+
+def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label, ifig0 = 3,
+                  integrate_both_fluids = False):
+    '''
+    Plots entrainment rate vs max radial or tangential velocity
+    
+    Parameters
+    ----------
+    cases : string array
+        list of cases i.e.D1 
+    c0 : int array
+        cycle to start on for each case
+    Ncycles: int
+        number of cycles to average to find v
+    r1/r2 :floats
+        radius range to search for v
+    comp : string
+        component of velocity 'tangential' or 'radial'
+    metric : string
+        metric of veloctiy 'min' max' or 'mean'
+        
+    Example
+    -------
+    cases = ('D1', 'D8', 'D5', 'D6', 'D9', 'D10', 'D20', 'D23', 'D2')
+    c0 = (241,154,142,155,123,78,355,241,124)
+    global ppm_path
+    ppm_path = '/data/ppm_rpod2/YProfiles/O-shell-M25/'    
+    plot_entr_v_ut(cases,c0,10,7.5,8.5,ifig0 = 3,
+                      integrate_both_fluids = False)
+    '''
+    mdot = np.zeros(len(cases))
+    vt = np.zeros(len(cases))
+    vr = np.zeros(len(cases))
+
+    for i in range(len(cases)):
+        prof = yprofile(ppm_path + cases[i])
+        cycles = range(c0[i], c0[i] + Ncycles, 1)
+        #vt[i], vr[i] = find_max_velocities(prof, cycles, 7.5, 8.5, 4., 8., label = cases[i], ifig = i)
+        t, v = get_v_evolution(prof, cycles, r1,r2,comp = comp, RMS = metric)
+        vt[i] = np.mean(1e3*v)
+        mdot[i] = prof.entrainment_rate(cycles, r1, r2, var = 'vxz',
+                                        criterion = 'min_grad', offset = -1.,
+                                        integrate_both_fluids = integrate_both_fluids,
+                                        ifig0 = ifig0,
+                                        show_output = False)
+        
+    fc = np.polyfit(np.log(vt[0:len(cases)]/30.), np.log(mdot[0:len(cases)]), 1)
+    vt_fit = np.array((1e0, 1e3))
+    mdot_fit = np.exp(fc[0]*np.log(vt_fit/30.) + fc[1])
+
+    mdot0_str = '{:9e}'.format(np.exp(fc[1]))
+    tmp = mdot0_str.split('e')
+    mantissa = float(tmp[0])
+    exponent = int(tmp[1])
+    fit_label = r'${:.2f} \times 10^{{{:d}}}$ (v$_\perp$ / 30)$^{{{:.2f}}}$'.\
+            format(mantissa, exponent, fc[0])
+    nn = len(cases)
+    cb = utils.colourblind
+    ifig = 1; pl.close(ifig); pl.figure(ifig)
+    pl.plot(np.log10(vt[0:nn]), np.log10(mdot[0:nn]),
+             ls = 'none', color = cb(5), marker = 'o', \
+             label = label)
+    pl.plot(np.log10(vt_fit), np.log10(mdot_fit),
+             ls = '-', lw = 0.5, color = cb(4), \
+             label = fit_label)
+    pl.plot(np.log10(59.), np.log10(1.1e-4), ls = 'None',
+             color = cb(8), marker = 's', \
+             label = 'MA07')
+    pl.xlabel(r'log$_{10}$(v$_\perp$ / km s$^{-1}$)')
+    pl.ylabel(r'log$_{10} ( \dot{\mathrm{M}}_\mathrm{e}$ / M$_\odot$ s$^{-1}$])')
+    #plt.xlim((0.9, 2.3))
+    #plt.ylim((-9., -3.))
+    pl.legend(loc = 4)
+    pl.tight_layout()
+
+def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,D0,f1,f2,
+                            alpha,fluid = 'FV H+He',markevery = 25):
+    '''
+    Exampple
+    --------
+    plot_diffusion_profiles('D2','/data/ppm_rpod2/Stellar_models/O-shell-M25/M25Z0.02/',28900,
+                        7.8489,(1,160),2.*460.,7.8282,10.**12.27,0.21,0.055,1.6)
+    pl.xlim(3,9)
+    pl.ylim(11,16)
+    '''
+    
+    run = 'D2'
+    cb = utils.colourblind
+    ls = utils.linestyle
+    model = mesa_log
+    dir  = mesa_path
+    yy = 0
+    YY = yprofile(ppm_path+run)
+
+    [rrc, DDc, r0c, rc] = YY.Dsolvedown(Dsolve_range[0],Dsolve_range[1], fluid = fluid,
+                                        tauconv = tauconv,returnY = True, newton = True,
+                                        smooth = False,showfig = False)
+
+    rrf2, DDf2 = YY.Dov2(r0,D0,f1,f2) # r0, D0, f1, f2
+
+    r = YY.get('Y',fname=1,resolution='l')[::-1]
+    vav = YY.vaverage('vY')[::-1] # cm / s
+
+    P = YY.get('P',fname=1)[::-1] * 1.e19 # barye, centre to surface
+    Hp = - P[1:] * np.diff(r) * 1.e8 / np.diff(P)
+    Hp = np.insert(Hp,0,0)
+    Dav = (1./3.) * vav * alpha * Hp
+
+    p=ms.mesa_profile(dir+'/LOGS',model)
+    rm = p.get('radius') * ast.rsun_cm / 1.e8
+    idx = np.abs(rm-rtop).argmin()
+    rm = rm[idx:]
+    Dm = p.get('log_mlt_D_mix')
+    Dm = Dm[idx:]
+
+    v_mlt = 10.**p.get('log_conv_vel')[idx:]
+    Hpmes = p.get('pressure_scale_height')[idx:]*ast.rsun_cm
+    Davmes = (1./3.) * v_mlt * np.minimum(alpha * Hpmes,rtop*1.e8-rm*1.e8)
+
+    Dav2 = (1./3.) * vav * np.minimum(alpha * Hp,rtop*1.e8-r*1.e8)
+
+    fig = pl.figure(21)
+    pl.plot(rrc,np.log10(DDc),color = cb(yy),markevery=markevery,\
+            label='$D_{\\rm conv}$')
+    yy +=1
+    pl.plot(rm,Dm,color = cb(yy),marker = ls(yy)[1] ,markevery=markevery,\
+         label='$D_{\\rm MLT}$')
+    yy +=1
+
+    pl.plot(r,np.log10(Dav),color = cb(yy),marker = ls(yy)[1], markevery=markevery,\
+         label='$\\frac{1}{3}v\ell$')
+    yy +=1
+
+    pl.plot(r,np.log10(Dav2),color = cb(yy),marker = ls(yy)[1],markevery=markevery,linewidth=2.5,alpha=0.5,\
+         label='$\\frac{1}{3}v{\\rm min}(\ell,r_0-r)$')
+    yy +=1
+    pl.plot(rm,np.log10(Davmes),color = cb(yy),marker = ls(yy)[1],markevery=markevery,linewidth=2.5,alpha=0.5,\
+         label='$\\frac{1}{3}v_{\\rm MLT}{\\rm min}(\ell,r_0-r)$')
+    pl.legend(loc='center left',numpoints=1).draw_frame(False)
