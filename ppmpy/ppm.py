@@ -3693,414 +3693,12 @@ class yprofile(DataPlot):
         else:
             return x/1.e8,D
 
-    def D_OPA(self,fname1,fname2,fluid='FV H+He',numtype='ndump',N=4,niter=5,
-                      debug=False,grid=False,FVaverage=False,tauconv=None,returnY=False):
-        '''
-            Use the optimal perturbation algorithm as described in
-            Li & Gao (2010), International Conference on Computer
-            Application and System Modeling (ICCASM 2010)
-            
-            Parameters
-            ----------
-            fname1,fname2 : int or float
-                cycles from which to take initial and final abundance profiles
-                for the diffusion step we want to mimic.
-            fluid : string
-                Which fluid do you want to track?
-            numtype : string, optional
-                Designates how this function acts and how it interprets
-                fname.  If numType is 'file', this function will get the
-                desired attribute from that file.  If numType is 'NDump'
-                function will look at the cycle with that nDump.  If
-                numType is 'T' or 'time' function will find the _cycle
-                with the closest time stamp.
-                The default is "ndump".
-            N : integer
-                dimension of vector space (how many terms in the basis
-                function summarion)
-            niter : integer
-                number of iterations of the optimal perturbation algorithm
-            grid : boolean, optional
-                whether or not to show the axes grids.
-                The default is False.
-            FVaverage : boolean, optional
-                Whether or not to average the abundance profiles over a
-                convective turnover timescale. See also tauconv.
-                The default is False.
-            tauconv : float, optional
-                If averaging the abundance profiles over a convective turnover
-                timescale, give the convective turnover timescale (seconds).
-                The default value is None.
-            returnY : boolean, optional
-                If True, return abundance vectors as well as radius and diffusion
-                coefficient vectors
-                The default is False.
-            
-            Output
-            ------
-            x : array
-                radial co-ordinates (Mm) for which we have a diffusion coefficient
-            D : array
-                Diffusion coefficient (cm^2/s)
-            
-            Example
-            -------
-                YY=ppm.yprofile(path_to_data)
-                YY.Dsolvedown(1,640)
-        '''
-        
-        from diffusion import mixdiff08
-        
-        xlong = self.get('Y',fname=fname1,resolution='l') # for plotting
-        if debug: print xlong
-        x = xlong
-        
-        def mf(fluid,fname):
-            '''
-                Get mass fraction profile of fluid 'fluid' at fname.
-                '''
-            y = self.get(fluid,fname=fname,resolution='l')
-            if fluid == 'FV H+He':
-                rhofluid = self.get('Rho H+He',fname=fname,resolution='l')
-            else:
-                rhofluid = self.get('RHOconv',fname=fname,resolution='l')
-            rho = self.get('Rho',fname=fname,resolution='l')
-            y = rhofluid * y / rho
-            return y
-        
-        if FVaverage is False:
-            y1 = mf(fluid,fname2)
-            y1long = y1 # for plotting
-            
-            y0 = mf(fluid,fname1)
-            y0long = y0 # for plotting
-        else:
-            if tauconv is None:
-                raise IOError("Please define tauconv")
-            # Find the dumps accross which one should average:
-            # first profile:
-            myt0 = self.get('t',fname1)[-1]
-            myt01 = myt0 - tauconv / 2.
-            myt02 = myt0 + tauconv / 2.
-            myidx01 = np.abs(self.get('t') - myt01).argmin()
-            myidx02 = np.abs(self.get('t') - myt02).argmin()
-            mycyc01 = self.cycles[myidx01]
-            mycyc02 = self.cycles[myidx02]
-            # second profile:
-            myt1 = self.get('t',fname2)[-1]
-            myt11 = myt1 - tauconv / 2.
-            myt12 = myt1 + tauconv / 2.
-            myidx11 = np.abs(self.get('t') - myt11).argmin()
-            myidx12 = np.abs(self.get('t') - myt12).argmin()
-            mycyc11 = self.cycles[myidx11]
-            mycyc12 = self.cycles[myidx12]
-            # do the average for the first profile:
-            ytmp = np.zeros(len(x))
-            count=0
-            for cyc in range(mycyc01,mycyc02):
-                ytmp += mf(fluid,cyc)
-                count+=1
-            y0 = ytmp / float(count)
-            # do the average for the first profile:
-            ytmp = np.zeros(len(x))
-            count=0
-            for cyc in range(mycyc11,mycyc12):
-                ytmp += mf(fluid,cyc)
-                count+=1
-            y1 = ytmp / float(count)
-            
-            y0long = y0
-            y1long = y1
-        
-        if fluid == 'FV H+He':
-            y1 = y1[::-1]
-            x = x[::-1]
-            y0 = y0[::-1]
-        
-        if debug: print len(xlong), len(y0long)
-        
-        idx0 = np.abs(np.array(self.cycles) - fname1).argmin()
-        idx1 = np.abs(np.array(self.cycles) - fname2).argmin()
-        t0 = self.get('t')[idx0]
-        t1 = self.get('t')[idx1]
-        deltat = t1 - t0
-        
-#        # now we want to exclude any zones where the abundances
-#        # of neighboring cells are the same. This is hopefully
-#        # rare inside the computational domain and limited to only
-#        # a very small number of zones
-#        indexarray = np.where(np.diff(y0) == 0)[0]
-#        print 'removing zones:', indexarray
-#        y1 = np.delete(y1,indexarray)
-#        y0 = np.delete(y0,indexarray)
-#        x = np.delete(x,indexarray)
-        
-        dt = float(deltat)
-
-        # fix numbers by hand for testing:
-        x = np.arange(0.,2.*np.pi,0.005)
-        y0 = np.cos(x) + 2.
-        deltat = 1.
-        dt = 1.
-        y1 = mixdiff08(x,deltat=deltat,y0=y0,D=np.cos(x/2.)+1.,nst=1)
-        
-        M = len(y1)             # spatial dimension
-        G = np.zeros([M,N])     # G matrix
-        I = np.identity(N)      # N-dimension identity matrix
-        D = np.zeros(M)         # diffusion coefficient profile
-        Ds = np.zeros([M,N])    # perturbed D profiles
-        eta = y1                # actual solution for abundances
-        zeta = np.zeros(M)      # solution to diffusion equation for current D
-        da = np.array([0.1]*N)  # initial perturbation vector
-        dus = np.zeros([M,N])   # solutions with each N-dim coefficient perturbed
-        tau = np.array([1.e-1,1.e-2,1.e-2,1.e-2,1.e-2,1.e-2,1.e-2]) # numerical differential steps vector
-        
-        # basis functions
-        def phi0(blah):
-            return 1.
-        
-        def phi1(blah):
-#            return blah
-            return np.sin(blah)
-
-        def phi2(blah):
-#            return blah**2
-#            return np.exp(blah)
-            return np.cos(blah)
-
-        def phi3(blah):
-            return blah**3
-#            return np.exp(2.*blah)
-            return np.sin(2.*blah)
-        
-        def phi4(blah):
-            return blah**4
-#            return np.exp(3.*blah)
-            return np.cos(2.*blah)
-        
-        def phi5(blah):
-#            return blah**5
-#            return np.exp(4.*blah)
-            return np.sin(3.*blah)
-                
-        def phi6(blah):
-    #            return blah**5
-    #            return np.exp(4.*blah)
-            return np.cos(3.*blah)
-            
-        basis = [phi0,phi1,phi2,phi3,phi4,phi5,phi6]
-
-        def build_D(coeffs):
-            '''
-                make the D profile given the coefficients of the
-                basis function
-            '''
-            localD = np.zeros(M)
-            for i in range(M):
-                for j in range(N):
-                    localD[i] += coeffs[j] * basis[j](x[i])
-        
-            return localD
-        
-        # make initial guess for D as constant from initial da vector,
-        # asuming initial guess is give by a = da
-        #D = build_D(da)
-        D[:] = 1. # initial guess
-        D[1] = -0.5
-
-        pl.figure(1000000)
-        pl.plot(x,y0,utils.linestyle(1)[0],\
-                markevery=utils.linestyle(1)[1],\
-                label='fluid above'+' '+str(fname1))
-        pl.plot(x,y1,utils.linestyle(2)[0],\
-                markevery=utils.linestyle(2)[1],\
-                label='fluid above'+' '+str(fname2))
-        pl.ylabel('$\log\,X$ '+fluid.replace('FV',''))
-        pl.xlabel('r / Mm')
-        pl.twinx()
-        pl.plot(x,np.cos(x/2.)+1.,'k-',label='$D>0$')
-
-#        pl.ylim(-8,0.1)
-
-        # begin iterative loop:
-        for iter in range(niter):
-            # solve diffusion equation for D:
-            zeta = mixdiff08(x,deltat=deltat,y0=y0,D=D,nst=1)
-            
-            pl.figure(iter)
-            pl.suptitle('iteration '+str(iter))
-            pl.plot(x,y0,utils.linestyle(1)[0],\
-                    markevery=utils.linestyle(1)[1],\
-                    label='fluid above'+' '+str(fname1))
-            pl.plot(x,zeta,utils.linestyle(2)[0],\
-                    markevery=utils.linestyle(2)[1],\
-                    label='fluid above'+' '+str(fname2))
-            pl.ylabel('$\log\,X$ '+fluid.replace('FV',''))
-            pl.xlabel('r / Mm')
-#            pl.ylim(-8,0.1)
-            pl.legend(loc='lower left').draw_frame(False)
-
-            pl.twinx()
-            
-            pl.plot(x,D,'k-',label='$D>0$')
-#            pl.plot(x,np.log10(-D),'k:',label='$D<0$')
-            pl.ylabel('$\log D\,/\,{\\rm cm}^2\,{\\rm s}^{-1}$')
-            pl.legend(loc='upper right').draw_frame(False)
-            
-            # perturb the D profile and solve the diffusion equation N more times
-            # (once for each perturbed basis function coefficient):
-            for i in range(N):
-                Ds[:,i] = np.array([D[i] + tau[i]*basis[i](x[l]) for l in range(M)])
-                dus[:,i] = mixdiff08(x,deltat=deltat,y0=y0,D=Ds[:,i],nst=1)
-
-            # Now we can form the G matrix:
-            for i in range(M):
-                for j in range(N):
-                    G[i,j] = (dus[i,j] - zeta[i]) / tau[j]
-
-            print 'max and min values in matrix G:'
-            print np.max(G), np.min(G)
-
-            # calculate regularization parameter:
-            eps = 0.3 # noise level of data; I think 0.1 == 10%
-            alpha = 4. ** (-2./3.) * eps ** (2./3.) * np.min(G) ** 2
-            length = np.linalg.norm(eta - zeta)
-            alpha = alpha / (length ** (2./3.))
-
-            GT = np.transpose(G)
-            GTG = np.dot(GT,G)
-            toinv = alpha * I + GTG
-            linv = np.linalg.inv(toinv)
-            dif = eta - zeta
-            right = np.dot(GT,dif)
-            da = np.dot(linv,right) # optimal perturbation vector
-            print da
-            # update the D profile with the suggested perturbations:
-            dD = build_D(da)
-            for i in range(M):
-                D[i] = D[i] + dD[i]
-        
-        
-        if returnY:
-            return x/1.e8, D, y0, y1
-        else:
-            return x/1.e8,D
-
-
-    def entrainment_rate_MA(self,transient,tend=-1.,rad_upper_int=None,
-                            sparse=1,plots=1.):
-        '''
-        Calculate the entrainment rate.
-            
-        Parameters
-        ----------
-        transient : float
-            time (s) of the initial transient period that you do not
-            want to include in the calculation of the entrainment rate.
-        tend : float, optional
-            cutoff time for considering the entrainment rate, so that
-            the result is calculated for simulation times between
-            the value of transient and tend. If -1 then do until the
-            end of the available dataset
-        rad_upper_int: float
-            upper boundary for integration of entrained material, if not
-            specified the upper boundary will be located where the FV H+He
-            gradient is steepest (needs to be debugged)
-        plots: float
-            If plots=1, the function prints the entrainment rate and produces
-            a plot. If plots is not equal to 1, the fuction returns the 
-            entrainment rate and does not make a plot.            
-
-        Examples
-        --------
-            import ppm
-            run1='/Users/swj/Mnt/CADC/swj/PPM/RUNS_DATA/O-shell-M25/D1'
-            YY=ppm.yprofile(run1)
-            ppm.set_nice_params()
-            YY.entrainment_rate_MA(300)
-
-        Notes
-        -----
-            Optionally upper boundary will be determined as in
-            Meakin & Arnett (2007) d(Eq. 28)/dt; see parameter rad_upper_int
-        '''
-        
-        def steepest(fname):
-            '''
-            Returns the index of the zone with the steepest H+He
-            fractional volume gradient. This is used as the
-            definition of the 'surface' of the convection zone
-            in Meakin & Arnett (2007).
-            '''
-            r = self.get('Y',fname=fname,resolution='l')
-            x = self.get('FV H+He',fname=fname,resolution='l')
-            dxdr = np.diff(x) / np.diff(r)
-            idx = dxdr.argmax()
-            return idx
-
-        cycs = self.cycles
-        time = self.get('t')
-        istart = np.abs(time-transient).argmin()
-        if tend == -1.:
-            istop = -1
-        else:
-            istop = np.abs(time-tend).argmin()
-        cycs = cycs[istart:istop:sparse]
-        time = time[istart:istop:sparse]
-        
-        def Mi(c,idxb=None):
-            if idxb is None:
-                idxb = steepest(c)
-            r = self.get('Y',fname=c,resolution='l')[idxb:-1][::-1]*1.e8 # cgs
-            r2 = r*r
-            rho = self.get('Rho',fname=c,resolution='l')[idxb:-1][::-1]*1.e3 # cgs
-            dr = np.average(np.diff(r))
-            rho1 = self.get('Rho H+He',fname=c,resolution='l')[idxb:-1][::-1]*1.e3
-            FV1 = self.get('FV H+He',fname=c,resolution='l')[idxb:-1][::-1]
-            X = rho1 * FV1 / rho
-            dm = 4.*np.pi*r2*rho*dr
-            dm = dm / ast.msun_g
-            result = sum(X*dm)
-            return result
-                
-        idxb = None
-        if rad_upper_int is not None:
-            r = self.get('Y',fname=cycs[0],resolution='l')
-            idxb = abs(r-rad_upper_int).argmin()
-        Mir = np.array([Mi(cyc,idxb) for cyc in cycs])
-        fit=np.polyfit(time,Mir,1) # linear
-        timelong = time
-        timelong = np.append(timelong,timelong[-1]*1.1)
-        timelong = np.insert(timelong,0,timelong[0]*.9)
-        yfit = fit[0]*timelong + fit[1]
-        
-        # printing and plotting:
-        if plots == 1.:
-            print 'entrainment rate = '+str(fit[0])+' Msun / s'
-        
-            ylow = yfit[0]
-            yfit = (yfit - ylow) / 1.e-5
-            Mir = (Mir - ylow) / 1.e-5
-        
-            pl.figure()
-            try:
-                from utils import colourblind as cb
-                pl.plot(time/60.,Mir,marker='o',color=cb(10),markevery=20)
-                pl.plot(timelong/60.,yfit,label='linear',color=cb(4))
-            except:
-                pl.plot(time/60.,Mir,marker='o',color='r',markevery=20)
-                pl.plot(timelong/60.,yfit,label='linear',color='k')
-            pl.xlabel('t / min')
-            pl.ylabel('$(M_i - $'+str(round(ylow,5))+') / $10^{-5}\,M_\odot$')
-            pl.legend(loc='best')
-        
-	    return fit[0]
-
     def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False, 
                          integrate_upwards=False, show_output=True, ifig0=1, \
-                         silent =True, mdot_curve_label=None, file_name=None,
+                         silent=True, mdot_curve_label=None, file_name=None,
                          return_time_series=False):
+        
         def regrid(x, y, x_int):
             int_func = interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
@@ -4325,8 +3923,6 @@ class yprofile(DataPlot):
             rb[i] = r0
 
         return rb
-
-        
 
     def vaverage(self,vi='v',transient=0.,sparse=1,showfig = False):
         '''
@@ -4630,148 +4226,6 @@ class yprofile(DataPlot):
         cbar.set_label(cbar_lbl)
 
 
-class rprofile(DataPlot):
-    """ 
-    Data structure for holding data in the RProfile*.bobaaa files.
-    
-    Parameters
-    ----------
-    sldir : string
-        which directory we are working in.  The default is '.'.
-        
-    """
-
-    def __init__(self, sldir='.'):
-        """ 
-        init method
-
-        Parameters
-        ----------
-        sldir : string
-            which directory we are working in.  The default is '.'.
-        
-        """
-
-        self.files = []  # List of files in this directory
-        self.cycles = []  # list of cycles in this directory
-        self.hattrs = [] # header attributes
-        self.dcols = []  # list of the column attributes
-        self.cattrs= []  # List of the attributes of the y profiles
-        self._cycle=[]    # private var
-        self._top=[]      # privite var
-        self.sldir = sldir #Standard Directory
-
-        if not os.path.exists(sldir): # then try the VOSpace mount
-            try:
-                sldir = ppm_path+'/'+sldir
-            except:
-                print 'VOSpace not mounted and '+sldir+' does not exist locally'
-        
-        if not os.path.exists(sldir):  # If the path still does not exist
-            print 'error: Directory, '+sldir+ ' not found'
-            print 'Now returning None'
-            return None
-        else:
-            f=os.listdir(sldir) # reads the directory
-            for i in range(len(f)):  # Removes any files that are not YProfile files
-                if 'RProfile' in f[i] and '.bobaaa' in f[i] and 'ps' not in f[i] :
-                    self.files.append(f[i])
-
-            self.files.sort()
-            if len(self.files)==0: # If there are no YProfile Files in thes Directory
-                print 'Error: no RProfile named files exist in Directory'
-                print 'Now returning None'
-                return None
-
-            slname=self.files[0]
-
-            print "Reading attributes from file ",slname,sldir
- 
-            self.hattrs, self.dcols, self._cycle = self._readFile(slname,sldir)
-
-            return
-
-#            self._splitHeader() #Splits the HeaTder into header attributes and top attributes
-#            self.hattrs=self._formatHeader() # returns the header attributes as a dictionary
-#            self.cattrs=self.getCattrs() # returns the concatination of Cycle and Top Attributes
-
-#            self.ndumpDict=self.ndumpDict(self.files)
-
-#            print 'There are '+str(len(self.files)) + ' RProfile files in the ' +self.sldir+' directory.'
-#            print 'Ndump values range from ' + str(min(self.ndumpDict.keys()))+' to '+str(max(self.ndumpDict.keys()))
-#            t=self.get('t',max(self.ndumpDict.keys()))
-#            t1=self.get('t',min(self.ndumpDict.keys()))
-#            print 'Time values range from '+ str(t1[-1])+' to '+str(t[-1])
-#            self.cycles=self.ndumpDict.keys()
-
-    def _readFile(self,filename,stddir='./'):
-        """ 
-        private routine that is not directly called by the user.
-        filename is the name of the file we are reading
-        stdDir is the location of filename, defaults to the
-        working directory
-        Returns a list of the header attributes with their values
-        and a List of the column values that are located in this
-        particular file
-        """
-
-        if stddir.endswith('/'):
-            filename = str(stddir)+str(filename)
-        else:
-            filename = str(stddir)+'/'+str(filename)
-
-        self.rp = rprofile_reader(filename)
-
-        header_keys = self.rp.header_attrs.keys()
-        data_columns = self.rp.names
-        dump_keys = ['dump']
-
-        return header_keys, data_columns, dump_keys
-
-#    def get(self, attri, fname=None, numtype='ndump', resolution='H'):
-    def get(self, attri, dataset=None):
-        """ 
-        Method that dynamically determines the type of attribute that is
-        passed into this method.  Also it then returns that attribute's
-        associated data.
-
-        Parameters
-        ----------
-        attri : string
-            The attribute we are looking for.
-
-        dataset : string
-            The attribute we are looking for.
-        """
-
-        return self.rp.get(attri)
-
-#        isCyc=False #If Attri is in the Cycle Atribute section
-#        isCol=False #If Attri is in the Column Atribute section
-#        isHead=False #If Attri is in the Header Atribute section
-
-#        if fname==None:
-#            fname=max(self.ndumpDict.keys())
-
-#        if attri in self.cattrs: # if it is a cycle attribute
-#            isCyc = True
-#        elif attri in self.dcols:#  if it is a column attribute
-#            isCol = True
-#        elif attri in self.hattrs:# if it is a header attribute
-#            isHead = True
-
-#        # directing to proper get method
-#        if isCyc:
-#            return self.getCycleData(attri,fname, numtype, resolution=resolution)
-#        if isCol:
-#            return self.getColData(attri,fname, numtype, resolution=resolution)
-#        if isHead:
-#            return self.getHeaderData(attri)
-#        else:
-#            print 'That Data name does not appear in this YProfile Directory'
-#            print 'Returning none'
-#            return None
-
 ##########################################################
 # mapping of visualisation variables from Robert Andrassy:
 ##########################################################
@@ -4893,62 +4347,6 @@ def make_colourmap(colours, alphas=None):
 
     return cmap
 
-def colourmap_from_str(str, segment=None):
-    points = []
-    for line in str.splitlines():
-        parts = line.split()
-        if (len(parts) == 5) and (parts[0] == 'Cnot:'):
-            points.append(parts[1:])
-    
-    points = np.array(points, dtype=np.float)
-    points = points[points[:,0].argsort()]
-
-    if segment is not None:
-        # Index of the first point with value > segment[0].
-        idx0 = np.argmax(points[:, 0] > segment[0])
-        if idx0 > 0:
-            t = (float(segment[0]) - points[idx0 - 1, 0])/ \
-                (points[idx0, 0] - points[idx0 - 1, 0])
-                
-            new_point = (1. - t)*points[idx0 - 1, :] + t*points[idx0, :]
-            points = np.vstack([new_point, points[idx0:, :]])
-            
-        # Index of the first point with value > segment[1].
-        idx1 = np.argmax(points[:, 0] > segment[1])
-        if idx1 > 0:
-            t = (float(segment[1]) - points[idx1 - 1, 0])/ \
-                (points[idx1, 0] - points[idx1 - 1, 0])
-            
-            if t > 0.:
-                new_point = (1. - t)*points[idx1 - 1, :] + t*points[idx1, :]
-                points = np.vstack([points[0:idx1, :], new_point])
-            else:
-                points = points[0:idx1, :]
-
-    p0 = points[0, 0]
-    p1 = points[-1, 0]
-    for i in range(points.shape[0]):
-        points[i, 0] = (points[i, 0] - p0)/(p1 - p0)
-    
-    r = np.zeros((points.shape[0], 3))
-    r[:, 0] = points[:, 0]
-    r[:, 1] = points[:, 1]
-    r[:, 2] = points[:, 1]
-                 
-    g = np.zeros((points.shape[0], 3))
-    g[:, 0] = points[:, 0]
-    g[:, 1] = points[:, 2]
-    g[:, 2] = points[:, 2]
-                 
-    b = np.zeros((points.shape[0], 3))
-    b[:, 0] = points[:, 0]
-    b[:, 1] = points[:, 3]
-    b[:, 2] = points[:, 3]
-
-    cmap_points = {'red': r, 'green': g, 'blue': b}
-    cmap = matplotlib.colors.LinearSegmentedColormap('my_cmap', cmap_points)
-    
-    return cmap
 
 class LUT():
     def __init__(self, lutfile, p0, p1, s0, s1, posdef=False):
@@ -4965,7 +4363,7 @@ class LUT():
         Examples:
         ---------
         import ppm
-        lut = ppm.LUT('./LUTS/BW-1536-UR-3.lut', s0=5., s1=245.499,
+        lut = ppm.LUT('./ /BW-1536-UR-3.lut', s0=5., s1=245.499,
                       p0=0., p1=1.747543E-02/8.790856E-03, posdef=False)
         cbar = lut.make_colourbar([-1,-0.5,-0.25,-0.1,0,0.1,0.25,0.5,1])
         cbar.set_label('$v_\mathrm{r}\,/\,1000\,km\,s^{-1}$',size=6)
@@ -5113,7 +4511,8 @@ class LUT():
         indices = np.array([c[0] for c in newcolours])
         newindices = 255.*(indices - np.min(indices)) / indices.ptp()
         # renormalise index tick locations as well
-        colour_index_ticks = 255.*(colour_index_ticks - np.min(colour_index_ticks)) / colour_index_ticks.ptp()
+        colour_index_ticks = 255.*\
+            (colour_index_ticks - np.min(colour_index_ticks)) / colour_index_ticks.ptp()
         print 'new colour indices:', newindices
         print 'ticks now at:', colour_index_ticks
 
@@ -5569,7 +4968,7 @@ def luminosity_for_dump(path, get_t = False):
                 t[i] = yprof.get('t', fname = dumps[i], resolution = 'l')[-1]
 
             L_H[i] = yprof.get('L_C12pg', fname = dumps[i], resolution = 'l', airmu = airmu, \
-                                  cldmu = cldmu, fkair = fkair, fkcld = fkcld, AtomicNoair = AtomicNoair, \
+                                  cldmu = cldmu, fkair = fkair, fkcld = fkcld, AtomicNoair = AtomicNoair,
                                   AtomicNocld = AtomicNocld, corr_fact = 1.5)
         
         else:
@@ -5782,7 +5181,7 @@ def get_upper_bound(data_path, dump_to_plot, r1, r2):
     return(avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t)
     
 def plot_boundary_evolution(data_path, dump_to_plot, r1, r2, t_fit_start=700,\
-                            silent = True, show_fits = False):
+                            silent = True, show_fits = False, ifig = 5):
     
     '''
 
@@ -5828,7 +5227,7 @@ def plot_boundary_evolution(data_path, dump_to_plot, r1, r2, t_fit_start=700,\
     fc_minus = np.polyfit(t[idx_fit_start:-1], 2.*sigmam_r_ub[idx_fit_start:-1], 1)
     minus_fit = fc_minus[0]*t + fc_minus[1]
 
-    ifig = 5; pl.close(ifig); fig = pl.figure(ifig)#, figsize = (6.0, 4.7))
+    pl.close(ifig); fig = pl.figure(ifig)#, figsize = (6.0, 4.7))
     for bucket in range(n_buckets):
         lbl = 'bucket data' if bucket == 0 else None
         pl.plot(t/60., r_ub[bucket, :], ls = '-', lw = 0.5, color = cb(3), \
@@ -5862,7 +5261,7 @@ def plot_boundary_evolution(data_path, dump_to_plot, r1, r2, t_fit_start=700,\
         print 'Negative fluctuations:'
         print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0])
 
-def compare_entrained_material(yps, labels, fname):
+def compare_entrained_material(yps, labels, fname, ifig = 1):
     
     '''
     Compares the entrainment rate of two seperate yprofile objects
@@ -5884,7 +5283,7 @@ def compare_entrained_material(yps, labels, fname):
     compare_entrained_material([yp1,yp2],['O shell','AGB'], fname = 271)
     '''
 
-    ifig = 1; pl.close(ifig); fig = pl.figure(ifig)
+    pl.close(ifig); fig = pl.figure(ifig)
     cb = utils.colourblind
     ls = utils.linestylecb
     me = 0.1
