@@ -2547,7 +2547,7 @@ class yprofile(DataPlot):
     def Dinv(self,fname1,fname2,fluid='FV H+He',numtype='ndump',newton=False,
              niter=3,debug=False,grid=False,FVaverage=False,tauconv=None,
              returnY=False,plot_Dlt0=True, silent = True, initial_conv_boundaries = True,
-             approx_D=False,linelims=None,linelabel=None):
+             approx_D=False,linelims=None, r0 = None):
         '''
         Solve inverted diffusion equation to see what diffusion coefficient
         profile would have been appropriate to mimic the mixing of species
@@ -2603,9 +2603,9 @@ class yprofile(DataPlot):
         linelims : range, optional
             limits of the radius to approximate diffusion coefficient
             default is none (whole vector)
-        linelabel : string, optional
-            name for the approximation of D
-            default is None
+        r0 = None, optional
+            Start of exponential diffusion decay, necessary 
+            for approx_D
             
         Output
         ------
@@ -2863,7 +2863,21 @@ class yprofile(DataPlot):
                 m,b = pyl.polyfit(x[indx1:indx2]/1.e8,np.log10(D[indx1:indx2]),1)
             else:
                 m,b = pyl.polyfit(x/1.e8,np.log10(D),1)
-            pl.plot(x[indx1:indx2]/1.e8,m*x[indx1:indx2]/1.e8+b,linestyle='dashed',color='r',label=linelabel)
+            if r0 is None:
+                print('Please define r0')
+            rr = self.get('Y',fname=1,resolution='l')[::-1]
+            P = self.get('P',fname=fname1)[::-1] * 1.e19 # barye, centre to surface
+            Hp = - P[1:] * np.diff(rr) / np.diff(P)
+            Hp = np.insert(Hp,0,0)
+            idxhp = np.abs(rr - r0).argmin()
+            idx = np.abs(x - r0*1.e8).argmin()
+            Hp0 = Hp[idxhp]
+            D0 = D[idx]
+            f = (-2. * np.abs(np.mean(x[indx1:indx2])/1.e8 - r0))\
+                /( np.log( (np.mean(D[indx1:indx2]))/D0) *Hp0)
+            lab='f= '+str("%.3f" % f)
+            pl.plot(x[indx1:indx2]/1.e8,m*x[indx1:indx2]\
+                    /1.e8+b,linestyle='dashed',color='r',label=lab)
         pl.legend(loc='upper right').draw_frame(False)
         if returnY:
             return x/1.e8, D, y0, y1
@@ -5625,8 +5639,14 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
     pl.legend(loc = 0)
     pl.tight_layout()
 
-def L_H_L_He_comparison(cases, ifig=101):
+def L_H_L_He_comparison(cases, ifig=101, airmu = 1.39165, cldmu = 0.725,
+    fkair = 0.203606102635,fkcld = 0.885906040268,AtomicNoair = 6.65742024965,
+    AtomicNocld = 1.34228187919):
     
+    '''
+    Compares L_H to L_He, optional values are set to values from O-shell
+    burning paper.
+    '''
     yprofs = {}
     res = {}
     
@@ -5639,13 +5659,6 @@ def L_H_L_He_comparison(cases, ifig=101):
         
         r = yprofs[case].get('Y', fname=0, resolution='l')
         res[case] = 2*len(r)
-        
-    airmu = 1.39165
-    cldmu = 0.725
-    fkair = 0.203606102635
-    fkcld = 0.885906040268
-    AtomicNoair = 6.65742024965
-    AtomicNocld = 1.34228187919
 
     cb = utils.colourblind
 
@@ -6401,8 +6414,8 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,
     energy_comparison(yprof,mesa_model)
     
     '''
+    xthing1 = xthing
     p = mesa_model
-    xthing = 'm'
     # function giving PPM heating curve given PPM profile
 
     # figure vs mass
@@ -6446,7 +6459,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,
     if not silent:
         print m1, m2
 
-    if xthing == 'm':
+    if xthing1 is 'm':
         xthing = m
         xthing_ppm = m_ppm
     else:
@@ -6479,9 +6492,8 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,
         marker='.',
         markevery=.3)
 
-
     #pl.ylabel('$\epsilon\,/\,\mathrm{erg\,g}^{-1}\,\mathrm{s}^{-1}\,;\,L\,/\,L_\odot$')
-    if xthing is 'm':
+    if xthing1 is 'm':
         pl.ylabel('$\log_{10}(\epsilon\,/\,\mathrm{erg\,g}^{-1}\,\mathrm{s}^{-1}\,;\,L\,/\,L_\odot)$')
         pl.xlabel('$\mathrm{Mass\,/\,M}_\odot$')
     else:
@@ -6808,7 +6820,34 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label, ifig0 = 3,
 def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,D0,f1,f2,
                             alpha,fluid = 'FV H+He',markevery = 25):
     '''
-    Exampple
+    This is a function that generates various diffusion profiles
+    it is dependant on the functions Dsolvedown and Dov2
+    
+    Parameters
+    ----------
+    run : string
+        yprofile case to use i.e. 'D2'
+    mesa_path : string 
+        path to the mesa data
+    mesa_logs : range 
+        cycles you would like to include in the plot
+    Dsolve_range : int array 
+        cycles from which to take initial and final abundance profiles
+        for the diffusion step we want to mimic.
+    fluid : string
+        Which fluid do you want to track?
+    tauconv : float, optional
+        If averaging the abundance profiles over a convective turnover
+        timescale, give the convective turnover timescale (seconds).
+        The default value is None.
+    r0 : float
+        radius (Mm) at which the decay will begin
+    D0 : float
+        diffusion coefficient at r0
+    f1,f2 : float
+        parameters of the model
+        
+    Example
     --------
     plot_diffusion_profiles('D2','/data/ppm_rpod2/Stellar_models/O-shell-M25/M25Z0.02/',28900,
                         7.8489,(1,160),2.*460.,7.8282,10.**12.27,0.21,0.055,1.6)
@@ -6869,3 +6908,5 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
     pl.plot(rm,np.log10(Davmes),color = cb(yy),marker = ls(yy)[1],markevery=markevery,linewidth=2.5,alpha=0.5,\
          label='$\\frac{1}{3}v_{\\rm MLT}{\\rm min}(\ell,r_0-r)$')
     pl.legend(loc='center left',numpoints=1).draw_frame(False)
+    pl.ylabel('$\log(D\,/\,{\\rm cm}^2\,{\\rm s}^{-1})$')
+    pl.xlabel('r / Mm')
