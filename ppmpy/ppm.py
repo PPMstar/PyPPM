@@ -141,6 +141,8 @@ import sys
 sys.path.insert(0, '/data/ppm_rpod2/lib/lcse')
 import rprofile as rprof
 
+cb = utils.colourblind
+
 # from rprofile import rprofile_reader
 
 def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
@@ -281,7 +283,7 @@ def prof_compare(cases,ndump=None,yaxis_thing='FV H+He',ifig=None,num_type='ndum
         Y.plot('Y',yaxis_thing,fname=ndump,numtype=num_type,legend=labels[i],\
                logy=logy,shape=utils.linestyle(j)[0],markevery=utils.linestyle(j)[1])
         i += 1
-
+        
 def cdiff(x):
     # compute 2nd order centred differences
     dx = (np.roll(x, -1) - np.roll(x, 1))/2.
@@ -824,7 +826,7 @@ class yprofile(DataPlot):
         
         nabla_ad = 0.4
 
-        if attri == 'T9':
+        if attri == 'T9' or 'mu':
             required_args = ('airmu', 'cldmu')
             missing_args = get_missing_args(required_args, **kwargs)
             if len(missing_args) > 0:
@@ -847,18 +849,21 @@ class yprofile(DataPlot):
                          silent = silent)
             fv = self.get('FV H+He', fname, numtype = numtype, resolution = 'l', \
                           silent = silent)
-
+           
             mu = fv*cldmu + (1. - fv)*airmu
- 
-            # gas constant in code units
-            RR = 8.3144598
-
-            T9 = mu*p/(RR*rho)
             
-            if T9_corr_params is not None:
-                T9 = T9_corr_params[0]*T9**T9_corr_params[1]
+            if attri == 'mu':
+                return mu
+            else:
+                # gas constant in code units
+                RR = 8.3144598
 
-            return T9
+                T9 = mu*p/(RR*rho)
+
+                if T9_corr_params is not None:
+                    T9 = T9_corr_params[0]*T9**T9_corr_params[1]
+
+                return T9
         elif attri == 'Hp':
             r = self.get('Y', fname, numtype, resolution = 'l', silent = silent)
             p = self.get('P', fname, numtype, resolution = 'l', silent = silent)
@@ -1658,7 +1663,7 @@ class yprofile(DataPlot):
 
     def vprofs(self,fname,fname_type = 'discrete',log_logic=False,lims=None,save=False,
                prefix='PPM',format='pdf',initial_conv_boundaries=True,
-               lw=1., label=True, ifig = 11):
+               lw=1., label=True, ifig = 11, which_to_plot = [True,True,True]):
         """
         Plot velocity profiles v_tot, v_Y and v_XZ for a given cycle number
         or list of cycle numbers (fname).
@@ -1701,6 +1706,9 @@ class yprofile(DataPlot):
             line width of the plot
         label : string, optional
             label for the line, if multiple models plotted
+        which_to_plot : boolean array, optional
+            booleans as to whether to plot v_tot v_Y and v_XZ
+            respectively True to plot
 
         Examples
         --------
@@ -1725,7 +1733,7 @@ class yprofile(DataPlot):
         ## 'text.usetex':       False}
         ## pl.rcParams.update(params)
         
-        pl.close(ifig),pl.figure(ifig)
+        pl.figure(ifig)
         if type(fname) is not list:
             fname = [fname]
         Y=self.get('Y',fname=fname[0],resolution='l')
@@ -1752,66 +1760,78 @@ class yprofile(DataPlot):
             if fname_type == 'discrete':
                 if log_logic:
                     if label:
-                        pl.plot(Y,np.log10(v*1000.),\
-                            ls=styles[0],\
-                            color=cb(0),\
-                            label=line_labels[0],\
-                            lw=lw)
-                        pl.plot(Y,np.log10(vY*1000.),\
-                            ls=styles[1],\
-                            color=cb(8),\
-                            label=line_labels[1],\
-                            lw=lw)
-                        pl.plot(Y,np.log10(vXZ*1000.),\
-                            ls=styles[2],\
-                            color=cb(2),\
-                            label=line_labels[2],\
-                            lw=lw)
+                        if which_to_plot[0]:
+                            pl.plot(Y,np.log10(v*1000.),\
+                                ls=styles[0],\
+                                color=cb(0),\
+                                label=line_labels[0],\
+                                lw=lw)
+                        if which_to_plot[1]:
+                            pl.plot(Y,np.log10(vY*1000.),\
+                                ls=styles[1],\
+                                color=cb(8),\
+                                label=line_labels[1],\
+                                lw=lw)
+                        if which_to_plot[2]:
+                            pl.plot(Y,np.log10(vXZ*1000.),\
+                                ls=styles[2],\
+                                color=cb(2),\
+                                label=line_labels[2],\
+                                lw=lw)
                         ylab='log v$_\mathrm{rms}$ [km/s]'
                     else:
-                        pl.plot(Y,np.log10(v*1000.),\
-                            ls=styles[0],\
-                            color=cb(0),\
-                            lw=lw)
-                        pl.plot(Y,np.log10(vY*1000.),\
-                            ls=styles[1],\
-                            color=cb(8),\
-                            lw=lw)
-                        pl.plot(Y,np.log10(vXZ*1000.),\
-                            ls=styles[2],\
-                            color=cb(2),\
-                            lw=lw)
+                        if which_to_plot[0]:
+                            pl.plot(Y,np.log10(v*1000.),\
+                                ls=styles[0],\
+                                color=cb(0),\
+                                lw=lw)
+                        if which_to_plot[1]:
+                            pl.plot(Y,np.log10(vY*1000.),\
+                                ls=styles[1],\
+                                color=cb(8),\
+                                lw=lw)
+                        if which_to_plot[2]:
+                            pl.plot(Y,np.log10(vXZ*1000.),\
+                                ls=styles[2],\
+                                color=cb(2),\
+                                lw=lw)
                         ylab='v$_\mathrm{rms}\,/\,\mathrm{km\,s}^{-1}$'
                 else:
                     if label:
-                        pl.plot(Y,v*1000.,\
-                            ls=styles[0],\
-                            color=cb(0),\
-                            label=line_labels[0],\
-                            lw=lw)
-                        pl.plot(Y,vY*1000.,\
-                            ls=styles[1],\
-                            color=cb(8),\
-                            label=line_labels[1],\
-                            lw=lw)
-                        pl.plot(Y,vXZ*1000.,\
-                            ls=styles[2],\
-                            color=cb(2),\
-                            label=line_labels[2],\
-                            lw=lw)
+                        if which_to_plot[0]:
+                            pl.plot(Y,v*1000.,\
+                                ls=styles[0],\
+                                color=cb(0),\
+                                label=line_labels[0],\
+                                lw=lw)
+                        if which_to_plot[1]:
+                            pl.plot(Y,vY*1000.,\
+                                ls=styles[1],\
+                                color=cb(8),\
+                                label=line_labels[1],\
+                                lw=lw)
+                        if which_to_plot[2]:
+                            pl.plot(Y,vXZ*1000.,\
+                                ls=styles[2],\
+                                color=cb(2),\
+                                label=line_labels[2],\
+                                lw=lw)
                     else:
-                        pl.plot(Y,v*1000.,\
-                            ls=styles[0],\
-                            color=cb(0),\
-                            lw=lw)
-                        pl.plot(Y,vY*1000.,\
-                            ls=styles[1],\
-                            color=cb(8),\
-                            lw=lw)
-                        pl.plot(Y,vXZ*1000.,\
-                            ls=styles[2],\
-                            color=cb(2),\
-                            lw=lw)
+                        if which_to_plot[0]:
+                            pl.plot(Y,v*1000.,\
+                                ls=styles[0],\
+                                color=cb(0),\
+                                lw=lw)
+                        if which_to_plot[1]:
+                            pl.plot(Y,vY*1000.,\
+                                ls=styles[1],\
+                                color=cb(8),\
+                                lw=lw)
+                        if which_to_plot[2]:
+                            pl.plot(Y,vXZ*1000.,\
+                                ls=styles[2],\
+                                color=cb(2),\
+                                lw=lw)
                     ylab='v$_\mathrm{rms}\,/\,\mathrm{km\,s}^{-1}$'
                 if initial_conv_boundaries:
                     pl.axvline(self.radbase,linestyle='dashed',color='k')
@@ -1837,66 +1857,78 @@ class yprofile(DataPlot):
             #vXZ = VXZtot/nn
             if log_logic:
                     if label:
-                        pl.plot(Y,np.log10(v*1000.),\
-                            ls=styles[0],\
-                            color=cb(0),\
-                            label=line_labels[0],\
-                            lw=lw)
-                        pl.plot(Y,np.log10(vY*1000.),\
-                            ls=styles[1],\
-                            color=cb(8),\
-                            label=line_labels[1],\
-                            lw=lw)
-                        pl.plot(Y,np.log10(vXZ*1000.),\
-                            ls=styles[2],\
-                            color=cb(2),\
-                            label=line_labels[2],\
-                            lw=lw)
+                        if which_to_plot[0]:
+                            pl.plot(Y,np.log10(v*1000.),\
+                                ls=styles[0],\
+                                color=cb(0),\
+                                label=line_labels[0],\
+                                lw=lw)
+                        if which_to_plot[1]:
+                            pl.plot(Y,np.log10(vY*1000.),\
+                                ls=styles[1],\
+                                color=cb(8),\
+                                label=line_labels[1],\
+                                lw=lw)
+                        if which_to_plot[2]:
+                            pl.plot(Y,np.log10(vXZ*1000.),\
+                                ls=styles[2],\
+                                color=cb(2),\
+                                label=line_labels[2],\
+                                lw=lw)
                         ylab='log v$_\mathrm{rms}$ [km/s]'
                     else:
-                        pl.plot(Y,np.log10(v*1000.),\
-                            ls=styles[0],\
-                            color=cb(0),\
-                            lw=lw)
-                        pl.plot(Y,np.log10(vY*1000.),\
-                            ls=styles[1],\
-                            color=cb(8),\
-                            lw=lw)
-                        pl.plot(Y,np.log10(vXZ*1000.),\
-                            ls=styles[2],\
-                            color=cb(2),\
-                            lw=lw)
+                        if which_to_plot[0]:
+                            pl.plot(Y,np.log10(v*1000.),\
+                                ls=styles[0],\
+                                color=cb(0),\
+                                lw=lw)
+                        if which_to_plot[1]:
+                            pl.plot(Y,np.log10(vY*1000.),\
+                                ls=styles[1],\
+                                color=cb(8),\
+                                lw=lw)
+                        if which_to_plot[2]:
+                            pl.plot(Y,np.log10(vXZ*1000.),\
+                                ls=styles[2],\
+                                color=cb(2),\
+                                lw=lw)
                         ylab='v$_\mathrm{rms}\,/\,\mathrm{km\,s}^{-1}$'
             else:
                     if label:
-                        pl.plot(Y,v*1000.,\
-                            ls=styles[0],\
-                            color=cb(0),\
-                            label=line_labels[0],\
-                            lw=lw)
-                        pl.plot(Y,vY*1000.,\
-                            ls=styles[1],\
-                            color=cb(8),\
-                            label=line_labels[1],\
-                            lw=lw)
-                        pl.plot(Y,vXZ*1000.,\
-                            ls=styles[2],\
-                            color=cb(2),\
-                            label=line_labels[2],\
-                            lw=lw)
+                        if which_to_plot[0]:
+                            pl.plot(Y,v*1000.,\
+                                ls=styles[0],\
+                                color=cb(0),\
+                                label=line_labels[0],\
+                                lw=lw)
+                        if which_to_plot[1]:
+                            pl.plot(Y,vY*1000.,\
+                                ls=styles[1],\
+                                color=cb(8),\
+                                label=line_labels[1],\
+                                lw=lw)
+                        if which_to_plot[2]:
+                            pl.plot(Y,vXZ*1000.,\
+                                ls=styles[2],\
+                                color=cb(2),\
+                                label=line_labels[2],\
+                                lw=lw)
                     else:
-                        pl.plot(Y,v*1000.,\
-                            ls=styles[0],\
-                            color=cb(0),\
-                            lw=lw)
-                        pl.plot(Y,vY*1000.,\
-                            ls=styles[1],\
-                            color=cb(8),\
-                            lw=lw)
-                        pl.plot(Y,vXZ*1000.,\
-                            ls=styles[2],\
-                            color=cb(2),\
-                            lw=lw)
+                        if which_to_plot[0]:
+                            pl.plot(Y,v*1000.,\
+                                ls=styles[0],\
+                                color=cb(0),\
+                                lw=lw)
+                        if which_to_plot[1]:
+                            pl.plot(Y,vY*1000.,\
+                                ls=styles[1],\
+                                color=cb(8),\
+                                lw=lw)
+                        if which_to_plot[2]:
+                            pl.plot(Y,vXZ*1000.,\
+                                ls=styles[2],\
+                                color=cb(2),\
+                                lw=lw)
                     ylab='v$_\mathrm{rms}\,/\,\mathrm{km\,s}^{-1}$'
             if initial_conv_boundaries:
                     pl.axvline(self.radbase,linestyle='dashed',color='k')
@@ -1912,7 +1944,73 @@ class yprofile(DataPlot):
             if save:
                     pl.savefig(prefix+'-Vel-'+number_str+'.'+format,format=format)
             
-               
+    def vprof_time(self,dumps,Np,comp = 'r',lims=None,save=False,
+               prefix='PPM',format='pdf',initial_conv_boundaries=True,lw=1., ifig = 12):
+        '''
+        Plots the same velocity profile at different times
+        
+        Parameters
+        ----------
+        dumps : array
+            dumps to plot
+        Np : int
+            This function averages over a range of Np points centered at 
+            the dump number, preferable an even number or else the range 
+            will not be centered around the dump number
+        comp : string
+            'r' 't' or 'tot' for the velocity component that will be plotted
+            see vprof for comparing all three
+        lims : list
+            Limits for the plot, i.e. [xl,xu,yl,yu].
+            If None, the default values are used.
+            The default is None.
+        save : boolean
+            Do you want the figures to be saved for each cycle?
+            Figure names will be <prefix>-Vel-00000000001.<format>,
+            where <prefix> and <format> are input options that default
+            to 'PPM' and 'pdf'.
+            The default value is False.
+        prefix : string
+            see 'save' above
+        format : string
+            see 'save' above
+        initial_conv_boundaries : logical 
+            plot vertical lines where the convective boundaries are
+            initially, i.e. ad radbase and radtop from header
+            attributes in YProfiles
+        ifig : int
+            figure number to plot into
+        '''
+        
+        avg_rms_v = {}
+        for d in dumps:
+            # Always take an average except the very end of the run.
+            v = get_avg_rms_velocities(self, range(d-int(Np/2), d+int(Np/2)),comp)
+
+            avg_rms_v[d] = v
+        
+        r = self.get('Y', fname=0, resolution='l')
+        markers = ['v', '^', '<', '>', 'o', 's']
+        colours = [9, 3, 5, 8, 1, 6]
+
+        ifig = ifig; pl.close(ifig); pl.figure(ifig)
+        for i in range(len(dumps)):
+            pl.semilogy(r, 1e3*avg_rms_v[dumps[i]], '-', color=cb(colours[i]), \
+                         marker=markers[i], markevery=50, \
+                         label=r'$\tau_{{{:d}}}$'.format(i+1))
+        pl.xlabel('r / Mm')
+        pl.ylabel(r'v$_\mathrm{%s}$ / km s$^{-1}$' % comp)
+        pl.legend(loc = 0)
+        if initial_conv_boundaries:
+            pl.axvline(self.radbase,linestyle='dashed',color='k')
+            pl.axvline(self.radtop,linestyle='dashed',color='k')
+        if lims is not None:
+            pl.axis(lims)
+        pl.legend(loc=0, ncol=2)
+        if save:
+            number_str=str(dump).zfill(11)
+            pl.savefig(prefix+'-Vel-'+number_str+'.'+format,format=format)
+        
     def tEkmax(self,ifig=None,label=None,save=False,prefix='PPM',format='pdf',
                logy=False,id=0):
         """
@@ -4811,6 +4909,37 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,\
     fig.subplots_adjust(hspace = 0)
     pl.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible = False)
     
+def get_avg_rms_velocities(prof, dumps, comp):
+    '''
+    Finds an average velocity vector as a function of radius for a given
+    range of dumps. To find a velocity vector as a function of radius see
+    get_v_evolution().
+    
+    Parameters
+    ----------
+    yprof : yprofile instance
+        profile to examine
+    dumps : range
+        dumps to average over
+    comp : string
+        component to use 'r':'radial','t':'tangential','tot':'total'
+    '''
+    avg_rms_v = 0.
+    
+    for d in dumps:
+        if comp == 'tot':
+            rms_v = np.sqrt(2.*prof.get('Ek', fname=d, resolution='l'))
+        elif comp == 'r':
+            rms_v = np.sqrt(prof.get('EkY', fname=d, resolution='l'))
+        elif comp == 't':
+            rms_v = np.sqrt(prof.get('EkXZ', fname=d, resolution='l'))
+        
+        avg_rms_v += rms_v
+        
+    avg_rms_v /= float(len(dumps))
+
+    return avg_rms_v
+    
 def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
     '''
     Finds a velocity vector and a time vector for a range of cycles
@@ -4841,6 +4970,8 @@ def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
             v_rms  = prof.get('EkY', fname = cycles[k], resolution = 'l')**0.5
         elif comp == 'tangential':
             v_rms  = prof.get('EkXZ', fname = cycles[k], resolution = 'l')**0.5
+        elif comp == 'tot':
+            v_rms = (2.*prof.get('Ek', fname = cycles[k], resolution = 'l'))**0.5
         if RMS == 'mean':
             v[k] = np.mean(v_rms[idx2:idx1])
         elif RMS == 'min':
@@ -4849,7 +4980,8 @@ def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
             v[k] = np.max(v_rms[idx2:idx1])                
     return t, v
 
-def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig = 12):
+def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig = 12, first_dump = 0,
+               last_dump = -1, lims = None):
 
     '''
     Compares the time evolution of the max RMS velocity of different runs
@@ -4872,6 +5004,11 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
     RMS : string
         options: 'min', 'max' or 'mean'. What aspect of the RMS velocity
         to look at
+    first_dump,last_dump : int, optional
+        Gives the range of dumps to plot if larger than last dump
+        will plot up to last dump
+    lims : array
+        axes lims [xl,xu,yl,yu]
     
     Example
     -------
@@ -4890,8 +5027,11 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
             prof = yprofile(ppm_path+case)
         except ValueError:
             print "have you set the yprofile filepath using ppm.set_YProf_path?"
-
-        cycles = range(prof.cycles[0], prof.cycles[-1], sparse)
+        if last_dump > prof.cycles[-1]:
+            end = -1
+        else:
+            end = last_dump
+        cycles = range(prof.cycles[first_dump], prof.cycles[end], sparse)
         t, vr_max = get_v_evolution(prof, cycles, ymin, ymax, comp, RMS)
         pl.plot(t/60.,  1e3*vr_max,  color = cb(yy),\
                  marker = ls(yy)[1], markevery = markevery, label = case)
@@ -4899,6 +5039,9 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
 
     pl.xlabel('t / min')
     pl.ylabel(r'v$_r$ / km s$^{-1}$')
+    if lims is not None:
+        pl.axis(lims)
+        print('p')
     pl.legend(loc = 0)
    
 def luminosity_for_dump(path, get_t = False):
