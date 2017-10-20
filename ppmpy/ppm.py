@@ -283,7 +283,7 @@ def prof_compare(cases,ndump=None,yaxis_thing='FV H+He',ifig=None,num_type='ndum
         Y.plot('Y',yaxis_thing,fname=ndump,numtype=num_type,legend=labels[i],\
                logy=logy,shape=utils.linestyle(j)[0],markevery=utils.linestyle(j)[1])
         i += 1
-        
+    
 def cdiff(x):
     # compute 2nd order centred differences
     dx = (np.roll(x, -1) - np.roll(x, 1))/2.
@@ -293,6 +293,7 @@ def cdiff(x):
     dx[-1] = x[-1] - x[-2]
     
     return dx
+
 
 class yprofile(DataPlot):
     """ 
@@ -826,7 +827,7 @@ class yprofile(DataPlot):
         
         nabla_ad = 0.4
 
-        if attri == 'T9' or 'mu':
+        if attri == 'T9' or attri == 'mu':
             required_args = ('airmu', 'cldmu')
             missing_args = get_missing_args(required_args, **kwargs)
             if len(missing_args) > 0:
@@ -976,7 +977,6 @@ class yprofile(DataPlot):
             enuc_C12pg = self.get('enuc_C12pg', fname, numtype, resolution = 'l', \
                                   silent = silent, **kwargs)
             r = self.get('Y', fname, numtype, resolution = 'l', silent = silent)
-            
             dV = -4.*np.pi*r**2*cdiff(r)
             L_C12pg = np.sum(enuc_C12pg*dV)
             
@@ -2010,6 +2010,72 @@ class yprofile(DataPlot):
         if save:
             number_str=str(dump).zfill(11)
             pl.savefig(prefix+'-Vel-'+number_str+'.'+format,format=format)
+    
+    def Aprof_time(self,tau,Nl,lims=None,save=False,silent = True,
+                   prefix='PPM',format='pdf',initial_conv_boundaries=True,lw=1., ifig = 12):
+        '''
+        Plots the same velocity profile at different times
+
+        Parameters
+        ----------
+        tau : array
+            times to plot
+        Nl : int
+            Number of lines to plot, spaced over every minute
+        lims : list
+            Limits for the plot, i.e. [xl,xu,yl,yu].
+            If None, the default values are used.
+            The default is None.
+        save : boolean
+            Do you want the figures to be saved for each cycle?
+            Figure names will be <prefix>-Vel-00000000001.<format>,
+            where <prefix> and <format> are input options that default
+            to 'PPM' and 'pdf'.
+            The default value is False.
+        silent: boolean,optional
+            Should plot display output?
+        prefix : string
+            see 'save' above
+        format : string
+            see 'save' above
+        initial_conv_boundaries : logical 
+            plot vertical lines where the convective boundaries are
+            initially, i.e. ad radbase and radtop from header
+            attributes in YProfiles
+        ifig : int
+            figure number to plot into
+        '''
+
+        r = self.get('Y', fname = 0, resolution = 'l')
+        A0 = self.get('A', fname = 0., numtype = 'time', resolution = 'l', silent = True)
+        markers = ['v', '^', '<', '>', 'o', 's']
+        colours = [9, 3, 5, 8, 1, 6]
+
+        ifig = ifig; pl.close(ifig); pl.figure(ifig)
+        for i in range(Nl):
+            t = self.get('t', fname = 60.*100.*i, numtype = 'time', resolution = 'l', silent = True)[-1]
+            A = self.get('A', fname = 60.*100.*i, numtype = 'time', resolution = 'l', silent = True)
+            pl.plot(r, A/A0 - 1., ':', lw = 0.5, color = cb(4))
+        for i in range(len(tau)):
+            t = self.get('t', fname = 60.*tau[i], numtype = 'time', resolution = 'l', silent = False)[-1]
+            A = self.get('A', fname = 60.*tau[i], numtype = 'time', resolution = 'l', silent = True)
+            pl.plot(r, A/A0 - 1., '-', marker = markers[i], color = cb(colours[i]), \
+                     markevery = 50, label = r'$\tau_{{{:d}}}$'.format(i+1))
+            if not silent:
+                print 'You wanted tau = {:.1f} min. yprofile.get() found the closest dump at t = {:.1f} min.\n'.\
+                  format(tau[i], t/60.)
+        pl.xlabel('r / Mm')
+        pl.ylabel('A(t)/A(0) - 1')      
+        if initial_conv_boundaries:
+            pl.axvline(self.radbase,linestyle='dashed',color='k')
+            pl.axvline(self.radtop,linestyle='dashed',color='k')
+        if lims is not None:
+            pl.axis(lims)
+        pl.legend(loc=0)
+        pl.tight_layout() 
+        if save:
+            number_str=str(dump).zfill(11)
+            pl.savefig(prefix+'-A-'+number_str+'.'+format,format=format)
         
     def tEkmax(self,ifig=None,label=None,save=False,prefix='PPM',format='pdf',
                logy=False,id=0):
@@ -4702,6 +4768,7 @@ def cmap_from_str(str, segment=None):
 # Additional plotting methods Jericho
 ###########################################################
 
+        
 def analyse_dump(rp, r1, r2):
 
     '''
@@ -4769,8 +4836,8 @@ def analyse_dump(rp, r1, r2):
 
     return r, ut, dutdr, r_ub
 
-def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,\
-                   hist_dump_max, derivative = False, r1=7.4, r2=8.4, silent = True):
+def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
+                   hist_dump_max, ylims = None, derivative = False, r1=7.4, r2=8.4, silent = True):
 
     '''
     Finds the upper convective boundary as defined by the steepest decline in 
@@ -4811,11 +4878,17 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,\
     cb = utils.colourblind
     rp_set = rprof.rprofile_set(data_path)
     rp = rp_set.get_dump(dump_to_plot)
+    nr = len(rp.get('y'))
+    
+    sparse = 1
+    dumps = np.array([rp_set.dumps[i] for i in range(0, len(rp_set.dumps), sparse)])
 
-    n_dumps = len(rp_set.dumps)
+    n_dumps = len(dumps)
     n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
     t = np.zeros(n_dumps)
     r_ub = np.zeros((n_buckets, n_dumps))
+    ut = np.zeros((nr, n_buckets, n_dumps))
+    dutdr = np.zeros((nr, n_buckets, n_dumps))
 
     for k in range(n_dumps):
         rp = rp_set.get_dump(rp_set.dumps[k])
@@ -4823,15 +4896,16 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,\
 
         res = analyse_dump(rp, r1, r2)
         r = res[0]
-        ut = res[1]
-        dutdr = res[2]
+        ut[:, :, k] = res[1]
+        dutdr[:, :, k] = res[2]
         r_ub[:, k] = res[3]
 
     avg_r_ub = np.sum(r_ub, axis = 0)/float(n_buckets)
     dev = np.array([r_ub[i, :] - avg_r_ub for i in range(n_buckets)])
     sigmap_r_ub = np.zeros(n_dumps)
     sigmam_r_ub = np.zeros(n_dumps)
-
+    idx = np.argmin(np.abs(dumps - dump_to_plot))
+    
     for k in range(n_dumps):
         devp = dev[:, k]
         devp = devp[devp >= 0]
@@ -4873,7 +4947,7 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,\
     for bucket in range(n_buckets):
         lbl = r'bucket data' if bucket == 0 else None
 
-        ax0.plot(r, temp[:, bucket], ls = '-', lw = 0.5, color = cb(3), \
+        ax0.plot(r, temp[:, bucket, idx], ls = '-', lw = 0.5, color = cb(3), \
             label = lbl)
 
         lines = (min(lims) + (max(lims)- min(lims))/13.3 ,\
@@ -4888,7 +4962,8 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,\
                 color = cb(4), label = '2$\sigma$ fluctuations')
     ax0.axvline(x = avg_r_ub[dump_to_plot] + 2*sigmap_r_ub[dump_to_plot], ls = ':', lw = 1., color = cb(4))
     ax0.set_xlim((r1 - 0.4, r2))
-
+    if ylims is not None:
+        ax0.set_ylim(ylims)
     ax0.set_ylabel(r'v$_{\!\perp}$ / km s$^{-1}$')
     yticks = ax0.yaxis.get_major_ticks()
     yticks[0].label1.set_visible(False)
@@ -5181,13 +5256,25 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
     pl.legend(loc = 0)
     pl.tight_layout()
 
-def L_H_L_He_comparison(cases, ifig=101, airmu = 1.39165, cldmu = 0.725,
+def L_H_L_He_comparison(cases, sparse = 1, ifig=101, airmu = 1.39165, cldmu = 0.725,
     fkair = 0.203606102635,fkcld = 0.885906040268,AtomicNoair = 6.65742024965,
-    AtomicNocld = 1.34228187919):
+    AtomicNocld = 1.34228187919,markevery = 1,lims = None,save= False):
     
     '''
     Compares L_H to L_He, optional values are set to values from O-shell
     burning paper.
+    
+    Parameters
+    ----------
+    cases : string array
+        names of yprofile instances i.e['D1','D2'...]
+    sparse :int
+        what interval in the range to calculate
+        1 calculates every dump 2 every second dump ect
+    lims : array
+        plot limits
+    save : boolean
+        save figure
     '''
     yprofs = {}
     res = {}
@@ -5202,12 +5289,9 @@ def L_H_L_He_comparison(cases, ifig=101, airmu = 1.39165, cldmu = 0.725,
         r = yprofs[case].get('Y', fname=0, resolution='l')
         res[case] = 2*len(r)
 
-    cb = utils.colourblind
-
     patience0 = 5
     patience = 60
 
-    sparse = 1
     dumps = {}
     nd = {}
     t = {}
@@ -5216,9 +5300,9 @@ def L_H_L_He_comparison(cases, ifig=101, airmu = 1.39165, cldmu = 0.725,
 
     for this_case in cases:
         print 'Processing {:s}...'.format(this_case)
-
-        dumps[this_case] = np.arange(min(yprofs[case].ndumpDict.keys()),\
-           max(yprofs[case].ndumpDict.keys()) + 1, sparse)
+        
+        dumps[this_case] = np.arange(min(yprofs[this_case].ndumpDict.keys()),\
+           max(yprofs[this_case].ndumpDict.keys()) + 1, sparse)
         #dumps[this_case] = np.arange(min(yprofs[case].ndumpDict.keys()),\
         #   min(yprofs[case].ndumpDict.keys()) + 10, sparse)
         #n_dumps = len(rp_set.dumps)
@@ -5232,9 +5316,9 @@ def L_H_L_He_comparison(cases, ifig=101, airmu = 1.39165, cldmu = 0.725,
         for i in range(nd[this_case]):
             t[this_case][i] = yprofs[this_case].get('t', fname = dumps[this_case][i], \
                               resolution = 'l')[-1]
-            L_H[this_case][i] = yprofs[this_case].get('L_C12pg', fname = dumps[this_case][i], \
-                                resolution = 'l', airmu = airmu, cldmu = cldmu, \
-                                fkair = fkair, fkcld = fkcld,  AtomicNoair = AtomicNoair, \
+            L_H[this_case][i] = yprofs[this_case].get('L_C12pg', fname = dumps[this_case][i],
+                                resolution = 'l', airmu = airmu, cldmu = cldmu,
+                                fkair = fkair, fkcld = fkcld,  AtomicNoair = AtomicNoair,
                                 AtomicNocld = AtomicNocld, corr_fact = 1.5)
 
             t_now = time.time()
@@ -5249,18 +5333,21 @@ def L_H_L_He_comparison(cases, ifig=101, airmu = 1.39165, cldmu = 0.725,
     pl.close(ifig); pl.figure(ifig)
     pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
         label = r'L$_\mathrm{He}$')
-    
+    i =0
     for this_case in cases:
         lbl = r'{:s} $\left({:d}^3\right)$'.format(this_case, res[this_case])
         pl.semilogy(t[this_case]/60., (1e43/ast.lsun_erg_s)*L_H[this_case], \
-            ls = '-', color = cb(cases.index(this_case)), marker= 's', markevery=250/sparse, \
-            label = case)
-        
+            ls = '-', color = cb(i), marker= 's', \
+            label = this_case)
+        i+=1
+    if lims is not None:
+        pl.axis(lims)
     pl.xlabel('t / min')
     pl.ylabel(r'L$_H$ / L$_\odot$')
     pl.legend(loc=0, ncol=2)
     pl.tight_layout()
-    pl.savefig('L_H-L_He_F4_F5_F13.pdf')
+    if save:
+        pl.savefig('L_H-L_He_'+cases[0]+cases[1]+cases[2]+'.pdf')
 
 def get_upper_bound(data_path, dump_to_plot, r1, r2):
 
