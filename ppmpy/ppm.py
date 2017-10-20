@@ -5787,7 +5787,164 @@ def plot_Mollweide(rp_set, dump_min, dump_max, r1, r2, output_dir = None, Filena
         filename = None
         
     bucket_map(rp, dr_ub_avg, file_name = filename)
+
+def get_mach_number(rp_set,yp,dumps):
+    '''
+    Returns max Mach number and matching time vector
     
+    Parameters
+    ----------
+    yp: yprofile instance
+    rp_set: rprofile set instance
+    dumps: range
+        range of dumps to include
+        
+    Returns
+    -------
+    Ma_max : vector
+        max mach nunmber
+    t : vector
+        time vector
+    '''
+    nd = len(dumps)
+    t = np.zeros(nd)
+    Ma_max = np.zeros(nd)
+
+    for i in range(nd):
+        rp = rp_set.get_dump(dumps[i])
+        t[i] = yp.get('t', fname = dumps[i] - 1, resolution = 'l')[-1]
+        Ma_max[i] = np.max(rp.get_table('mach')[2, :, 0])
+    
+    return Ma_max, t
+
+def plot_mach_number(rp_set,yp,dumps,ifig = 1,lims = None,insert = False,save=False,
+                      prefix='PPM',format='pdf',lims_insert =None):
+    '''
+    Parameters
+    ----------
+    yp: yprofile instance
+    rp_set: rprofile set instance
+    dumps: range
+        range of dumps to include
+    lims : list
+        Limits for the plot, i.e. [xl,xu,yl,yu].
+        If None, the default values are used.
+        The default is None.
+    save : boolean
+        Do you want the figures to be saved for each cycle?
+        Figure names will be <prefix>-Vel-00000000001.<format>,
+        where <prefix> and <format> are input options that default
+        to 'PPM' and 'pdf'.
+        The default value is False.
+    prefix : string
+        see 'save' above
+    format : string
+        see 'save' above
+    '''
+    try:
+        Ma_max,t = get_mach_number(rp_set,yp,dumps)
+    except:
+        print 'Dumps range must start at a value of 1 or greater'
+    ifig = ifig; pl.close(ifig); fig = pl.figure(ifig)
+    ax1 = fig.add_subplot(111)
+    ax1.plot(t/60., Ma_max, color=cb(3))
+    if lims is not None:
+        ax1.set_xlim((lims[0],lims[1]))
+        ax1.set_ylim((lims[2],lims[3]))
+    ax1.set_xlabel('t / min')
+    ax1.set_ylabel(r'Ma$_\mathrm{max}$')
+    
+    if insert:
+        left, bottom, width, height = [0.27, 0.55, 0.3, 0.3]
+        ax2 = fig.add_axes([left, bottom, width, height])
+        ax2.plot(t/60., Ma_max, color=cb(3))
+        if lims_insert is not None:
+            ax2.set_xlim((lims_insert[0],lims_insert[1]))
+            ax2.set_ylim((lims_insert[2],lims_insert[3]))
+    fig.tight_layout()
+
+    if save:
+        pl.savefig(prefix+'_Ma_max_evolution.'+format,format=format)
+
+def get_p_top(prof,dumps,r_top):
+    '''
+    Returns p_top and matching time vector
+    
+    Parameters
+    ----------
+    yp: yprofile instance
+    rtop: float
+        boundary radius
+    dumps: range
+        range of dumps to include can be sparse
+        
+    Returns
+    -------
+    Ma_max : vector
+        max mach nunmber
+    t : vector
+        time vector
+    '''
+    nd = len(dumps)
+    t = np.zeros(nd)
+    p_top = np.zeros(nd)
+
+    r = prof.get('Y', fname = 0, resolution = 'l')
+    idx_top = np.argmin(np.abs(r - r_top))
+
+    for i in range(nd):
+        t[i] = prof.get('t', fname = dumps[i], resolution = 'l')[-1]
+        p_top[i] = prof.get('P', fname = dumps[i], resolution = 'l')[idx_top]
+
+    return p_top,t
+
+def plot_p_top(yp,dumps,r_top,ifig = 1,lims = None,insert = False,save=False,
+                      prefix='PPM',format='pdf',lims_insert =None):
+    '''
+    Parameters
+    ----------
+    yp: yprofile instance
+    r_top: float
+        boundary radius
+    dumps: range
+        range of dumps to include can be sparse
+    lims : list
+        Limits for the plot, i.e. [xl,xu,yl,yu].
+        If None, the default values are used.
+        The default is None.
+    save : boolean
+        Do you want the figures to be saved for each cycle?
+        Figure names will be <prefix>-Vel-00000000001.<format>,
+        where <prefix> and <format> are input options that default
+        to 'PPM' and 'pdf'.
+        The default value is False.
+    prefix : string
+        see 'save' above
+    format : string
+        see 'save' above
+    '''
+
+    p_top,t = get_p_top(yp,dumps,r_top)
+    ifig = ifig; pl.close(ifig); fig = pl.figure(ifig)
+    ax1 = fig.add_subplot(111)
+    ax1.plot(t/60., p_top/p_top[0] - 1., color=cb(3))
+    if lims is not None:
+        ax1.set_xlim((lims[0],lims[1]))
+        ax1.set_ylim((lims[2],lims[3]))
+    ax1.set_xlabel('t / min')
+    ax1.set_ylabel(r'p$_\mathrm{top}$(t) / p$_\mathrm{top}$(0) - 1')
+    
+    if insert:
+        left, bottom, width, height = [0.31, 0.55, 0.3, 0.3]
+        ax2 = fig.add_axes([left, bottom, width, height])
+        ax2.plot(t/60., p_top/p_top[0] - 1., color=cb(3))
+        if lims_insert is not None:
+            ax2.set_xlim((lims_insert[0],lims_insert[1]))
+            ax2.set_ylim((lims_insert[2],lims_insert[3]))
+    fig.tight_layout()
+
+    if save:
+        pl.savefig(prefix+'_p_top_evolution.'+format,format=format)    
 #####################################################
 # Files with mesa dependancy
 #####################################################
