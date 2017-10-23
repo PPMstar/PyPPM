@@ -1663,7 +1663,7 @@ class yprofile(DataPlot):
 
     def vprofs(self,fname,fname_type = 'discrete',log_logic=False,lims=None,save=False,
                prefix='PPM',format='pdf',initial_conv_boundaries=True,
-               lw=1., label=True, ifig = 11, which_to_plot = [True,True,True]):
+               lw=1., label=True, ifig = 11, which_to_plot = [True,True,True],run=None):
         """
         Plot velocity profiles v_tot, v_Y and v_XZ for a given cycle number
         or list of cycle numbers (fname).
@@ -1709,6 +1709,8 @@ class yprofile(DataPlot):
         which_to_plot : boolean array, optional
             booleans as to whether to plot v_tot v_Y and v_XZ
             respectively True to plot
+        run : string, optional
+            the name of the run
 
         Examples
         --------
@@ -1753,8 +1755,10 @@ class yprofile(DataPlot):
             v =   np.sqrt(2.*array(Ek,dtype=float))
             vY =  np.sqrt(array(EkY,dtype=float))  # no factor 2 for v_Y and v_XZ
             vXZ = np.sqrt(array(EkXZ,dtype=float))  # no factor 2 for v_Y and v_XZ
-            
-            line_labels = ['$v$','$v_\mathrm{r}$','$v_\perp$']
+            if run is not None:
+                line_labels = ['$v$ '+run,'$v_\mathrm{r}$ '+run,'$v_\perp$ '+run]
+            else:
+                line_labels = ['$v$ '+run,'$v_\mathrm{r}$ '+run,'$v_\perp$ '+run]
             styles = ['-','--',':']
             cb = utils.colourblind
             if fname_type == 'discrete':
@@ -1840,7 +1844,7 @@ class yprofile(DataPlot):
                     pl.axis(lims)
                 pl.xlabel('r / Mm')
                 pl.ylabel(ylab)
-                pl.title(prefix+', Dump '+str(dump))
+                #pl.title(prefix+', Dump '+str(dump))
                 if label:
                     pl.legend(loc=8).draw_frame(False)
                 number_str=str(dump).zfill(11)
@@ -1939,7 +1943,7 @@ class yprofile(DataPlot):
             pl.ylabel(ylab)
             pl.title(prefix+', Dump '+str(dump))
             if label:
-                    pl.legend(loc=8).draw_frame(False)
+                    pl.legend(loc=0).draw_frame(False)
             number_str=str(dump).zfill(11)
             if save:
                     pl.savefig(prefix+'-Vel-'+number_str+'.'+format,format=format)
@@ -6821,7 +6825,7 @@ def plot_mesa_time_evo(mesa_path,mesa_logs,t_end,ifig=21):
 
     pl.subplots_adjust(bottom=0.1)
 
-def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label, ifig0 = 3,
+def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label,ifig = 3,
                   integrate_both_fluids = False):
     '''
     Plots entrainment rate vs max radial or tangential velocity
@@ -6847,7 +6851,7 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label, ifig0 = 3,
     c0 = (241,154,142,155,123,78,355,241,124)
     global ppm_path
     ppm_path = '/data/ppm_rpod2/YProfiles/O-shell-M25/'    
-    plot_entr_v_ut(cases,c0,10,7.5,8.5,ifig0 = 3,
+    plot_entr_v_ut(cases,c0,10,7.5,8.5,ifig = 3,
                       integrate_both_fluids = False)
     '''
     mdot = np.zeros(len(cases))
@@ -6863,7 +6867,7 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label, ifig0 = 3,
         mdot[i] = prof.entrainment_rate(cycles, r1, r2, var = 'vxz',
                                         criterion = 'min_grad', offset = -1.,
                                         integrate_both_fluids = integrate_both_fluids,
-                                        ifig0 = ifig0,
+                                        ifig0 = ifig,
                                         show_output = False)
         
     fc = np.polyfit(np.log(vt[0:len(cases)]/30.), np.log(mdot[0:len(cases)]), 1)
@@ -6878,7 +6882,7 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label, ifig0 = 3,
             format(mantissa, exponent, fc[0])
     nn = len(cases)
     cb = utils.colourblind
-    ifig = 1; pl.close(ifig); pl.figure(ifig)
+    pl.close(ifig); pl.figure(ifig)
     pl.plot(np.log10(vt[0:nn]), np.log10(mdot[0:nn]),
              ls = 'none', color = cb(5), marker = 'o', \
              label = label)
