@@ -5349,7 +5349,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101, airmu = 1.39165, cldmu = 0.
     if save:
         pl.savefig('L_H-L_He_'+cases[0]+cases[1]+cases[2]+'.pdf')
 
-def get_upper_bound(data_path, dump_to_plot, r1, r2):
+def get_upper_bound(data_path, r1, r2):
 
     '''
     Returns information about the upper convective boundary
@@ -5360,7 +5360,7 @@ def get_upper_bound(data_path, dump_to_plot, r1, r2):
         This function will only search for the convective 
         boundary in the range between r1/r2
     
-    Output
+    Returns
     ------
     [all arrays]
     avg_r_ub : average radius of upper boundary
@@ -5371,7 +5371,6 @@ def get_upper_bound(data_path, dump_to_plot, r1, r2):
     '''
 
     rp_set = rprof.rprofile_set(data_path)
-    rp = rp_set.get_dump(dump_to_plot)
 
     n_dumps = len(rp_set.dumps)
     n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
@@ -5409,13 +5408,98 @@ def get_upper_bound(data_path, dump_to_plot, r1, r2):
             sigmam_r_ub[k] = None
             
     return(avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t)
+
+def get_r_int(data_path, r_ref, gamma, sparse = 1): 
+    '''
+    Returns values for radius of interface for a given 
+    reference radius.
     
-def plot_boundary_evolution(data_path, dump_to_plot, r1, r2, t_fit_start=700,\
-                            silent = True, show_fits = False, ifig = 5):
+    Parameters
+    ----------
+    data_path : string
+        data path
+    r_ref : float
+        r_int is the radius of the interface at which the relative 
+        [A(t) - A0(t)]/A0(t) with respect to a reference value A0(t)
+        exceeds a threshold. The reference value A0(t) is taken to be
+        the average A at a reference radius r_ref at time t. 
+        We need to put r_ref to the bottom of the convection zone,
+        because most of the convection zone is heated in the 
+        final explosion. The threshold should be a few times 
+        larger than the typical bucket-to-bucket fluctuations 
+        in A due to convection. A value of 1e-3 is a good trade-off
+        between sensitivity and the amount of noise. 
+    sparse: int, optional
+        What interval to have between data points
+        
+    Returns
+    ------
+    [all arrays]
+    avg_r_int : average radius of interface
+    sigmam_r_int/sigmap_r_int: 2 \sigma fluctuations in r_int
+    r_int : interface radius
+    t: time
+    '''
+    rp_set = rprof.rprofile_set(data_path)
+    rp = rp_set.get_dump(rp_set.dumps[0])
+    n_buckets = rp.get('nbuckets')
+    r = rp.get('y')
+    idx_ref = np.argmin(np.abs(r - r_ref))
+
+    dumps = np.arange(1, 1960, sparse)
+    nd = len(dumps)
+
+    dr = r[1] - r[0]
+    r_int = np.zeros((n_buckets, nd))
+    avg_r_int = np.zeros(nd)
+    sigmap_r_int = np.zeros(nd)
+    sigmam_r_int = np.zeros(nd)
+    t = np.zeros(nd)
+    
+    for i in range(nd):
+        rp = rp_set.get_dump(dumps[i])
+        p = rp.get_table('p')[0, :, :]
+        rho = rp.get_table('rho')[0, :, :]
+        A = p/rho**gamma
+        A0 = A[idx_ref, 0]
+        t[i] = rp.get('time')
+
+        for bucket in range(1, n_buckets + 1):
+            rel_diff = (A[:, bucket] - A0)/A0
+
+            threshold = 1e-3
+            # 0-th order estimate first
+            idx_top = np.argmax(rel_diff > threshold)
+            r_int[bucket - 1, i] = r[idx_top]
+
+            # refine to 1-st order now
+            slope = (rel_diff[idx_top] - rel_diff[idx_top - 1])/dr
+            r_int[bucket - 1, i] -= (rel_diff[idx_top] - threshold)/slope
+
+        avg_r_int[i] = np.sum(r_int[:,i])/float(n_buckets)
+        dev = np.array([r_int[b,i] - avg_r_int[i] for b in range(n_buckets)])
+        devp = dev[dev >= 0]
+        if len(devp) > 0:
+            sigmap_r_int[i] = (sum(devp**2)/float(len(devp)))**0.5
+        else:
+            sigmap_r_int[i] = None
+
+        devm = dev[dev <= 0]
+        if len(devm) > 0:
+            sigmam_r_int[i] = (sum(devm**2)/float(len(devm)))**0.5
+        else:
+            sigmam_r_int[i] = None
+            
+    return avg_r_int, sigmam_r_int, sigmap_r_int, r_int, t
+
+def plot_boundary_evolution(data_path, r1, r2, t_fit_start=700,
+                            silent = True, show_fits = False, ifig = 5,
+                            r_int = False, r_ref = None, gamma = None,
+                            sparse = 10, lims = None, insert = False):
     
     '''
 
-    Displays the time evolution of the convective boundary
+    Displays the time evolution of the convective boundary or Interface radius
 
     Plots Fig. 14 or 15 in paper: "Idealized hydrodynamic simulations
     of turbulent oxygen-burning shell convection in 4 geometry"
@@ -5424,73 +5508,127 @@ def plot_boundary_evolution(data_path, dump_to_plot, r1, r2, t_fit_start=700,\
 
     Parameters
     ----------
-    data_path = string
+    data_path : string
         data path
-    show_fits = boolean
-        show the fits used in finding the upper boundary
-    r1/r2 = float
+    r1/r2 : float
         This function will only search for the convective 
         boundary in the range between r1/r2
-    t_fit_start = int
+    show_fits : boolean, optional
+        show the fits used in finding the upper boundary
+    t_fit_start : int
         The time to start the fit for upper boundary fit takes 
         range t[t_fit_start:-1] and computes average boundary
+    r_int : bool, optional
+        True plots interface radius, False plots convective boundary
+        !If true r_ref must have a value
+    r_ref : float
+        r_int is the radius of the interface at which the relative 
+        [A(t) - A0(t)]/A0(t) with respect to a reference value A0(t)
+        exceeds a threshold. The reference value A0(t) is taken to be
+        the average A at a reference radius r_ref at time t. 
+        We need to put r_ref to the bottom of the convection zone,
+        because most of the convection zone is heated in the 
+        final explosion. The threshold should be a few times 
+        larger than the typical bucket-to-bucket fluctuations 
+        in A due to convection. A value of 1e-3 is a good trade-off
+        between sensitivity and the amount of noise. 
+    sparse: int, optional
+        What interval to have between data points
+    lims : array
+        limits of the insert axes [xl,xu,yl,yu]
+    insert: bool
+        whether or not to include a second inserted subplot
+     
     '''
     cb = utils.colourblind
     
     rp_set = rprof.rprofile_set(data_path)
-    rp = rp_set.get_dump(dump_to_plot)
 
     n_dumps = len(rp_set.dumps)
     n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
     t = np.zeros(n_dumps)
     r_ub = np.zeros((n_buckets, n_dumps))
-    avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t = get_upper_bound(data_path, dump_to_plot, r1, r2)
     
-    idx_fit_start = np.argmin(np.abs(t - t_fit_start))
-    t_fit_start = t[idx_fit_start]
-
-    # fc = fit coefficients
-    fc_avg = np.polyfit(t[idx_fit_start:-1], avg_r_ub[idx_fit_start:-1], 1)
-    avg_fit = fc_avg[0]*t + fc_avg[1]
-    fc_plus = np.polyfit(t[idx_fit_start:-1], 2.*sigmap_r_ub[idx_fit_start:-1], 1)
-    plus_fit = fc_plus[0]*t + fc_plus[1]
-    fc_minus = np.polyfit(t[idx_fit_start:-1], 2.*sigmam_r_ub[idx_fit_start:-1], 1)
-    minus_fit = fc_minus[0]*t + fc_minus[1]
-
-    pl.close(ifig); fig = pl.figure(ifig)#, figsize = (6.0, 4.7))
-    for bucket in range(n_buckets):
-        lbl = 'bucket data' if bucket == 0 else None
-        pl.plot(t/60., r_ub[bucket, :], ls = '-', lw = 0.5, color = cb(3), \
-                 label = lbl)
-    pl.plot(t/60., avg_r_ub, ls = '-', lw = 1., color = cb(4),\
-             label = 'mean')
-    pl.plot(t/60., avg_r_ub + 2*sigmap_r_ub, ls = '--', lw = 1., \
-             color = cb(4), label = r'2$\sigma$ fluctuations')
-    pl.plot(t/60., avg_r_ub - 2*sigmam_r_ub, ls = '--', lw = 1., \
-             color = cb(4))
+    if not r_int:
+        avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t = get_upper_bound(data_path, r1, r2)
+    else:
+        avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t = get_r_int(data_path, r_ref, gamma, sparse = sparse)
+    
     if show_fits:
-        pl.plot(t/60., avg_fit, ls = '-', lw = 0.5, color = cb(4), \
-                label = r'$\mathregular{linear\ fits}$')
-        pl.plot(t/60., avg_fit + plus_fit, ls = '-', lw = 0.5, color = cb(4))
-        pl.plot(t/60., avg_fit - minus_fit, ls = '-', lw = 0.5, color = cb(4))
-    pl.xlim((0., np.max(t)/60.))
-    #plt.ylim((7.4, 8.6))
-    pl.xlabel('t / min')
-    pl.ylabel(r'r$_\mathrm{ub}$ / Mm')
-    pl.legend(loc = 0, frameon = False)
-    #fig.tight_layout()
-    if not silent:
-        print 'The fitting starts at t = {:.1f} s = {:.1f} min.'.format(t_fit_start, t_fit_start/60.)
-        print ''
-        print 'Average:'
-        print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_avg[1], fc_avg[0])
-        print ''
-        print 'Positive fluctuations:'
-        print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_plus[1], fc_plus[0])
-        print ''
-        print 'Negative fluctuations:'
-        print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0])
+        idx_fit_start = np.argmin(np.abs(t - t_fit_start))
+        t_fit_start = t[idx_fit_start]
 
+        # fc = fit coefficients
+        fc_avg = np.polyfit(t[idx_fit_start:-1], avg_r_ub[idx_fit_start:-1], 1)
+        avg_fit = fc_avg[0]*t + fc_avg[1]
+        fc_plus = np.polyfit(t[idx_fit_start:-1], 2.*sigmap_r_ub[idx_fit_start:-1], 1)
+        plus_fit = fc_plus[0]*t + fc_plus[1]
+        fc_minus = np.polyfit(t[idx_fit_start:-1], 2.*sigmam_r_ub[idx_fit_start:-1], 1)
+        minus_fit = fc_minus[0]*t + fc_minus[1]
+    if not insert:
+        pl.close(ifig); fig = pl.figure(ifig)#, figsize = (6.0, 4.7))
+        for bucket in range(n_buckets):
+            lbl = 'bucket data' if bucket == 0 else None
+            pl.plot(t/60., r_ub[bucket, :], ls = '-', lw = 0.5, color = cb(3), \
+                     label = lbl)
+        pl.plot(t/60., avg_r_ub, ls = '-', lw = 1., color = cb(4),\
+                 label = 'mean')
+        pl.plot(t/60., avg_r_ub + 2*sigmap_r_ub, ls = '--', lw = 1., \
+                 color = cb(4), label = r'2$\sigma$ fluctuations')
+        pl.plot(t/60., avg_r_ub - 2*sigmam_r_ub, ls = '--', lw = 1., \
+                 color = cb(4))
+        if show_fits:
+            pl.plot(t/60., avg_fit, ls = '-', lw = 0.5, color = cb(4), \
+                    label = r'$\mathregular{linear\ fits}$')
+            pl.plot(t/60., avg_fit + plus_fit, ls = '-', lw = 0.5, color = cb(4))
+            pl.plot(t/60., avg_fit - minus_fit, ls = '-', lw = 0.5, color = cb(4))
+        pl.xlim((0., np.max(t)/60.))
+        pl.xlabel('t / min')
+        if r_int:
+            pl.ylabel(r'r$_\mathrm{int}$ / Mm')
+        else:
+            pl.ylabel(r'r$_\mathrm{ub}$ / Mm')
+        pl.legend(loc = 0, frameon = False)
+        if not silent:
+            print 'The fitting starts at t = {:.1f} s = {:.1f} min.'.format(t_fit_start, t_fit_start/60.)
+            print ''
+            print 'Average:'
+            print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_avg[1], fc_avg[0])
+            print ''
+            print 'Positive fluctuations:'
+            print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_plus[1], fc_plus[0])
+            print ''
+            print 'Negative fluctuations:'
+            print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0])
+    else:
+        def plot_data(ax):
+            for i in range(n_buckets):
+                lbl=''
+                if i == 0:
+                    lbl='bucket data'
+                ax.plot(t/60., r_ub[i,:], '-', lw=0.5, color=cb(3), label=lbl)
+
+            ax.plot(t/60., avg_r_ub, '-', lw=1.0, color=cb(4), label='mean')
+            ax.plot(t/60., avg_r_ub + 2*sigmap_r_ub, '--', lw=1., color=cb(4), \
+                     label = r'2$\sigma$ fluctuations')
+            ax.plot(t/60., avg_r_ub - 2*sigmam_r_ub, '--', lw=1., color=cb(4))
+
+        ifig = ifig; pl.close(ifig); fig = pl.figure(ifig)
+        ax1 = fig.add_subplot(111)
+        plot_data(ax1)
+        ax1.set_xlim((0., t[-1]/60))
+        ax1.set_ylim((12., 30.))
+        ax1.set_xlabel('t / min')
+        ax1.set_ylabel(r'r$_\mathrm{int}$ / Mm')
+        ax1.legend(loc=0)
+
+        left, bottom, width, height = [0.29, 0.44, 0.35, 0.35]
+        ax2 = fig.add_axes([left, bottom, width, height])
+        plot_data(ax2)
+        ax2.set_xlim((lims[0], lims[1]))
+        ax2.set_ylim((lims[2], lims[3]))
+        fig.tight_layout()
+        
 def compare_entrained_material(yps, labels, fname, ifig = 1):
     
     '''
