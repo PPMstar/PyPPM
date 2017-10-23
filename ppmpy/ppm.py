@@ -3856,7 +3856,104 @@ class yprofile(DataPlot):
             return x/1.e8, D, y0, y1
         else:
             return x/1.e8,D
+        
+    def plot_entrainment_rates(self,dumps,r1,r2,fit=False,fit_bounds=None,save=False,lims=None,
+                              Q = 1.944*1.60218e-6/1e43,RR = 8.3144598,amu = 1.66054e-24/1e27,
+                              airmu = 1.39165,cldmu = 0.725,fkair = 0.203606102635,
+                              fkcld = 0.885906040268,AtomicNoair = 6.65742024965,
+                              AtomicNocld = 1.34228187919):
+        '''
+        Plots entrainment rates for burnt and unburnt material
+        Parameters
+        ----------
+        data_path : string
+            data path
+        r1/r2 : float
+            This function will only search for the convective 
+            boundary in the range between r1/r2
+        fit : boolean, optional
+            show the fits used in finding the upper boundary
+        fit_bounds : [int,int]
+            The time to start and stop the fit for average entrainment
+            rate units in minutes
+        save : bool, optional
+            save the plot or not
+        lims : list, optional
+            axes lims [xl,xu,yl,yu]
 
+        '''
+        atomicnocldinv = 1./AtomicNocld
+        atomicnoairinv = 1./AtomicNoair
+        patience0 = 5
+        patience = 10
+
+        nd = len(dumps)
+        t = np.zeros(nd)
+        L_H = np.zeros(nd)
+
+        t00 = time.time()
+        t0 = t00
+        k = 0
+        for i in range(nd):
+            t[i] = self.get('t', fname = dumps[i], resolution = 'l')[-1]
+
+            if dumps[i] >= 620:
+                L_H[i] = self.get('L_C12pg', fname = dumps[i], resolution = 'l', airmu = airmu, \
+                                   cldmu = cldmu, fkair = fkair, fkcld = fkcld, AtomicNoair = AtomicNoair, \
+                                   AtomicNocld = AtomicNocld, corr_fact = 1.0)
+            else:
+                L_H[i] = 0.
+
+            t_now = time.time()
+            if (t_now - t0 >= patience) or \
+               ((t_now - t00 < patience) and (t_now - t00 >= patience0) and (k == 0)):
+                time_per_dump = (t_now - t00)/float(i + 1)
+                time_remaining = (nd - i - 1)*time_per_dump
+                print 'Processing will be done in {:.0f} s.'.format(time_remaining)
+                t0 = t_now
+                k += 1
+
+        ndot = L_H/Q
+        X_H = fkcld*1./AtomicNocld
+        mdot_L = 1.*amu*ndot/X_H
+        dt = cdiff(t)
+        m_HHe_burnt = (1e27/ast.msun_g)*np.cumsum(mdot_L*dt)        
+
+        m_HHe_present = self.entrainment_rate(dumps,r1,r2, var='vxz', criterion='min_grad', offset=-1., \
+                        integrate_both_fluids=False, show_output=False, return_time_series=True)
+
+        m_HHe_total = m_HHe_present + m_HHe_burnt
+        if fit_bounds is not None:
+            idx2 = range(np.argmin(t/60. < fit_bounds[0]), np.argmin(t/60. < fit_bounds[1]))
+            print(idx2)
+            m_HHe_total_fc2 = np.polyfit(t[idx2], m_HHe_total[idx2], 1)
+            m_HHe_total_fit2 = m_HHe_total_fc2[0]*t[idx2] + m_HHe_total_fc2[1]
+
+            mdot2 = m_HHe_total_fc2[0]
+            mdot2_str = '{:e}'.format(mdot2)
+            parts = mdot2_str.split('e')
+            mantissa = float(parts[0])
+            exponent = int(parts[1])
+            lbl2 = r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
+                  format(mantissa, exponent)
+
+        ifig = 1; pl.close(ifig); pl.figure(ifig)
+        if fit:
+            pl.plot(t[idx2]/60., m_HHe_total_fit2, '-', color =  'k', lw = 0.5, \
+                     zorder = 102, label = lbl2)
+        pl.plot(t/60., m_HHe_present, ':', color = cb(3), label = 'present')
+        pl.plot(t/60., m_HHe_burnt, '--', color = cb(6), label = 'burnt')
+        pl.plot(t/60., m_HHe_total, '-', color = cb(5), label = 'total')
+        pl.xlabel('t / min')
+        pl.ylabel(r'M$_\mathrm{HHe}$ [M_Sun]')
+        if lims is not None:
+            pl.axis(lims)
+        pl.gca().ticklabel_format(style='sci', scilimits=(0,0), axis='y')
+        pl.legend(loc = 0)
+        pl.tight_layout()
+        if save:
+            pl.savefig('entrainment_rate.pdf')
+            
     def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False, 
                          integrate_upwards=False, show_output=True, ifig0=1, \
@@ -4474,6 +4571,63 @@ def inv_map_posdef(y, p0, p1, s0, s1):
 
     return x
 
+def colourmap_from_str(str, segment=None):
+    
+    points = []
+    for line in str.splitlines():
+        parts = line.split()
+        if (len(parts) == 5) and (parts[0] == 'Cnot:'):
+            points.append(parts[1:])
+    
+    points = np.array(points, dtype=np.float)
+    points = points[points[:,0].argsort()]
+
+    if segment is not None:
+        # Index of the first point with value > segment[0].
+        idx0 = np.argmax(points[:, 0] > segment[0])
+        if idx0 > 0:
+            t = (float(segment[0]) - points[idx0 - 1, 0])/ \
+                (points[idx0, 0] - points[idx0 - 1, 0])
+                
+            new_point = (1. - t)*points[idx0 - 1, :] + t*points[idx0, :]
+            points = np.vstack([new_point, points[idx0:, :]])
+            
+        # Index of the first point with value > segment[1].
+        idx1 = np.argmax(points[:, 0] > segment[1])
+        if idx1 > 0:
+            t = (float(segment[1]) - points[idx1 - 1, 0])/ \
+                (points[idx1, 0] - points[idx1 - 1, 0])
+            
+            if t > 0.:
+                new_point = (1. - t)*points[idx1 - 1, :] + t*points[idx1, :]
+                points = np.vstack([points[0:idx1, :], new_point])
+            else:
+                points = points[0:idx1, :]
+
+    p0 = points[0, 0]
+    p1 = points[-1, 0]
+    for i in range(points.shape[0]):
+        points[i, 0] = (points[i, 0] - p0)/(p1 - p0)
+    
+    r = np.zeros((points.shape[0], 3))
+    r[:, 0] = points[:, 0]
+    r[:, 1] = points[:, 1]
+    r[:, 2] = points[:, 1]
+                 
+    g = np.zeros((points.shape[0], 3))
+    g[:, 0] = points[:, 0]
+    g[:, 1] = points[:, 2]
+    g[:, 2] = points[:, 2]
+                 
+    b = np.zeros((points.shape[0], 3))
+    b[:, 0] = points[:, 0]
+    b[:, 1] = points[:, 3]
+    b[:, 2] = points[:, 3]
+
+    cmap_points = {'red': r, 'green': g, 'blue': b}
+    cmap = matplotlib.colors.LinearSegmentedColormap('my_cmap', cmap_points)
+    
+    return cmap
 
 def make_colourmap(colours, alphas=None):
     '''
