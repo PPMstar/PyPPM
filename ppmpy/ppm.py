@@ -139,7 +139,7 @@ from scipy import optimize
 import copy
 import sys
 sys.path.insert(0, '/data/ppm_rpod2/lib/lcse')
-import rprofile as rprof
+#import rprofile as rprof
 
 cb = utils.colourblind
 
@@ -330,11 +330,11 @@ class yprofile(DataPlot):
             try:
                 sldir = ppm_path+'/'+sldir
             except:
-                print 'ppm_path not correctly set: '+sldir+' is not directory.'
+                print('ppm_path not correctly set: '+sldir+' is not directory.')
         self.sldir = sldir
         if not os.path.isdir(sldir):  # If the path still does not exist
-            print 'error: Directory, '+sldir+ ' not found'
-            print 'Now returning None'
+            print('error: Directory, '+sldir+ ' not found')
+            print('Now returning None')
             return None
         else:
             f=os.listdir(sldir) # reads the directory
@@ -343,13 +343,13 @@ class yprofile(DataPlot):
                     self.files.append(f[i])
             self.files.sort()
             if len(self.files)==0: # If there are no YProfile files in the directory
-                print 'Error: no YProfile named files exist in Directory'
-                print 'Now returning None'
+                print('Error: no YProfile named files exist in Directory')
+                print('Now returning None')
                 return None
             slname=self.files[len(self.files)-1] #
             self.slname = slname
             if not silent:
-                print "Reading attributes from file ",slname
+                print("Reading attributes from file ",slname)
             self.hattrs,self.dcols, self._cycle=self._readFile()
             # split the header into header attributes and top attributes
             self._splitHeader()
@@ -362,13 +362,13 @@ class yprofile(DataPlot):
             self.radbase = float(self.hattrs['At base of the convection zone R'])
             self.radtop  = float(self.hattrs['Thickness (Mm) of transition from convection to stability '].split()[4])
             if not silent:
-                print 'There are '+str(len(self.files))+' YProfile files in the ' +self.sldir+' directory.'
-                print 'Ndump values range from '+str(min(self.ndumpDict.keys()))+' to '+str(max(self.ndumpDict.keys()))
+                print('There are '+str(len(self.files))+' YProfile files in the ' +self.sldir+' directory.')
+                print('Ndump values range from '+str(min(self.ndumpDict.keys()))+' to '+str(max(self.ndumpDict.keys())))
             t=self.get('t',max(self.ndumpDict.keys()))
             t1=self.get('t',min(self.ndumpDict.keys()))
             if not silent:
-                print 'Time values range from '+ str(t1[-1])+' to '+str(t[-1])
-            self.cycles=self.ndumpDict.keys()
+                print('Time values range from '+ str(t1[-1])+' to '+str(t[-1]))
+            self.cycles=list(self.ndumpDict.keys())
         return None
 
     def ndumpDict(self, fileList, filename_offset=0):
@@ -388,7 +388,7 @@ class yprofile(DataPlot):
             
         """
         ndumpDict={}
-        for i in xrange(len(fileList)):
+        for i in range(len(fileList)):
             ndump=fileList[i].split("-")[-1]
             ndump=int(ndump.split(".")[0])
             ndump-=filename_offset
@@ -458,9 +458,9 @@ class yprofile(DataPlot):
         if fname==None:
             fname=max(self.ndumpDict.keys())
             if not silent:
-                print "Warning at yprofile.get(): fname is None, "\
+                print("Warning at yprofile.get(): fname is None, "\
                       "the last dump (%d) will be used." \
-                      % max(self.ndumpDict.keys())
+                      % max(self.ndumpDict.keys()))
 
         if attri in self.cattrs: # if it is a cycle attribute
             isCyc = True
@@ -482,8 +482,8 @@ class yprofile(DataPlot):
             res = self.computeData(attri, fname, numtype, silent=silent, **kwargs)
             if res is None:             
                 if not silent:
-                    print 'That Data name does not appear in this YProfile Directory'
-                    print 'Returning none'
+                    print('That Data name does not appear in this YProfile Directory')
+                    print('Returning none')
             return res 
 
     def getHeaderData(self, attri, silent=False):
@@ -509,8 +509,8 @@ class yprofile(DataPlot):
             isHead = True
         if not isHead:# Error checking
             if not silent:
-                print 'The attribute '+attri+' does not appear in these YProfiles'
-                print 'Returning None'
+                print('The attribute '+attri+' does not appear in these YProfiles')
+                print('Returning None')
             return None
         data=self.hattrs[attri] #Simple dictionary access
         return data
@@ -553,9 +553,9 @@ class yprofile(DataPlot):
         if FName==None: #By default choose the last YProfile
             FName=max(self.ndumpDict.keys())
             if not silent:
-                print "Warning at yprofile.getCycleData(): FName is None, "\
+                print("Warning at yprofile.getCycleData(): FName is None, "\
                       "the last dump (%d) will be used." % \
-                      max(self.ndumpDict.keys())
+                      max(self.ndumpDict.keys()))
 
         isCyc= False #If Attri is in the Cycle Atribute section
         boo=True
@@ -567,8 +567,8 @@ class yprofile(DataPlot):
 
         if attri not in self._cycle and isCyc:# Error checking
             if not silent:
-                print 'Sorry that Attribute does not appear in the fille'
-                print 'Returning None'
+                print('Sorry that Attribute does not appear in the fille')
+                print('Returning None')
             return None
 
         if not Single and isCyc:
@@ -684,8 +684,8 @@ class yprofile(DataPlot):
             f=open(FName, 'r')
         except IOError:
             if not silent:
-                print "That File, "+FName+ ", does not exist."
-                print 'Returning None'
+                print("That File, "+FName+ ", does not exist.")
+                print('Returning None')
             return None
         List=f.readlines()
         f.close()
@@ -706,7 +706,7 @@ class yprofile(DataPlot):
 
         if i==(len(List) -1) and len(num)==0: #error checking
             if not silent:
-                print "Attribute DNE in file, Returning None"
+                print("Attribute DNE in file, Returning None")
             return None
 
         for j in range(len(num)): #for each line that attri appears in
@@ -832,8 +832,8 @@ class yprofile(DataPlot):
             missing_args = get_missing_args(required_args, **kwargs)
             if len(missing_args) > 0:
                 if not silent:
-                    print 'The following arguments are missing: ', \
-                          missing_args
+                    print('The following arguments are missing: ', \
+                          missing_args)
                 return None
                 
             airmu = kwargs['airmu']
@@ -943,8 +943,8 @@ class yprofile(DataPlot):
             missing_args = get_missing_args(required_args, **kwargs)
             if len(missing_args) > 0:
                 if not silent:
-                    print 'The following arguments are missing: ', \
-                    missing_args
+                    print('The following arguments are missing: ', \
+                    missing_args)
                 return None
                 
             airmu = kwargs['airmu']
@@ -986,8 +986,8 @@ class yprofile(DataPlot):
             missing_args = get_missing_args(required_args, **kwargs)
             if len(missing_args) > 0:
                 if not silent:
-                    print 'The following arguments are missing: ', \
-                    missing_args
+                    print('The following arguments are missing: ', \
+                    missing_args)
                 return None
                 
             airmu = kwargs['airmu']
@@ -1018,8 +1018,8 @@ class yprofile(DataPlot):
             missing_args = get_missing_args(required_args, **kwargs)
             if len(missing_args) > 0:
                 if not silent:
-                    print 'The following arguments are missing: ', \
-                    missing_args
+                    print('The following arguments are missing: ', \
+                    missing_args)
                 return None
                 
             airmu = kwargs['airmu']
@@ -1125,7 +1125,7 @@ class yprofile(DataPlot):
                         numtype='ndump', silent=False, Q=9.35, \
                         corr_fact=1., corr_func=None, T9_func=None):
         if T9_func is None:
-            print 'Corrected T9 profile not supplied, using uncorrected T9.'
+            print('Corrected T9 profile not supplied, using uncorrected T9.')
             T9 = self.get('T9', fname=fname, numtype=numtype, \
                           resolution='l', airmu=airmu, cldmu=cldmu, \
                           silent=silent)
@@ -1205,7 +1205,7 @@ class yprofile(DataPlot):
                          numtype='ndump', silent=False, corr_fact=1., \
                          T9_func=None):
         if T9_func is None:
-            print 'Corrected T9 profile not supplied, using uncorrected T9.'
+            print('Corrected T9 profile not supplied, using uncorrected T9.')
             T9 = self.get('T9', fname=fname, numtype=numtype, \
                           resolution='l', airmu=airmu, cldmu=cldmu, \
                           silent=silent)
@@ -1270,18 +1270,18 @@ class yprofile(DataPlot):
                 FName=int(FName)
             except:
                 if not silent:
-                    print 'Improper value for NDump, choosing 0 instead'
+                    print('Improper value for NDump, choosing 0 instead')
                 FName=0
             if FName < 0:
                 if not silent:
-                    print 'User Cant select a negative NDump'
-                    print 'Reselecting NDump as 0'
+                    print('User Cant select a negative NDump')
+                    print('Reselecting NDump as 0')
                 FName=0
-            if FName not in self.ndumpDict.keys():
+            if FName not in list(self.ndumpDict.keys()):
                 if not silent:
-                    print 'NDump '+str(FName)+ ' Does not exist in this directory'
-                    print 'Reselecting NDump as the largest in the Directory'
-                    print 'Which is '+ str(max(self.ndumpDict.keys()))
+                    print('NDump '+str(FName)+ ' Does not exist in this directory')
+                    print('Reselecting NDump as the largest in the Directory')
+                    print('Which is '+ str(max(self.ndumpDict.keys())))
                 FName=max(self.ndumpDict.keys())
             boo=True
 
@@ -1290,17 +1290,17 @@ class yprofile(DataPlot):
                 FName=float(FName)
             except:
                 if not silent:
-                    print 'Improper value for time, choosing 0 instead'
+                    print('Improper value for time, choosing 0 instead')
                 FName=0
             if FName < 0:
                 if not silent:
-                    print 'A negative time does not exist, choosing a time = 0 instead'
+                    print('A negative time does not exist, choosing a time = 0 instead')
                 FName=0
             timeData=self.get('t',self.ndumpDict[max(self.ndumpDict.keys())],numtype='file')
-            keys=self.ndumpDict.keys()
+            keys=list(self.ndumpDict.keys())
             keys.sort()
             tmp=[]
-            for i in xrange(len(keys)):
+            for i in range(len(keys)):
                 tmp.append(timeData[keys[i]])
 
             timeData=tmp
@@ -1324,17 +1324,17 @@ class yprofile(DataPlot):
 
             if high >=low:
                 if not silent:
-                    print 'The closest time is at Ndump = ' +str(keys[indexL])
+                    print('The closest time is at Ndump = ' +str(keys[indexL]))
                 FName=keys[indexL]
             else:
                 if not silent:
-                   print 'The closest time is at Ndump = ' +str(keys[indexH])
+                   print('The closest time is at Ndump = ' +str(keys[indexH]))
                 FName=keys[indexH]
             boo=True
         else:
             if not silent:
-                print 'Please enter a valid numType Identifyer'
-                print 'Returning None'
+                print('Please enter a valid numType Identifyer')
+                print('Returning None')
             return None
 
         if boo:#here i assume all yprofile files start like 'YProfile-01-'
@@ -1356,8 +1356,8 @@ class yprofile(DataPlot):
 
 
         if len(header)!=len(self.hattrs): #error checking
-            print 'Header atribute error, directory has two YProfiles that have different header sections'
-            print 'Returning unchanged header'
+            print('Header atribute error, directory has two YProfiles that have different header sections')
+            print('Returning unchanged header')
             return None
         for i in range(len(header)):
             if header[i]==self.hattrs[i]: #if the headers are bothe the same, that means its a
@@ -1985,7 +1985,7 @@ class yprofile(DataPlot):
         avg_rms_v = {}
         for d in dumps:
             # Always take an average except the very end of the run.
-            v = get_avg_rms_velocities(self, range(d-int(Np/2), d+int(Np/2)),comp)
+            v = get_avg_rms_velocities(self, list(range(d-int(Np/2), d+int(Np/2))),comp)
 
             avg_rms_v[d] = v
         
@@ -2062,8 +2062,8 @@ class yprofile(DataPlot):
             pl.plot(r, A/A0 - 1., '-', marker = markers[i], color = cb(colours[i]), \
                      markevery = 50, label = r'$\tau_{{{:d}}}$'.format(i+1))
             if not silent:
-                print 'You wanted tau = {:.1f} min. yprofile.get() found the closest dump at t = {:.1f} min.\n'.\
-                  format(tau[i], t/60.)
+                print('You wanted tau = {:.1f} min. yprofile.get() found the closest dump at t = {:.1f} min.\n'.\
+                  format(tau[i], t/60.))
         pl.xlabel('r / Mm')
         pl.ylabel('A(t)/A(0) - 1')      
         if initial_conv_boundaries:
@@ -2294,18 +2294,18 @@ class yprofile(DataPlot):
         # the unit of G in the code is 10^{-3} g cm^3 s^{-2}
         G_code = ast.grav_const/1e-3
         
-        if fname1 < 0 or fname1 > np.max(self.ndumpDict.keys()):
+        if fname1 < 0 or fname1 > np.max(list(self.ndumpDict.keys())):
             raise IOError("fname1 out of range.")
         
         if fname2 == 0:
             raise IOError("Velocities at fname2=0 will be 0; please "+\
                           "make another choice")
         
-        if fname2 < 0 or fname2 > np.max(self.ndumpDict.keys()):
+        if fname2 < 0 or fname2 > np.max(list(self.ndumpDict.keys())):
             raise IOError("fname2 out of range.")
         
         if plot_type != 0 and plot_type != 1:
-            print "plot_type = %s is not implemented." % str(plot_type)
+            print("plot_type = %s is not implemented." % str(plot_type))
             return
         
         # get some header attributes
@@ -2333,34 +2333,34 @@ class yprofile(DataPlot):
         
         if R_top is not None:
             if R_top < min_r:
-                print "R_top too low."
+                print("R_top too low.")
                 return
             elif R_top > max_r:
-                print "R_top too high."
+                print("R_top too high.")
                 return
             else:
                 # centre R_top on the nearest cell
                 idx_top = np.argmin(np.abs(r - R_top))
                 R_top = r[idx_top]
-                print "R_top centred on the nearest cell: R_top = %.3f." % R_top
+                print("R_top centred on the nearest cell: R_top = %.3f." % R_top)
         else:
             # put R_top where fv_H_He is the closest to 0.9
             idx_top = np.argmin(np.abs(fv_H_He - 0.9))
             R_top = r[idx_top]
-            print "R_top set to %.3f." % R_top
+            print("R_top set to %.3f." % R_top)
         
         if R_low is not None:
             if R_low < min_r:
-                print "R_low too low."
+                print("R_low too low.")
                 return
             elif R_low >= R_top:
-                print "R_low too high."
+                print("R_low too high.")
                 return
             else:
                 # centre R_low on the nearest cell
                 idx_low = np.argmin(np.abs(r - R_low))
                 R_low = r[idx_low]
-                print "R_low centred on the nearest cell: R_low = %.3f." % R_low
+                print("R_low centred on the nearest cell: R_low = %.3f." % R_low)
         else:
             # the default setting
             R_low = R_top - 1.
@@ -2370,7 +2370,7 @@ class yprofile(DataPlot):
             # find the point nearest to r = R_low
             idx_low = np.argmin(np.abs(r - R_low))
             R_low = r[idx_low]
-            print "R_low centred on the cell nearest to R_top - 1: R_low = %.3f." % R_low
+            print("R_low centred on the cell nearest to R_top - 1: R_low = %.3f." % R_low)
         
         # centre R_bot on the nearest cell
         idx_bot = np.argmin(np.abs(r - R_bot))
@@ -2489,7 +2489,7 @@ class yprofile(DataPlot):
             
             # characteristic length scale on which velocities decrease at the boundary
             l_u = np.max(rms_u_xz[idx_top:(idx_low + 1)])/max_dudr
-            print "Velocities decrease on a characteristic length scale of %.2f Mm" % l_u
+            print("Velocities decrease on a characteristic length scale of %.2f Mm" % l_u)
             
             # grid of positions, at which Ri will be computed
             idx_grid = np.arange(idx_top, idx_low + 1)
@@ -2659,7 +2659,7 @@ class yprofile(DataPlot):
         r0 = r[idx]
         Hp0 = Hp[idx]
         
-        print r0, Hp0, idx
+        print(r0, Hp0, idx)
         
         D = D0 * np.exp(-2. * (r[idx:] - r0) / f / Hp0)
         return r[idx:] / 1.e8, D
@@ -2701,7 +2701,7 @@ class yprofile(DataPlot):
         r0 = r[idx]
         Hp0 = Hp[idx]
         if not silent:
-            print r0, Hp0, idx
+            print(r0, Hp0, idx)
                 
         D = 2. * D0 * 1./(1./(np.exp(-2. * (r - r0) / f1 / Hp0)) +
                          1./(np.exp(-2. * (r - r0) / f2 / Hp0))
@@ -2786,7 +2786,7 @@ class yprofile(DataPlot):
 
 
         xlong = self.get('Y',fname=fname1,resolution='l') # for plotting
-        if debug: print xlong
+        if debug: print(xlong)
         x = xlong
         x = x * 1.e8
 
@@ -2852,7 +2852,7 @@ class yprofile(DataPlot):
             x = x[::-1]
             y0 = y0[::-1]
 
-        if debug: print len(xlong), len(y0long)
+        if debug: print(len(xlong), len(y0long))
 
         idx0 = np.abs(np.array(self.cycles) - fname1).argmin()
         idx1 = np.abs(np.array(self.cycles) - fname2).argmin()
@@ -2866,7 +2866,7 @@ class yprofile(DataPlot):
         # a very small number of zones
         indexarray = np.where(np.diff(y1) == 0)[0]
         if not silent:
-            print 'removing zones:', indexarray
+            print('removing zones:', indexarray)
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
@@ -2887,9 +2887,9 @@ class yprofile(DataPlot):
         y0 = y0[101:]
         y1 = y1[101:]
 
-        if debug : print y0, y1, deltat
+        if debug : print(y0, y1, deltat)
         if not silent:
-            print 'deltat = ', deltat, 's'
+            print('deltat = ', deltat, 's')
         p = np.zeros(len(x))
         q = np.zeros(len(x))
         
@@ -2928,7 +2928,7 @@ class yprofile(DataPlot):
             p[0] = (y1[0] - y1l) * alpha
             q[0] = (y1[0] - y1[1]) * alpha
             if not silent:
-                print 'p0, q0 = ', p[0],q[0]
+                print('p0, q0 = ', p[0],q[0])
             
             # surface (right) boundary:
             xdum[0] = x[m-1]
@@ -2940,7 +2940,7 @@ class yprofile(DataPlot):
             p[m] = (y1[m] - y1[m-1]) * alpha
             q[m] = 0.
             if not silent:
-                print 'pm, qm = ', p[m],q[m]
+                print('pm, qm = ', p[m],q[m])
             
             G = np.zeros([len(x),len(x)])
             
@@ -2948,17 +2948,17 @@ class yprofile(DataPlot):
             
             for i in range(len(x)):
                 if not silent:
-                    print 'p[i] = ', p[i]
+                    print('p[i] = ', p[i])
                 G[i,i] = p[i]
-                if debug : print G[i,i]
+                if debug : print(G[i,i])
                 if i != len(x)-1 :
                     G[i,i+1] = q[i]
-                    if debug : print G[i,i+1]
+                    if debug : print(G[i,i+1])
         
             A = np.array( [ G[i,:] for i in range(len(x)) ] )
             if not silent:
-                print A[0]
-                print 'determinant = ', np.linalg.det(A)
+                print(A[0])
+                print('determinant = ', np.linalg.det(A))
             return A
         
         
@@ -2982,9 +2982,9 @@ class yprofile(DataPlot):
                 cmax = max(corr)
                 cmin = min(corr)
                 if not silent:
-                    print 'NEWTON: iter '+str(i)
-                    print 'max. correction = ', cmax
-                    print 'min. correction = ', cmin
+                    print('NEWTON: iter '+str(i))
+                    print('max. correction = ', cmax)
+                    print('min. correction = ', cmin)
                 xn = xnp1
             
             D = xnp1
@@ -3110,7 +3110,7 @@ class yprofile(DataPlot):
         
         
         xlong = self.get('Y',fname=fname1,resolution='l') # for plotting
-        if debug: print xlong
+        if debug: print(xlong)
         x = xlong
         x = x * 1.e8
         
@@ -3176,7 +3176,7 @@ class yprofile(DataPlot):
             x = x[::-1]
             y0 = y0[::-1]
         
-        if debug: print len(xlong), len(y0long)
+        if debug: print(len(xlong), len(y0long))
         
         idx0 = np.abs(np.array(self.cycles) - fname1).argmin()
         idx1 = np.abs(np.array(self.cycles) - fname2).argmin()
@@ -3189,7 +3189,7 @@ class yprofile(DataPlot):
         # rare inside the computational domain and limited to only
         # a very small number of zones
         indexarray = np.where(np.diff(y1) == 0)[0]
-        print 'removing zones:', indexarray
+        print('removing zones:', indexarray)
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
@@ -3210,8 +3210,8 @@ class yprofile(DataPlot):
         y0 = y0[1:]
         y1 = y1[1:]
         
-        if debug : print y0, y1, deltat
-        print 'deltat = ', deltat, 's'
+        if debug : print(y0, y1, deltat)
+        print('deltat = ', deltat, 's')
         p = np.zeros(len(x))
         q = np.zeros(len(x))
         
@@ -3350,7 +3350,7 @@ class yprofile(DataPlot):
     
     
         xlong = self.get('Y',fname=fname1,resolution='l') # for plotting
-        if debug: print xlong
+        if debug: print(xlong)
         x = xlong
         
         def mf(fluid,fname):
@@ -3406,7 +3406,7 @@ class yprofile(DataPlot):
 #                        break
 # ask user for now to identify the local min (noisy data)
                 pl.plot(r,x)
-                usr_rmin = raw_input("Please input local min in Mm: ")
+                usr_rmin = input("Please input local min in Mm: ")
                 usr_rmin = float(usr_rmin)
                 idxmin = np.abs( r - usr_rmin ).argmin()
                 for i in range(idxmin,len(r)):
@@ -3544,7 +3544,7 @@ class yprofile(DataPlot):
             y1long = y1
         
         
-        if debug: print len(xlong), len(y0long)
+        if debug: print(len(xlong), len(y0long))
         
         idx0 = np.abs(np.array(self.cycles) - fname1).argmin()
         idx1 = np.abs(np.array(self.cycles) - fname2).argmin()
@@ -3571,13 +3571,13 @@ class yprofile(DataPlot):
             idxu = np.where( y1 != 1. )[0][-1] + 1
             idxl = np.where( y1 != 0. )[0][0] - 1
         if not silent:
-            print idxl, idxu
-            print y1
+            print(idxl, idxu)
+            print(y1)
         y1 = y1[idxl:idxu]
         y0 = y0[idxl:idxu]
         x = x[idxl:idxu]
         if not silent:
-            print x[0], x[-1]
+            print(x[0], x[-1])
 
         # now we want to exclude any zones where the abundances
         # of neighboring cells are the same. This is hopefully
@@ -3585,7 +3585,7 @@ class yprofile(DataPlot):
         # a very small number of zones
         indexarray = np.where(np.diff(y1) == 0)[0]
         if not silent:
-            print 'removing zones:', indexarray
+            print('removing zones:', indexarray)
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
@@ -3611,7 +3611,7 @@ class yprofile(DataPlot):
                     
         D = D * 1.e16 # Mm^2/s ==> cm^2/s
         if not silent:
-            print D
+            print(D)
         x = x * 1e8   # Mm ==> cm
 
         cb = utils.colourblind
@@ -3725,7 +3725,7 @@ class yprofile(DataPlot):
         
         
         xlong = self.get('Y',fname=fname1,resolution='l') # for plotting
-        if debug: print xlong
+        if debug: print(xlong)
         x = xlong
         #        x = x * 1.e8
         
@@ -3791,7 +3791,7 @@ class yprofile(DataPlot):
             x = x[::-1]
             y0 = y0[::-1]
         
-        if debug: print len(xlong), len(y0long)
+        if debug: print(len(xlong), len(y0long))
         
         idx0 = np.abs(np.array(self.cycles) - fname1).argmin()
         idx1 = np.abs(np.array(self.cycles) - fname2).argmin()
@@ -3804,7 +3804,7 @@ class yprofile(DataPlot):
         # rare inside the computational domain and limited to only
         # a very small number of zones
         indexarray = np.where(np.diff(y0) == 0)[0]
-        print 'removing zones:', indexarray
+        print('removing zones:', indexarray)
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
@@ -3909,7 +3909,7 @@ class yprofile(DataPlot):
                ((t_now - t00 < patience) and (t_now - t00 >= patience0) and (k == 0)):
                 time_per_dump = (t_now - t00)/float(i + 1)
                 time_remaining = (nd - i - 1)*time_per_dump
-                print 'Processing will be done in {:.0f} s.'.format(time_remaining)
+                print('Processing will be done in {:.0f} s.'.format(time_remaining))
                 t0 = t_now
                 k += 1
 
@@ -3924,7 +3924,7 @@ class yprofile(DataPlot):
 
         m_HHe_total = m_HHe_present + m_HHe_burnt
         if fit_bounds is not None:
-            idx2 = range(np.argmin(t/60. < fit_bounds[0]), np.argmin(t/60. < fit_bounds[1]))
+            idx2 = list(range(np.argmin(t/60. < fit_bounds[0]), np.argmin(t/60. < fit_bounds[1])))
             print(idx2)
             m_HHe_total_fc2 = np.polyfit(t[idx2], m_HHe_total[idx2], 1)
             m_HHe_total_fit2 = m_HHe_total_fc2[0]*t[idx2] + m_HHe_total_fc2[1]
@@ -4063,11 +4063,11 @@ class yprofile(DataPlot):
             fig1.tight_layout()
 
             if not silent:
-                print 'r_b is the radius of the convective boundary.'
-                print 'r_b_fc = ', r_b_fc
-                print 'dr_b/dt = {:.2e} km/s\n'.format(1e3*r_b_fc[0])
-                print 'r_top is the upper limit for mass integration.'
-                print 'dr_top/dt = {:.2e} km/s'.format(1e3*r_top_fc[0])
+                print('r_b is the radius of the convective boundary.')
+                print('r_b_fc = ', r_b_fc)
+                print('dr_b/dt = {:.2e} km/s\n'.format(1e3*r_b_fc[0]))
+                print('r_top is the upper limit for mass integration.')
+                print('dr_top/dt = {:.2e} km/s'.format(1e3*r_top_fc[0]))
             
             max_val = np.max(m_ir)
             #if show_fits:
@@ -4111,9 +4111,9 @@ class yprofile(DataPlot):
                 fig2.savefig(file_name)
         
             if not silent:
-                print 'Resolution: {:d}^3'.format(2*len(r))
-                print 'm_ir_fc = ', m_ir_fc
-                print 'Entrainment rate: {:.3e} M_Sun/s'.format(mdot)
+                print('Resolution: {:d}^3'.format(2*len(r)))
+                print('m_ir_fc = ', m_ir_fc)
+                print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
         
         if return_time_series:
             return m_ir
@@ -4451,7 +4451,7 @@ class yprofile(DataPlot):
                ((t_now - t00 < patience) and (t_now - t00 >= patience0) and (k == 0)):
                 time_per_dump = (t_now - t00)/float(n)
                 time_remaining = (n_nonzero - n - 1.)*time_per_dump
-                print 'Processing will be done in {:.0f} s.'.format(time_remaining)
+                print('Processing will be done in {:.0f} s.'.format(time_remaining))
                 t0 = t_now
                 k += 1
 
@@ -4462,7 +4462,7 @@ class yprofile(DataPlot):
             else:
                 vlim = [np.min(var), np.max(var)]
                 
-            print 'vlim = [{:.3e}, {:.3e}]'.format(vlim[0], vlim[1])
+            print('vlim = [{:.3e}, {:.3e}]'.format(vlim[0], vlim[1]))
         
         var[where(var < vlim[0])] = vlim[0]
         var[where(var > vlim[1])] = vlim[1]
@@ -4641,8 +4641,8 @@ def make_colourmap(colours, alphas=None):
     indices_normed = np.array([float(c[0])/255. for c in colours])
     # enforce [0-1]
     if indices_normed[-1] != 1.:
-        print 'first/last colour indices:', indices_normed[-1]
-        print 'correcting to 1.'
+        print('first/last colour indices:', indices_normed[-1])
+        print('correcting to 1.')
         indices_normed[-1] = 1.
 
     rgb = colours
@@ -4778,13 +4778,13 @@ class LUT():
         colour_index_ticks = np.array(colour_index_ticks)
 
         if any(np.isinf(colour_index_ticks)):
-            print 'ticks out of range'
+            print('ticks out of range')
             return
 
-        print 'min/max ticks being set to:', minval, maxval
-        print 'corresponding to colour indices:', minidx, maxidx
-        print 'ticks being placed at:', ticks
-        print 'with colour indices:', colour_index_ticks
+        print('min/max ticks being set to:', minval, maxval)
+        print('corresponding to colour indices:', minidx, maxidx)
+        print('ticks being placed at:', ticks)
+        print('with colour indices:', colour_index_ticks)
 
         # OK, so now we have to make the colour map on the fly (because we are
         # having to sample the original LUT for the subsection we are
@@ -4820,7 +4820,7 @@ class LUT():
         gr = g0 + (g1 - g0)/(idx1 - idx0) * (maxidx - idx0)
         br = b0 + (b1 - b0)/(idx1 - idx0) * (maxidx - idx0)
 
-        print ileft, iright, minidx, maxidx
+        print(ileft, iright, minidx, maxidx)
 
         to_splice = copy.deepcopy(colours)[ileft:iright]
         newcolours = [[minidx, (rl, gl, bl)]] + to_splice + [[maxidx, (rr, gr, br)]]
@@ -4831,8 +4831,8 @@ class LUT():
         # renormalise index tick locations as well
         colour_index_ticks = 255.*\
             (colour_index_ticks - np.min(colour_index_ticks)) / colour_index_ticks.ptp()
-        print 'new colour indices:', newindices
-        print 'ticks now at:', colour_index_ticks
+        print('new colour indices:', newindices)
+        print('ticks now at:', colour_index_ticks)
 
         for i in range(len(newcolours)):
             newcolours[i][0] = newindices[i]
@@ -4856,7 +4856,7 @@ class LUT():
             cbar = pl.colorbar(ticks = colour_index_ticks)
             cbar.ax.set_yticklabels(ticks*scale_factor)
         cbar.solids.set_edgecolor('face')
-        cbar.ax.tick_params(axis=u'both', which=u'both',length=0,labelsize=6)
+        cbar.ax.tick_params(axis='both', which='both',length=0,labelsize=6)
         pl.draw()
 
         return cbar
@@ -5080,9 +5080,9 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
     hist_bins[-1] = hist_bins[-2] + (hist_bins[-2] - hist_bins[-3])
     #hist_bins = np.insert(hist_bins, 0., 0.)       # #robert - this command throws an error?!?
     if not silent:
-        print "Dump {:d} (t = {:.2f} min).".format(dump_to_plot, t[dump_to_plot]/60.)
-        print "Histogram constructed using dumps {:d} (t = {:.2f} min) to {:d} (t = {:.2f} min) inclusive."\
-            .format(hist_dump_min, t[hist_dump_min]/60., hist_dump_max, t[hist_dump_max]/60.)
+        print("Dump {:d} (t = {:.2f} min).".format(dump_to_plot, t[dump_to_plot]/60.))
+        print("Histogram constructed using dumps {:d} (t = {:.2f} min) to {:d} (t = {:.2f} min) inclusive."\
+            .format(hist_dump_min, t[hist_dump_min]/60., hist_dump_max, t[hist_dump_max]/60.))
 
     fig = pl.figure( figsize = (2*3.39, 2*2.8))   
     #fig = pl.figure( figsize = (2*5, 2*4)) 
@@ -5255,12 +5255,12 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
         try:
             prof = yprofile(ppm_path+case)
         except ValueError:
-            print "have you set the yprofile filepath using ppm.set_YProf_path?"
+            print("have you set the yprofile filepath using ppm.set_YProf_path?")
         if last_dump > prof.cycles[-1]:
             end = -1
         else:
             end = last_dump
-        cycles = range(prof.cycles[first_dump], prof.cycles[end], sparse)
+        cycles = list(range(prof.cycles[first_dump], prof.cycles[end], sparse))
         t, vr_max = get_v_evolution(prof, cycles, ymin, ymax, comp, RMS)
         pl.plot(t/60.,  1e3*vr_max,  color = cb(yy),\
                  marker = ls(yy)[1], markevery = markevery, label = case)
@@ -5308,9 +5308,9 @@ def luminosity_for_dump(path, get_t = False):
     except:
         
         rp_set = rprof.rprofile_set(path)
-        dumps = range(rp_set.dumps[0],\
+        dumps = list(range(rp_set.dumps[0],\
                       #rp_set.dumps[0]+100,1)
-                      rp_set.dumps[-1]+1,1)
+                      rp_set.dumps[-1]+1,1))
         r_rp = rp_set.get_dump(dumps[0]).get('y')
         dV_rp = 4.*np.pi*r_rp**2*cdiff(r_rp)
         is_yprofile = False
@@ -5357,7 +5357,7 @@ def luminosity_for_dump(path, get_t = False):
            ((t_now - t00 < patience) and (t_now - t00 >= patience0) and (k == 0)):
             time_per_dump = (t_now - t00)/float(i + 1)
             time_remaining = (nd - i - 1)*time_per_dump
-            print 'Processing will be done in {:.0f} s.'.format(time_remaining)
+            print('Processing will be done in {:.0f} s.'.format(time_remaining))
             t0 = t_now
             k += 1
     if get_t:        
@@ -5438,7 +5438,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101, airmu = 1.39165, cldmu = 0.
         try:
             yprofs[case] = yprofile(ppm_path+case)
         except ValueError:
-            print "have you set the yprofile filepath using ppm.set_YProf_path?"
+            print("have you set the yprofile filepath using ppm.set_YProf_path?")
         
         r = yprofs[case].get('Y', fname=0, resolution='l')
         res[case] = 2*len(r)
@@ -5453,7 +5453,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101, airmu = 1.39165, cldmu = 0.
     L_He = 2.25*2.98384E-03
 
     for this_case in cases:
-        print 'Processing {:s}...'.format(this_case)
+        print('Processing {:s}...'.format(this_case))
         
         dumps[this_case] = np.arange(min(yprofs[this_case].ndumpDict.keys()),\
            max(yprofs[this_case].ndumpDict.keys()) + 1, sparse)
@@ -5480,7 +5480,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101, airmu = 1.39165, cldmu = 0.
                ((t_now - t00 < patience) and (t_now - t00 >= patience0) and (k == 0)):
                 time_per_dump = (t_now - t00)/float(i + 1)
                 time_remaining = (nd[this_case] - i - 1)*time_per_dump
-                print 'Processing will be done in {:.0f} s.'.format(time_remaining)
+                print('Processing will be done in {:.0f} s.'.format(time_remaining))
                 t0 = t_now
                 k += 1
 
@@ -5744,16 +5744,16 @@ def plot_boundary_evolution(data_path, r1, r2, t_fit_start=700,
             pl.ylabel(r'r$_\mathrm{ub}$ / Mm')
         pl.legend(loc = 0, frameon = False)
         if not silent:
-            print 'The fitting starts at t = {:.1f} s = {:.1f} min.'.format(t_fit_start, t_fit_start/60.)
-            print ''
-            print 'Average:'
-            print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_avg[1], fc_avg[0])
-            print ''
-            print 'Positive fluctuations:'
-            print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_plus[1], fc_plus[0])
-            print ''
-            print 'Negative fluctuations:'
-            print '{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0])
+            print('The fitting starts at t = {:.1f} s = {:.1f} min.'.format(t_fit_start, t_fit_start/60.))
+            print('')
+            print('Average:')
+            print('{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_avg[1], fc_avg[0]))
+            print('')
+            print('Positive fluctuations:')
+            print('{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_plus[1], fc_plus[0]))
+            print('')
+            print('Negative fluctuations:')
+            print('{:.3e} Mm + ({:.3e} Mm/s)*t'.format(fc_minus[1], fc_minus[0]))
     else:
         def plot_data(ax):
             for i in range(n_buckets):
@@ -5974,7 +5974,7 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
     t = np.linspace(1., 0., num = points_per_side)
     for i in range(n_buckets):
         for k in range(corners_per_bucket):
-            idx_range = range(points_per_side*k, points_per_side*(k + 1))
+            idx_range = list(range(points_per_side*k, points_per_side*(k + 1)))
             x[i, idx_range] = t*corners[0, k - 1, i] + (1. - t)*corners[0, k, i]
             y[i, idx_range] = t*corners[1, k - 1, i] + (1. - t)*corners[1, k, i]
             z[i, idx_range] = t*corners[2, k - 1, i] + (1. - t)*corners[2, k, i]
@@ -6099,7 +6099,7 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
         if t > 1: t = 1.
         facecolor = cmap(t)
         x, y = m((180./np.pi)*phi2[i, :], (180./np.pi)*theta2[i, :])
-        xy = zip(x, y)
+        xy = list(zip(x, y))
         poly = Polygon(xy, facecolor = facecolor, edgecolor = facecolor, lw = 0.25)
         ax0.add_patch(poly)
     #m.drawmapboundary(color = 'k', linewidth = 1.5)
@@ -6223,7 +6223,7 @@ def plot_mach_number(rp_set,yp,dumps,ifig = 1,lims = None,insert = False,save=Fa
     try:
         Ma_max,t = get_mach_number(rp_set,yp,dumps)
     except:
-        print 'Dumps range must start at a value of 1 or greater'
+        print('Dumps range must start at a value of 1 or greater')
     ifig = ifig; pl.close(ifig); fig = pl.figure(ifig)
     ax1 = fig.add_subplot(111)
     ax1.plot(t/60., Ma_max, color=cb(3))
@@ -6527,7 +6527,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,
     rad2 = 9.8 # Mm
     rad  = 10. ** p.get('logR') * ast.rsun_cm / 1.e8
     if not silent:
-        print rad
+        print(rad)
 
     idx1 = np.abs(rad - rad1).argmin()
     idx2 = np.abs(rad - rad2).argmin()
@@ -6535,7 +6535,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,
     m2   = m[idx2]
 
     if not silent:
-        print m1, m2
+        print(m1, m2)
 
     if xthing1 is 'm':
         xthing = m
@@ -6856,7 +6856,7 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label, ifig0 = 3,
 
     for i in range(len(cases)):
         prof = yprofile(ppm_path + cases[i])
-        cycles = range(c0[i], c0[i] + Ncycles, 1)
+        cycles = list(range(c0[i], c0[i] + Ncycles, 1))
         #vt[i], vr[i] = find_max_velocities(prof, cycles, 7.5, 8.5, 4., 8., label = cases[i], ifig = i)
         t, v = get_v_evolution(prof, cycles, r1,r2,comp = comp, RMS = metric)
         vt[i] = np.mean(1e3*v)
