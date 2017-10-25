@@ -139,7 +139,7 @@ from scipy import optimize
 import copy
 import sys
 sys.path.insert(0, '/data/ppm_rpod2/lib/lcse')
-#import rprofile as rprof
+import rprofile as rprof
 
 cb = utils.colourblind
 
