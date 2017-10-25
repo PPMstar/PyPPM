@@ -136,6 +136,7 @@ import re
 import nugridpy.astronomy as ast
 import scipy.interpolate as interpolate
 from scipy import optimize
+from scipy import integrate as integrate
 import copy
 import sys
 sys.path.insert(0, '/data/ppm_rpod2/lib/lcse')
@@ -2024,8 +2025,9 @@ class yprofile(DataPlot):
         ----------
         tau : array
             times to plot
-        Nl : int
-            Number of lines to plot, spaced over every minute
+        Nl : range
+            Number of lines to plot, eg. range(0,10,1) would plot ten
+            dotted contour lines for every minute from 0 to 10
         lims : list
             Limits for the plot, i.e. [xl,xu,yl,yu].
             If None, the default values are used.
@@ -2056,7 +2058,7 @@ class yprofile(DataPlot):
         colours = [9, 3, 5, 8, 1, 6]
 
         ifig = ifig; pl.close(ifig); pl.figure(ifig)
-        for i in range(Nl):
+        for i in Nl:
             t = self.get('t', fname = 60.*100.*i, numtype = 'time', resolution = 'l', silent = True)[-1]
             A = self.get('A', fname = 60.*100.*i, numtype = 'time', resolution = 'l', silent = True)
             pl.plot(r, A/A0 - 1., ':', lw = 0.5, color = cb(4))
@@ -3884,7 +3886,6 @@ class yprofile(DataPlot):
             save the plot or not
         lims : list, optional
             axes lims [xl,xu,yl,yu]
-
         '''
         atomicnocldinv = 1./AtomicNocld
         atomicnoairinv = 1./AtomicNoair
@@ -3957,7 +3958,130 @@ class yprofile(DataPlot):
         pl.tight_layout()
         if save:
             pl.savefig('entrainment_rate.pdf')
-            
+
+    '''        
+    def plot_entrainment_rates(self,rp_set,dumps,r1,r2,burning_on_from=0,fit=False,fit_bounds=None,
+                               save=False,lims=None,T9_func=None,return_burnt=False,Q = 1.944,
+                               airmu = 1.39165,cldmu = 0.725,fkcld = 0.885906040268,
+                               AtomicNocld = 1.34228187919):
+        
+        Plots entrainment rates for burnt and unburnt material
+        
+        Parameters
+        ----------
+        rp_set : rp_set instance
+        r1/r2 : float
+            This function will only search for the convective 
+            boundary in the range between r1/r2
+        fit : boolean, optional
+            show the fits used in finding the upper boundary
+        fit_bounds : [int,int]
+            The time to start and stop the fit for average entrainment
+            rate units in minutes
+        save : bool, optional
+            save the plot or not
+        lims : list, optional
+            axes lims [xl,xu,yl,yu]
+
+        
+        amu = 1.66054e-24/1e27
+        atomicnocldinv = 1./AtomicNocld
+        patience0 = 5
+        patience = 10
+
+        nd = len(dumps)
+        t = np.zeros(nd)
+        L_C12C12 = np.zeros(nd)
+        
+        r = self.get('Y', fname=dumps[0], resolution='l')
+        idx_top = np.argmin(np.abs(r - r1))
+        idx = range(idx_top, len(r))
+        dV = -4.*np.pi*r**2*cdiff(r)
+        
+        t00 = time.time()
+        t0 = t00
+        k = 0
+        for i in range(nd):
+            t[i] = self.get('t', fname = dumps[i], resolution = 'l')[-1]
+
+            if dumps[i] >= burning_on_from:
+                enuc_C12C12 = self.get('enuc_C12C12', dumps[i], airmu=airmu, \
+                              cldmu=cldmu, fkcld=fkcld, AtomicNocld=AtomicNocld, \
+                              Q=Q, T9_func=T9_func)
+
+                rp = rp_set.get_dump(dumps[i])
+                avg_fv = rp.get_table('fv')[0, ::-1, 0]
+                sigma_fv = rp.get_table('fv')[3, ::-1, 0]
+
+                avg_fv[avg_fv < 1e-9] = 1e-9
+                eta = 1. + (sigma_fv/avg_fv)**2
+
+                # limit eta where avg_fv --> 0
+                eta[avg_fv < 1e-6] = 1.
+
+                L_C12C12[i] = np.sum(eta[idx]*enuc_C12C12[idx]*dV[idx])
+
+            t_now = time.time()
+            if (t_now - t0 >= patience) or \
+               ((t_now - t00 < patience) and \
+                (t_now - t00 >= patience0) and \
+                (k ==0)):
+                time_per_dump = (t_now - t00)/float(i + 1)
+                time_remaining = (nd - i - 1)*time_per_dump
+                print 'Processing will be done in {:.0f} s.'.format(time_remaining)
+                t0 = t_now
+                k += 1
+
+        # Mass fraction of C12 in the lighter fluid.
+        # N*fkcld*12*amu is the mass of C12 atoms in N atoms of the lighter fluid.
+        # N*AtomicNocld*amu is the mass of all of the N atoms.
+        X_C12 = fkcld*12./AtomicNocld
+
+        # Destruction rate of C12 atoms.
+        ndot = 2.*L_C12C12/(Q*1.60218e-6/1e43)
+        mdot_L = 12.*amu*ndot/X_C12
+
+        m_HHe_burnt = (1e27/ast.msun_g)*integrate.cumtrapz(mdot_L, x=t, initial=0.)   
+        
+        m_HHe_present = self.entrainment_rate(dumps,r1,r2, var='vxz', criterion='min_grad', offset=-1., \
+                            integrate_both_fluids=False, show_output=False, return_time_series=True)
+
+        m_HHe_total = m_HHe_present + m_HHe_burnt
+        
+        if fit_bounds is not None:
+            idx2 = range(np.argmin(t/60. < fit_bounds[0]), np.argmin(t/60. < fit_bounds[1]))
+            print(idx2)
+            m_HHe_total_fc2 = np.polyfit(t[idx2], m_HHe_total[idx2], 1)
+            m_HHe_total_fit2 = m_HHe_total_fc2[0]*t[idx2] + m_HHe_total_fc2[1]
+
+            mdot2 = m_HHe_total_fc2[0]
+            mdot2_str = '{:e}'.format(mdot2)
+            parts = mdot2_str.split('e')
+            mantissa = float(parts[0])
+            exponent = int(parts[1])
+            lbl2 = r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
+                  format(mantissa, exponent)
+
+        ifig = 1; pl.close(ifig); pl.figure(ifig)
+        if fit:
+            pl.plot(t[idx2]/60., m_HHe_total_fit2, '-', color =  'k', lw = 0.5, \
+                     zorder = 102, label = lbl2)
+        pl.plot(t/60., m_HHe_present, ':', color = cb(3), label = 'present')
+        pl.plot(t/60., m_HHe_burnt, '--', color = cb(6), label = 'burnt')
+        pl.plot(t/60., m_HHe_total, '-', color = cb(5), label = 'total')
+        pl.xlabel('t / min')
+        pl.ylabel(r'M$_\mathrm{HHe}$ [M_Sun]')
+        if lims is not None:
+            pl.axis(lims)
+        pl.gca().ticklabel_format(style='sci', scilimits=(0,0), axis='y')
+        pl.legend(loc = 0)
+        pl.tight_layout()
+        if save:
+            pl.savefig('entrainment_rate.pdf')
+        
+        if return_burnt:
+            return m_HHe_burnt
+    '''        
     def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False, 
                          integrate_upwards=False, show_output=True, ifig0=1, \
@@ -5213,8 +5337,8 @@ def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
             v[k] = np.max(v_rms[idx2:idx1])                
     return t, v
 
-def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig = 12, first_dump = 0,
-               last_dump = -1, lims = None):
+def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig = 12,
+                dumps = [0,-1], lims = None):
 
     '''
     Compares the time evolution of the max RMS velocity of different runs
@@ -5260,11 +5384,11 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
             prof = yprofile(ppm_path+case)
         except ValueError:
             print "have you set the yprofile filepath using ppm.set_YProf_path?"
-        if last_dump > prof.cycles[-1]:
+        if dumps[1] > prof.cycles[-1]:
             end = -1
         else:
             end = last_dump
-        cycles = range(prof.cycles[first_dump], prof.cycles[end], sparse)
+        cycles = range(prof.cycles[dumps[0]], prof.cycles[end], sparse)
         t, vr_max = get_v_evolution(prof, cycles, ymin, ymax, comp, RMS)
         pl.plot(t/60.,  1e3*vr_max,  color = cb(yy),\
                  marker = ls(yy)[1], markevery = markevery, label = case)
@@ -5414,9 +5538,9 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
     pl.legend(loc = 0)
     pl.tight_layout()
 
-def L_H_L_He_comparison(cases, sparse = 1, ifig=101, airmu = 1.39165, cldmu = 0.725,
-    fkair = 0.203606102635,fkcld = 0.885906040268,AtomicNoair = 6.65742024965,
-    AtomicNocld = 1.34228187919,markevery = 1,lims = None,save= False):
+def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airmu=1.39165,cldmu=0.725,
+    fkair=0.203606102635,fkcld=0.885906040268,AtomicNoair=6.65742024965,
+    AtomicNocld=1.34228187919,markevery=1,lims=None,save=False):
     
     '''
     Compares L_H to L_He, optional values are set to values from O-shell
@@ -5454,7 +5578,6 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101, airmu = 1.39165, cldmu = 0.
     nd = {}
     t = {}
     L_H = {}
-    L_He = 2.25*2.98384E-03
 
     for this_case in cases:
         print 'Processing {:s}...'.format(this_case)
@@ -5507,16 +5630,20 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101, airmu = 1.39165, cldmu = 0.
     if save:
         pl.savefig('L_H-L_He_'+cases[0]+cases[1]+cases[2]+'.pdf')
 
-def get_upper_bound(data_path, r1, r2):
+def get_upper_bound(data_path, r1, r2, sparse = 10):
 
     '''
     Returns information about the upper convective boundary
     
     Parameters
     ----------
+    data_path : string
+        path to rprofile set
     r1/r2 = float
         This function will only search for the convective 
         boundary in the range between r1/r2
+    sparse : int
+        What interval to plot data at
     
     Returns
     ------
@@ -5531,26 +5658,29 @@ def get_upper_bound(data_path, r1, r2):
     rp_set = rprof.rprofile_set(data_path)
 
     n_dumps = len(rp_set.dumps)
+    nt = len(range(0,n_dumps,sparse))
     n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
-    t = np.zeros(n_dumps)
-    r_ub = np.zeros((n_buckets, n_dumps))
 
-    for k in range(n_dumps):
+    t = np.zeros(nt)
+    r_ub = np.zeros((n_buckets, nt))
+    ll = 0
+    for k in range(0,n_dumps,sparse):
         rp = rp_set.get_dump(rp_set.dumps[k])
-        t[k] = rp.get('time')
+        t[ll] = rp.get('time')
 
         res = analyse_dump(rp, r1, r2)
         r = res[0]
         ut = res[1]
         dutdr = res[2]
-        r_ub[:, k] = res[3]
+        r_ub[:, ll] = res[3]
+        ll +=1
 
     avg_r_ub = np.sum(r_ub, axis = 0)/float(n_buckets)
     dev = np.array([r_ub[i, :] - avg_r_ub for i in range(n_buckets)])
-    sigmap_r_ub = np.zeros(n_dumps)
-    sigmam_r_ub = np.zeros(n_dumps)
-
-    for k in range(n_dumps):
+    sigmap_r_ub = np.zeros(nt)
+    sigmam_r_ub = np.zeros(nt)
+    
+    for k in range(nt):
         devp = dev[:, k]
         devp = devp[devp >= 0]
         if len(devp) > 0:
@@ -5701,16 +5831,20 @@ def plot_boundary_evolution(data_path, r1, r2, t_fit_start=700,
     cb = utils.colourblind
     
     rp_set = rprof.rprofile_set(data_path)
-
+    
     n_dumps = len(rp_set.dumps)
     n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
-    t = np.zeros(n_dumps)
-    r_ub = np.zeros((n_buckets, n_dumps))
-    
+
     if not r_int:
-        avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t = get_upper_bound(data_path, r1, r2)
+        res = get_upper_bound(data_path, r1, r2,sparse = sparse)
     else:
-        avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t = get_r_int(data_path, r_ref, gamma, sparse = sparse)
+        res = get_r_int(data_path, r_ref, gamma, sparse = sparse)
+    
+    avg_r_ub = res[0]
+    sigmam_r_ub = res[1]
+    sigmap_r_ub = res[2]
+    r_ub = res[3]
+    t = res[4]
     
     if show_fits:
         idx_fit_start = np.argmin(np.abs(t - t_fit_start))
@@ -6171,7 +6305,7 @@ def plot_Mollweide(rp_set, dump_min, dump_max, r1, r2, output_dir = None, Filena
         
     bucket_map(rp, dr_ub_avg, file_name = filename)
 
-def get_mach_number(rp_set,yp,dumps):
+def get_mach_number(rp_set,yp,dumps,comp):
     '''
     Returns max Mach number and matching time vector
     
@@ -6181,6 +6315,8 @@ def get_mach_number(rp_set,yp,dumps):
     rp_set: rprofile set instance
     dumps: range
         range of dumps to include
+    comp: string
+        'mean' 'max' or 'min' mach number
         
     Returns
     -------
@@ -6196,11 +6332,16 @@ def get_mach_number(rp_set,yp,dumps):
     for i in range(nd):
         rp = rp_set.get_dump(dumps[i])
         t[i] = yp.get('t', fname = dumps[i] - 1, resolution = 'l')[-1]
-        Ma_max[i] = np.max(rp.get_table('mach')[2, :, 0])
-    
+        if comp == 'max':
+            Ma_max[i] = np.max(rp.get_table('mach')[2, :, 0])
+        if comp == 'mean':
+            Ma_max[i] = np.mean(rp.get_table('mach')[0, :, 0])            
+        if comp == 'min': 
+            Ma_max[i] = np.min(rp.get_table('mach')[1, :, 0])
+            
     return Ma_max, t
 
-def plot_mach_number(rp_set,yp,dumps,ifig = 1,lims = None,insert = False,save=False,
+def plot_mach_number(rp_set,yp,dumps,comp = 'max',ifig = 1,lims =None,insert=False,save=False,\
                       prefix='PPM',format='pdf',lims_insert =None):
     '''
     Parameters
@@ -6225,7 +6366,7 @@ def plot_mach_number(rp_set,yp,dumps,ifig = 1,lims = None,insert = False,save=Fa
         see 'save' above
     '''
     try:
-        Ma_max,t = get_mach_number(rp_set,yp,dumps)
+        Ma_max,t = get_mach_number(rp_set,yp,dumps,comp)
     except:
         print 'Dumps range must start at a value of 1 or greater'
     ifig = ifig; pl.close(ifig); fig = pl.figure(ifig)
@@ -6235,7 +6376,12 @@ def plot_mach_number(rp_set,yp,dumps,ifig = 1,lims = None,insert = False,save=Fa
         ax1.set_xlim((lims[0],lims[1]))
         ax1.set_ylim((lims[2],lims[3]))
     ax1.set_xlabel('t / min')
-    ax1.set_ylabel(r'Ma$_\mathrm{max}$')
+    if comp == 'max':
+        ax1.set_ylabel(r'Ma$_\mathrm{max}$')
+    if comp == 'mean':
+        ax1.set_ylabel(r'Ma$_\mathrm{av}$')           
+    if comp == 'min': 
+        ax1.set_ylabel(r'Ma$_\mathrm{min}$')
     
     if insert:
         left, bottom, width, height = [0.27, 0.55, 0.3, 0.3]
@@ -6281,7 +6427,7 @@ def get_p_top(prof,dumps,r_top):
 
     return p_top,t
 
-def plot_p_top(yp,dumps,r_top,ifig = 1,lims = None,insert = False,save=False,
+def plot_p_top(yp,dumps,r_top,ifig = 1,lims = None,insert = False,save=False,\
                       prefix='PPM',format='pdf',lims_insert =None):
     '''
     Parameters
@@ -6327,7 +6473,9 @@ def plot_p_top(yp,dumps,r_top,ifig = 1,lims = None,insert = False,save=False,
     fig.tight_layout()
 
     if save:
-        pl.savefig(prefix+'_p_top_evolution.'+format,format=format)    
+        pl.savefig(prefix+'_p_top_evolution.'+format,format=format) 
+
+
 #####################################################
 # Files with mesa dependancy
 #####################################################
@@ -6454,9 +6602,9 @@ def plot_N2(case, dump1, dump2, lims1, lims2, mesa_A_model_num):
     ax2.set_xlim((lims2[0], lims2[1]))
     ax2.set_ylim((lims2[2],lims2[3]))
 
-def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,
-                     range_conv1 = None , range_conv2 = None,
-                     xlim = [0.5,2.5] , ylim = [8,13], radbase = 4.1297, 
+def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
+                     range_conv1 = None , range_conv2 = None,\
+                     xlim = [0.5,2.5] , ylim = [8,13], radbase = 4.1297,\
                      dlayerbot = 0.5, totallum = 20.153):
     '''
     Nuclear  energy  generation  rate (enuc) thermal  neutrino   
