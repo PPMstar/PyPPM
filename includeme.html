@@ -191,6 +191,21 @@ for all buckets  (except the 0th).</li>
 <dt id="ppmpy.ppm.bucket_map">
 <code class="descclassname">ppmpy.ppm.</code><code class="descname">bucket_map</code><span class="sig-paren">(</span><em>rprofile</em>, <em>quantity</em>, <em>limits=None</em>, <em>ticks=None</em>, <em>file_name=None</em>, <em>time=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.bucket_map" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots a Mollweide projection of the rprofile object using the mpl_toolkits.basemap package</p>
+<dl class="docutils">
+<dt>rprofile: rprofile object</dt>
+<dd>rprofile dump used just for geometry</dd>
+<dt>quantity: array</dt>
+<dd>data to be passed into the projection</dd>
+<dt>limits: 2 index array</dt>
+<dd>cmap limits, scale the colormap for limit[0] =min to
+limit[1] =max</dd>
+<dt>ticks:</dt>
+<dd>passed into matplotlib.colors.ColorbarBase see ColourbarBase</dd>
+<dt>file_name: string</dt>
+<dd>file name: ‘/path/filename’ to save the image as</dd>
+<dt>time: float</dt>
+<dd>time to display as the title</dd>
+</dl>
 </dd></dl>
 
 <dl class="function">
@@ -973,7 +988,6 @@ v_evolution([‘D15’,’D2’,’D1’], 4., 8.,’max’,’radial’)</p>
 </tr>
 </tbody>
 </table>
-<p class="rubric">Methods</p>
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.Aprof_time">
 <code class="descname">Aprof_time</code><span class="sig-paren">(</span><em>tau</em>, <em>Nl</em>, <em>lims=None</em>, <em>save=False</em>, <em>silent=True</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>initial_conv_boundaries=True</em>, <em>lw=1.0</em>, <em>ifig=12</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Aprof_time" title="Permalink to this definition">¶</a></dt>
