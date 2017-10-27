@@ -49,6 +49,62 @@ directory contains some YProfile files.</p>
 <p>If the user find any bugs or errors, please email us.</p>
 <div class="section" id="yprofile-files-assumptions">
 <h2>Yprofile files Assumptions<a class="headerlink" href="#yprofile-files-assumptions" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>labeled as YProfile-01-xxxx.bobaaa and the xxxx is the NDump that is
+located within each file.</li>
+<li>There can be a maximum of 9999 files in each directory.  The first 10
+lines of each file are the only place where header data is uniquely
+located.</li>
+<li>Header data is separated by five spaces and line breaks.</li>
+<li>An attribute cant be in the form of a number, ie if the user is able
+to ‘float(attribute)’ (in python) without an error attribute will not
+be returned.</li>
+<li>A row of column Names or Cycle Names is preceded and followed by a
+blank line.</li>
+<li>A block of data values are preceded and followed by a blank line
+except the last data block in the file, where it is not followed by a
+blank line.</li>
+<li>In the YProfile file, if a line of attributes contains the attribute
+Ndump, then that line of attributes and any other following lines of
+attributes in the file are cycle attributes.</li>
+</ul>
+</div>
+<div class="section" id="header-attribute-assumptions">
+<h2>Header Attribute Assumptions<a class="headerlink" href="#header-attribute-assumptions" title="Permalink to this headline">¶</a></h2>
+<ul class="simple">
+<li>Header attributes are separated by lines and instances of four spaces
+(    )</li>
+<li>Header attribute come in one of below here are things that do stuff
+with the data 6 types.</li>
+<li>The first type is the first attribute in the file. It is formatted in
+such a way that the name of the attribute is separated from its
+associated data with an equals sign ex.
+Stellar Conv. Luminosity =  1.61400E-02 x 10^43 ergs,</li>
+<li>The second type is when an attribute contains the sub string ‘grid;’.
+It is formatted in such a way such that there are 3 numerical values
+separated by ‘x’ which are then followed by the string ‘ grid;’ ex.
+384 x 384 x 384 grid;</li>
+<li>The third type is were name of the attribute is separated from its
+associated data with an equals sign.  Also that data may be followed
+by a unit of measurement. ex.
+Thickness (Mm) of heating shell =  1.00000E+00</li>
+<li>The fourth type is when an attribute contains a colon.  The String
+before the colon is the title of the attribute.  After the colon there
+is a list of n sub attributes, each with a sub title, and separated by
+its value with an equals sign.  Aslo each sub attribute is separated
+by a comma ex.
+At base of the convection zone:  R =  9.50000E+00,  g =  4.95450E-01,
+rho =  1.17400E+01,  p =  1.69600E+01</li>
+<li>The fifth is when an attribute starts with ‘and’.  after the and, the
+next word after has to be the same as one word contained in the
+previous attribute ex.
+and of transition from convection to stability =  5.00000E-01  at
+R =  3.00000E+01 Mm.</li>
+<li>The sixth is when there is a string or attribute title followed by two
+spaces followed by one value followed by two spaces followed by an
+‘and’ which is then followed by a second Value ex.
+Gravity turns on between radii   6.00000E+00  and   7.00000E+00  Mm.</li>
+</ul>
 <p class="rubric">Examples</p>
 <p>Here is an example runthrough.</p>
 <div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ppm</span> <span class="k">import</span> <span class="o">*</span>
@@ -77,6 +133,9 @@ directory contains some YProfile files.</p>
 </pre></div>
 </div>
 <p>and</p>
+<p>import ppmpy.ppm as ppm
+D1 = ppm.yprofile(‘/data/ppm_rpod2/YProfiles/O-shell-M25/D1’)
+D1.vprofs([90,100],log_logic=True)</p>
 <p>(<a class="reference external" href=".//includeme-1.py">Source code</a>, <a class="reference external" href=".//includeme-1.png">png</a>, <a class="reference external" href=".//includeme-1.hires.png">hires.png</a>, <a class="reference external" href=".//includeme-1.pdf">pdf</a>)</p>
 <div class="figure">
 <img alt="_images/includeme-1.png" src="_images/includeme-1.png" />
@@ -84,7 +143,7 @@ directory contains some YProfile files.</p>
 <p>plots the data.</p>
 <dl class="function">
 <dt id="ppmpy.ppm.L_H_L_He_comparison">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">L_H_L_He_comparison</code><span class="sig-paren">(</span><em>cases</em>, <em>sparse=1</em>, <em>ifig=101</em>, <em>airmu=1.39165</em>, <em>cldmu=0.725</em>, <em>fkair=0.203606102635</em>, <em>fkcld=0.885906040268</em>, <em>AtomicNoair=6.65742024965</em>, <em>AtomicNocld=1.34228187919</em>, <em>markevery=1</em>, <em>lims=None</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.L_H_L_He_comparison" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">L_H_L_He_comparison</code><span class="sig-paren">(</span><em>cases</em>, <em>sparse=1</em>, <em>ifig=101</em>, <em>L_He=0.006713640000000001</em>, <em>airmu=1.39165</em>, <em>cldmu=0.725</em>, <em>fkair=0.203606102635</em>, <em>fkcld=0.885906040268</em>, <em>AtomicNoair=6.65742024965</em>, <em>AtomicNocld=1.34228187919</em>, <em>markevery=1</em>, <em>lims=None</em>, <em>save=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.L_H_L_He_comparison" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compares L_H to L_He, optional values are set to values from O-shell
 burning paper.</p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -265,7 +324,7 @@ totallum = 20.153</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.get_mach_number">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">get_mach_number</code><span class="sig-paren">(</span><em>rp_set</em>, <em>yp</em>, <em>dumps</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.get_mach_number" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">get_mach_number</code><span class="sig-paren">(</span><em>rp_set</em>, <em>yp</em>, <em>dumps</em>, <em>comp</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.get_mach_number" title="Permalink to this definition">¶</a></dt>
 <dd><p>Returns max Mach number and matching time vector</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -275,6 +334,7 @@ totallum = 20.153</p>
 <li><strong>yp</strong> (<em>yprofile instance</em>) – </li>
 <li><strong>rp_set</strong> (<em>rprofile set instance</em>) – </li>
 <li><strong>dumps</strong> (<em>range</em>) – range of dumps to include</li>
+<li><strong>comp</strong> (<em>string</em>) – ‘mean’ ‘max’ or ‘min’ mach number</li>
 </ul>
 </td>
 </tr>
@@ -410,22 +470,28 @@ between sensitivity and the amount of noise.</li>
 
 <dl class="function">
 <dt id="ppmpy.ppm.get_upper_bound">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">get_upper_bound</code><span class="sig-paren">(</span><em>data_path</em>, <em>r1</em>, <em>r2</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.get_upper_bound" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">get_upper_bound</code><span class="sig-paren">(</span><em>data_path</em>, <em>r1</em>, <em>r2</em>, <em>sparse=10</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.get_upper_bound" title="Permalink to this definition">¶</a></dt>
 <dd><p>Returns information about the upper convective boundary</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>= float</strong> (<em>r1/r2</em>) – This function will only search for the convective
-boundary in the range between r1/r2</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>data_path</strong> (<em>string</em>) – path to rprofile set</li>
+<li><strong>= float</strong> (<em>r1/r2</em>) – This function will only search for the convective
+boundary in the range between r1/r2</li>
+<li><strong>sparse</strong> (<em>int</em>) – What interval to plot data at</li>
+</ul>
+</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><ul class="simple">
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><ul class="simple">
 <li><em>[all arrays]</em></li>
 <li><strong>avg_r_ub</strong> (<em>average radius of upper boundary</em>)</li>
 <li><strong>sigmam_r_ub/sigmap_r_ub</strong> (<em>2 sigma fluctuations in upper boundary</em>)</li>
 <li><strong>r_ub</strong> (<em>upper boundary</em>)</li>
 <li><strong>t</strong> (<em>time</em>)</li>
 </ul>
+</p>
 </td>
 </tr>
 </tbody>
@@ -617,7 +683,7 @@ pl.ylim(11,16)</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.plot_entr_v_ut">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_entr_v_ut</code><span class="sig-paren">(</span><em>cases</em>, <em>c0</em>, <em>Ncycles</em>, <em>r1</em>, <em>r2</em>, <em>comp</em>, <em>metric</em>, <em>label</em>, <em>ifig0=3</em>, <em>integrate_both_fluids=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_entr_v_ut" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_entr_v_ut</code><span class="sig-paren">(</span><em>cases</em>, <em>c0</em>, <em>Ncycles</em>, <em>r1</em>, <em>r2</em>, <em>comp</em>, <em>metric</em>, <em>label</em>, <em>ifig=3</em>, <em>integrate_both_fluids=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_entr_v_ut" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots entrainment rate vs max radial or tangential velocity</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -640,7 +706,7 @@ pl.ylim(11,16)</p>
 c0 = (241,154,142,155,123,78,355,241,124)
 global ppm_path
 ppm_path = ‘/data/ppm_rpod2/YProfiles/O-shell-M25/’
-plot_entr_v_ut(cases,c0,10,7.5,8.5,ifig0 = 3,</p>
+plot_entr_v_ut(cases,c0,10,7.5,8.5,ifig = 3,</p>
 <blockquote>
 <div>integrate_both_fluids = False)</div></blockquote>
 </dd></dl>
@@ -666,7 +732,7 @@ plot_entr_v_ut(cases,c0,10,7.5,8.5,ifig0 = 3,</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.plot_mach_number">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_mach_number</code><span class="sig-paren">(</span><em>rp_set</em>, <em>yp</em>, <em>dumps</em>, <em>ifig=1</em>, <em>lims=None</em>, <em>insert=False</em>, <em>save=False</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>lims_insert=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_mach_number" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_mach_number</code><span class="sig-paren">(</span><em>rp_set</em>, <em>yp</em>, <em>dumps</em>, <em>comp='max'</em>, <em>ifig=1</em>, <em>lims=None</em>, <em>insert=False</em>, <em>save=False</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>lims_insert=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_mach_number" title="Permalink to this definition">¶</a></dt>
 <dd><table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -874,7 +940,7 @@ upper_bound_ut(data_path, derivative, dump_to_plot,        hist_dump_min, hist_d
 
 <dl class="function">
 <dt id="ppmpy.ppm.v_evolution">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">v_evolution</code><span class="sig-paren">(</span><em>cases</em>, <em>ymin</em>, <em>ymax</em>, <em>comp</em>, <em>RMS</em>, <em>sparse=1</em>, <em>markevery=25</em>, <em>ifig=12</em>, <em>first_dump=0</em>, <em>last_dump=-1</em>, <em>lims=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.v_evolution" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">v_evolution</code><span class="sig-paren">(</span><em>cases, ymin, ymax, comp, RMS, sparse=1, markevery=25, ifig=12, dumps=[0, -1], lims=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.v_evolution" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compares the time evolution of the max RMS velocity of different runs</p>
 <p>Plots Fig. 12 in paper: “Idealized hydrodynamic simulations
 of turbulent oxygen-burning shell convection in 4 geometry”
@@ -928,7 +994,8 @@ v_evolution([‘D15’,’D2’,’D1’], 4., 8.,’max’,’radial’)</p>
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
 <li><strong>tau</strong> (<em>array</em>) – times to plot</li>
-<li><strong>Nl</strong> (<em>int</em>) – Number of lines to plot, spaced over every minute</li>
+<li><strong>Nl</strong> (<em>range</em>) – Number of lines to plot, eg. range(0,10,1) would plot ten
+dotted contour lines for every minute from 0 to 10</li>
 <li><strong>lims</strong> (<em>list</em>) – Limits for the plot, i.e. [xl,xu,yl,yu].
 If None, the default values are used.
 The default is None.</li>
@@ -1693,7 +1760,7 @@ attributes in YProfiles</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.vprofs">
-<code class="descname">vprofs</code><span class="sig-paren">(</span><em>fname, fname_type='discrete', log_logic=False, lims=None, save=False, prefix='PPM', format='pdf', initial_conv_boundaries=True, lw=1.0, label=True, ifig=11, which_to_plot=[True, True, True]</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.vprofs" title="Permalink to this definition">¶</a></dt>
+<code class="descname">vprofs</code><span class="sig-paren">(</span><em>fname, fname_type='discrete', log_logic=False, lims=None, save=False, prefix='PPM', format='pdf', initial_conv_boundaries=True, lw=1.0, label=True, ifig=11, which_to_plot=[True, True, True], run=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.vprofs" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot velocity profiles v_tot, v_Y and v_XZ for a given cycle number
 or list of cycle numbers (fname).
 If a list of cycle number is given, separate figures are made for
@@ -1727,6 +1794,7 @@ attributes in YProfiles</li>
 <li><strong>label</strong> (<em>string</em><em>, </em><em>optional</em>) – label for the line, if multiple models plotted</li>
 <li><strong>which_to_plot</strong> (<em>boolean array</em><em>, </em><em>optional</em>) – booleans as to whether to plot v_tot v_Y and v_XZ
 respectively True to plot</li>
+<li><strong>run</strong> (<em>string</em><em>, </em><em>optional</em>) – the name of the run</li>
 </ul>
 </td>
 </tr>
