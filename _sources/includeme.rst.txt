@@ -1,1 +1,1 @@
-.. include:: ../ppmpy/PPMpy.rst
+.. include:: ../modules/index.rst

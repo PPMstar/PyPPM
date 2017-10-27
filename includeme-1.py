@@ -3,4 +3,4 @@ import numpy as np
 x = np.random.randn(1000)
 plt.hist( x, 20)
 plt.grid()
-plt.title("Stats Stink!")
+plt.title("Stats Stats Stats!")
