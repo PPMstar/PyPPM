@@ -992,6 +992,182 @@ v_evolution([‘D15’,’D2’,’D1’], 4., 8.,’max’,’radial’)</p>
 </tbody>
 </table>
 <p class="rubric">Methods</p>
+<table border="1" class="longtable docutils">
+<colgroup>
+<col width="10%" />
+<col width="90%" />
+</colgroup>
+<tbody valign="top">
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.Aprof_time" title="ppmpy.ppm.yprofile.Aprof_time"><code class="xref py py-obj docutils literal"><span class="pre">Aprof_time</span></code></a>(tau,&nbsp;Nl[,&nbsp;lims,&nbsp;save,&nbsp;silent,&nbsp;…])</td>
+<td>Plots the same velocity profile at different times</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.Dinv" title="ppmpy.ppm.yprofile.Dinv"><code class="xref py py-obj docutils literal"><span class="pre">Dinv</span></code></a>(fname1,&nbsp;fname2[,&nbsp;fluid,&nbsp;numtype,&nbsp;…])</td>
+<td>Solve inverted diffusion equation to see what diffusion coefficient profile would have been appropriate to mimic the mixing of species seen in the Yprofile dumps.</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.Dov" title="ppmpy.ppm.yprofile.Dov"><code class="xref py py-obj docutils literal"><span class="pre">Dov</span></code></a>(r0,&nbsp;D0,&nbsp;f[,&nbsp;fname])</td>
+<td>Calculate and plot an exponentially decaying diffusion coefficient given an r0, D0 and f.</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.Dov2" title="ppmpy.ppm.yprofile.Dov2"><code class="xref py py-obj docutils literal"><span class="pre">Dov2</span></code></a>(r0,&nbsp;D0[,&nbsp;f1,&nbsp;f2,&nbsp;fname,&nbsp;silent])</td>
+<td>Calculate and plot an 2-parameter exponentially decaying diffusion coefficient given an r0, D0 and f1 and f2.</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.Dsolve" title="ppmpy.ppm.yprofile.Dsolve"><code class="xref py py-obj docutils literal"><span class="pre">Dsolve</span></code></a>(fname1,&nbsp;fname2[,&nbsp;fluid,&nbsp;numtype,&nbsp;…])</td>
+<td>Solve inverse diffusion equation sequentially by iterating over the spatial domain using a lower boundary condition (see MEB’s thesis, page 223, Eq.</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.Dsolvedown" title="ppmpy.ppm.yprofile.Dsolvedown"><code class="xref py py-obj docutils literal"><span class="pre">Dsolvedown</span></code></a>(fname1,&nbsp;fname2[,&nbsp;fluid,&nbsp;numtype,&nbsp;…])</td>
+<td>Solve diffusion equation sequentially by iterating over the spatial domain inwards from the upper boundary.</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.Dsolvedownexp" title="ppmpy.ppm.yprofile.Dsolvedownexp"><code class="xref py py-obj docutils literal"><span class="pre">Dsolvedownexp</span></code></a>(fname1,&nbsp;fname2[,&nbsp;fluid,&nbsp;…])</td>
+<td>Solve diffusion equation sequentially by iterating over the spatial domain inwards from the upper boundary.</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.Richardson_plot" title="ppmpy.ppm.yprofile.Richardson_plot"><code class="xref py py-obj docutils literal"><span class="pre">Richardson_plot</span></code></a>([fname1,&nbsp;fname2,&nbsp;R_low,&nbsp;…])</td>
+<td>Make a plot of radius vs tangential velocity in the vicinity of the boundary and draw on lines of constant Richardson number.</td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">abu_chart</span></code>(cycle[,&nbsp;mass_range,&nbsp;ilabel,&nbsp;…])</td>
+<td>Plots an abundance chart</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">abu_chartMulti</span></code>(cyclist[,&nbsp;mass_range,&nbsp;…])</td>
+<td>Method that plots abundence chart and saves those figures to a .png file (by default).</td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">abu_flux_chart</span></code>(cycle[,&nbsp;ilabel,&nbsp;imlabel,&nbsp;…])</td>
+<td>Plots an abundance and flux chart</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">abu_profile</span></code>([ixaxis,&nbsp;isos,&nbsp;ifig,&nbsp;fname,&nbsp;…])</td>
+<td>Plot common abundances as a function of either mass coordiate or radius.</td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">boundary_radius</span></code>(cycles,&nbsp;r_min,&nbsp;r_max[,&nbsp;var,&nbsp;…])</td>
+<td></td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">computeData</span></code>(attri,&nbsp;fname[,&nbsp;numtype,&nbsp;silent])</td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">density_profile</span></code>([ixaxis,&nbsp;ifig,&nbsp;colour,&nbsp;…])</td>
+<td>Plot density as a function of either mass coordiate or radius.</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">elem_abund</span></code>(cycle[,&nbsp;Z_range,&nbsp;mass_range,&nbsp;…])</td>
+<td>plot the abundance of all elements</td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">elemental_abund</span></code>(cycle[,&nbsp;zrange,&nbsp;ylim,&nbsp;…])</td>
+<td>Plot the decayed elemental abundance distribution (PPN).</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">entrainment_rate</span></code>(cycles,&nbsp;r_min,&nbsp;r_max[,&nbsp;…])</td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.findFile" title="ppmpy.ppm.yprofile.findFile"><code class="xref py py-obj docutils literal"><span class="pre">findFile</span></code></a>(FName[,&nbsp;numType,&nbsp;silent])</td>
+<td>Function that finds the associated file for FName when Fname is time or NDump.</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.get" title="ppmpy.ppm.yprofile.get"><code class="xref py py-obj docutils literal"><span class="pre">get</span></code></a>(attri[,&nbsp;fname,&nbsp;numtype,&nbsp;resolution,&nbsp;silent])</td>
+<td>Method that dynamically determines the type of attribute that is passed into this method.</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.getCattrs" title="ppmpy.ppm.yprofile.getCattrs"><code class="xref py py-obj docutils literal"><span class="pre">getCattrs</span></code></a>()</td>
+<td>returns the list of cycle attributes</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.getColData" title="ppmpy.ppm.yprofile.getColData"><code class="xref py py-obj docutils literal"><span class="pre">getColData</span></code></a>(attri,&nbsp;FName[,&nbsp;numType,&nbsp;…])</td>
+<td><table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">param attri:</th><td class="field-body">Attri is the attribute we are loking for.</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.getCycleData" title="ppmpy.ppm.yprofile.getCycleData"><code class="xref py py-obj docutils literal"><span class="pre">getCycleData</span></code></a>(attri[,&nbsp;FName,&nbsp;numType,&nbsp;…])</td>
+<td><table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">param attri:</th><td class="field-body">What we are looking for.</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.getDCols" title="ppmpy.ppm.yprofile.getDCols"><code class="xref py py-obj docutils literal"><span class="pre">getDCols</span></code></a>()</td>
+<td>returns the list of column attributes</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.getHattrs" title="ppmpy.ppm.yprofile.getHattrs"><code class="xref py py-obj docutils literal"><span class="pre">getHattrs</span></code></a>()</td>
+<td>returns the list of header attributes</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.getHeaderData" title="ppmpy.ppm.yprofile.getHeaderData"><code class="xref py py-obj docutils literal"><span class="pre">getHeaderData</span></code></a>(attri[,&nbsp;silent])</td>
+<td><table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">param attri:</th><td class="field-body">The name of the attribute.</td>
+</tr>
+</tbody>
+</table>
+</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.get_mass_fraction" title="ppmpy.ppm.yprofile.get_mass_fraction"><code class="xref py py-obj docutils literal"><span class="pre">get_mass_fraction</span></code></a>(fluid,&nbsp;fname,&nbsp;resolution)</td>
+<td>Get mass fraction profile of fluid ‘fluid’ at fname with resolution ‘resolution’.</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">iso_abund</span></code>(cycle[,&nbsp;stable,&nbsp;amass_range,&nbsp;…])</td>
+<td>plot the abundance of all the chemical species</td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">iso_abundMulti</span></code>(cyclist[,&nbsp;stable,&nbsp;…])</td>
+<td>Method that plots figures and saves those figures to a .png file.</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">movie</span></code>(cycles[,&nbsp;plotstyle,&nbsp;movname,&nbsp;fps])</td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.ndumpDict" title="ppmpy.ppm.yprofile.ndumpDict"><code class="xref py py-obj docutils literal"><span class="pre">ndumpDict</span></code></a>(fileList[,&nbsp;filename_offset])</td>
+<td>Method that creates a dictionary of Filenames with the associated key of the filename’s Ndump.</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">next</span></code>()</td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">plot</span></code>(atrix,&nbsp;atriy[,&nbsp;fname,&nbsp;numtype,&nbsp;legend,&nbsp;…])</td>
+<td>Simple function that plots atriy as a function of atrix</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">plotMulti</span></code>(atrix,&nbsp;atriy,&nbsp;cyclist,&nbsp;title[,&nbsp;…])</td>
+<td>Method for plotting multiple plots and saving it to multiple pngs or PDFs.</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.plot_entrainment_rates" title="ppmpy.ppm.yprofile.plot_entrainment_rates"><code class="xref py py-obj docutils literal"><span class="pre">plot_entrainment_rates</span></code></a>(dumps,&nbsp;r1,&nbsp;r2[,&nbsp;fit,&nbsp;…])</td>
+<td>Plots entrainment rates for burnt and unburnt material</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">plot_isopattern</span></code>(isos,&nbsp;normiso[,&nbsp;spec,&nbsp;…])</td>
+<td>This routine plots isotopic pattern plots for different input along with grain data.</td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">plot_isoratios</span></code>(xiso,&nbsp;yiso[,&nbsp;fign,&nbsp;spec,&nbsp;…])</td>
+<td>This is the new routine to plot isotopic ratios for ALL input.</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">plot_prof_1</span></code>(species,&nbsp;keystring,&nbsp;xlim1,&nbsp;…)</td>
+<td>Plot one species for cycle between xlim1 and xlim2 Only works with instances of se and mesa _profile.</td>
+</tr>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">plotprofMulti</span></code>(ini,&nbsp;end,&nbsp;delta,&nbsp;what_specie,&nbsp;…)</td>
+<td>create a movie with mass fractions vs mass coordinate between</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.prof_time" title="ppmpy.ppm.yprofile.prof_time"><code class="xref py py-obj docutils literal"><span class="pre">prof_time</span></code></a>(fname[,&nbsp;yaxis_thing,&nbsp;num_type,&nbsp;…])</td>
+<td>Plot the time evolution of a profile from multiple dumps of the same run (…on the same figure).</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.readTop" title="ppmpy.ppm.yprofile.readTop"><code class="xref py py-obj docutils literal"><span class="pre">readTop</span></code></a>(atri,&nbsp;filename[,&nbsp;stddir])</td>
+<td>Private routine that Finds and returns the associated value for attribute in the header section of the file.</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">spacetime_diagram</span></code>(var_name,&nbsp;nt,&nbsp;fig[,&nbsp;tlim,&nbsp;…])</td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.tEkmax" title="ppmpy.ppm.yprofile.tEkmax"><code class="xref py py-obj docutils literal"><span class="pre">tEkmax</span></code></a>([ifig,&nbsp;label,&nbsp;save,&nbsp;prefix,&nbsp;format,&nbsp;…])</td>
+<td>Plot maximum kinetic energy as a function of time.</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.tvmax" title="ppmpy.ppm.yprofile.tvmax"><code class="xref py py-obj docutils literal"><span class="pre">tvmax</span></code></a>([ifig,&nbsp;label,&nbsp;save,&nbsp;prefix,&nbsp;format,&nbsp;…])</td>
+<td>Plot maximum velocity as a function of time.</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.vaverage" title="ppmpy.ppm.yprofile.vaverage"><code class="xref py py-obj docutils literal"><span class="pre">vaverage</span></code></a>([vi,&nbsp;transient,&nbsp;sparse,&nbsp;showfig])</td>
+<td>plots and returns the average velocity profile for a given</td>
+</tr>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.vprof_time" title="ppmpy.ppm.yprofile.vprof_time"><code class="xref py py-obj docutils literal"><span class="pre">vprof_time</span></code></a>(dumps,&nbsp;Np[,&nbsp;comp,&nbsp;lims,&nbsp;save,&nbsp;…])</td>
+<td>Plots the same velocity profile at different times</td>
+</tr>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.yprofile.vprofs" title="ppmpy.ppm.yprofile.vprofs"><code class="xref py py-obj docutils literal"><span class="pre">vprofs</span></code></a>(fname[,&nbsp;fname_type,&nbsp;log_logic,&nbsp;lims,&nbsp;…])</td>
+<td>Plot velocity profiles v_tot, v_Y and v_XZ for a given cycle number or list of cycle numbers (fname).</td>
+</tr>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">ye_profile</span></code>([ixaxis,&nbsp;ifig,&nbsp;colour,&nbsp;label,&nbsp;fname])</td>
+<td>Plot electron fraction Y_e as a function of either mass coordiate or radius.</td>
+</tr>
+</tbody>
+</table>
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.Aprof_time">
 <code class="descname">Aprof_time</code><span class="sig-paren">(</span><em>tau</em>, <em>Nl</em>, <em>lims=None</em>, <em>save=False</em>, <em>silent=True</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>initial_conv_boundaries=True</em>, <em>lw=1.0</em>, <em>ifig=12</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Aprof_time" title="Permalink to this definition">¶</a></dt>
@@ -1340,21 +1516,17 @@ an incompressible fluid.</p>
 <blockquote>
 <div><dl class="docutils">
 <dt>plot_type <span class="classifier-delimiter">:</span> <span class="classifier">int</span></dt>
-<dd><dl class="first last docutils">
-<dt>plot_type = 0: Use a variable lower endpoint and a fixed upper endpoint of</dt>
-<dd><dl class="first docutils">
-<dt>the radial interval, in which Ri is calculated. Ri is plotted</dt>
-<dd>for a range of assumed velocity differences with respect to</dd>
-</dl>
-<p class="last">the upper endpoint.</p>
-</dd>
-<dt>plot_type = 1: Compute Ri locally assuming that the local velocities vanish</dt>
-<dd>on a certain length scale, which is computed from the radial
-profile of the RMS horizontal velocity.</dd>
-</dl>
-</dd>
+<dd>plot_type = 0: Use a variable lower endpoint and a fixed upper endpoint of</dd>
 </dl>
 </div></blockquote>
+<dl class="docutils">
+<dt>the radial interval, in which Ri is calculated. Ri is plotted</dt>
+<dd>for a range of assumed velocity differences with respect to</dd>
+<dt>the upper endpoint.</dt>
+<dd>plot_type = 1: Compute Ri locally assuming that the local velocities vanish</dd>
+</dl>
+<p>on a certain length scale, which is computed from the radial
+profile of the RMS horizontal velocity.</p>
 </li>
 <li><strong>ifig</strong> (<em>int</em>) – Figure number for the Richardson plot (a new window must be opened).</li>
 </ul>
