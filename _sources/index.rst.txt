@@ -14,16 +14,13 @@ In principle the NuGridPy package can be used on any stellar evolution code outp
 
 NuGridPy has been made possible, in part, through support from JINA, Humboldt Foundation and NSERC to NuGrid and its members.
 
+Documentation:
+----------------------------
+.. autosummary::
+   :toctree: _autosummary
 
-.. toctree::
-   :maxdepth: 3
-   :caption: Contents:
-   
-   PPM
+   ppmpy.ppm
 
-
-Indices and tables
-==================
 
 * :ref:`genindex`
 * :ref:`modindex`
