@@ -94,7 +94,7 @@
 some analysis involving Rprofile files and Mesa stellar models.</p>
 <p>Simple session for working with ppmpy, here I assume user’s working on</p>
 <p><a class="reference external" href="https://astrohub.uvic.ca/">astrohub</a></p>
-<p>Which is the intended environment for ppmpy.</p>
+<p>which is the intended environment for ppmpy.</p>
 <p>If the user find any bugs or errors, please email us.</p>
 <p class="rubric">Example</p>
 <p>Here is an example runthrough.</p>
@@ -270,10 +270,10 @@ some analysis involving Rprofile files and Mesa stellar models.</p>
 <td>for given user and run create YProfile dir in run dir and link all</td>
 </tr>
 <tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.prof_compare" title="ppmpy.ppm.prof_compare"><code class="xref py py-obj docutils literal"><span class="pre">prof_compare</span></code></a>(cases[,&nbsp;ndump,&nbsp;yaxis_thing,&nbsp;…])</td>
-<td>Compare profiles of quantities from multiple PPM Yprofile instances at a     given time of nump number.</td>
+<td>Compare profiles of quantities from multiple PPM Yprofile instances at a given time of nump number.</td>
 </tr>
 <tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.set_YProf_path" title="ppmpy.ppm.set_YProf_path"><code class="xref py py-obj docutils literal"><span class="pre">set_YProf_path</span></code></a>(path[,&nbsp;YProf_fname])</td>
-<td></td>
+<td>Set path to location where YProfile directories can be found.</td>
 </tr>
 <tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">set_nice_params</span></code>()</td>
 <td></td>
@@ -1001,10 +1001,8 @@ YProfile data from dump directories</p>
 <dl class="function">
 <dt id="ppmpy.ppm.prof_compare">
 <code class="descclassname">ppmpy.ppm.</code><code class="descname">prof_compare</code><span class="sig-paren">(</span><em>cases</em>, <em>ndump=None</em>, <em>yaxis_thing='FV H+He'</em>, <em>ifig=None</em>, <em>num_type='ndump'</em>, <em>labels=None</em>, <em>logy=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.prof_compare" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="docutils">
-<dt>Compare profiles of quantities from multiple PPM Yprofile instances at a</dt>
-<dd>given time of nump number.</dd>
-</dl>
+<dd><p>Compare profiles of quantities from multiple PPM Yprofile instances at a
+given time of nump number.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -1033,16 +1031,26 @@ The default is True.</li>
 </tr>
 </tbody>
 </table>
-<p class="rubric">Examples</p>
-<p>import ppm
-run1=’/rpod3/fherwig/PPM/RUNS_DATA/VLTP_MESA_M0.542/C1’
-run2=’/rpod3/fherwig/PPM/RUNS_DATA/sakurai-num-exp-robustness-onset-GOSH/A1’
-YY=ppm.yprofile(run1)
-YY2=ppm.yprofile(run2)
-ppm.prof_compare([YY,YY2],ndump=100,num_type=’time’,</p>
-<blockquote>
-<div>labels=[‘VLTP_0.543’,’SAK’],yaxis_thing=’Rho’,
-logy=False)</div></blockquote>
+<p class="rubric">Example</p>
+<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
+<span class="gp">   ...: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
+<span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
+<span class="gp">   ...: </span>
+
+<span class="gp">In [5]: </span><span class="n">D2</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D2&#39;</span><span class="p">)</span>
+<span class="gp">   ...: </span><span class="n">D1</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D1&#39;</span><span class="p">)</span>
+<span class="gp">   ...: </span><span class="n">prof_compare</span><span class="p">([</span><span class="n">D2</span><span class="p">,</span><span class="n">D1</span><span class="p">])</span>
+<span class="gp">   ...: </span>
+<span class="gt">---------------------------------------------------------------------------</span>
+<span class="ne">NameError</span><span class="g g-Whitespace">                                 </span>Traceback (most recent call last)
+<span class="nn">&lt;ipython-input-7-b4268366d5f3&gt;</span> in <span class="ni">&lt;module&gt;</span><span class="nt">()</span>
+<span class="ne">----&gt; </span><span class="mi">1</span> <span class="n">prof_compare</span><span class="p">([</span><span class="n">D2</span><span class="p">,</span><span class="n">D1</span><span class="p">])</span>
+
+<span class="ne">NameError</span>: name &#39;prof_compare&#39; is not defined
+</pre></div>
+</div>
+<p>(<a class="reference external" href="../_autosummary/ppmpy-ppm-2.py">Source code</a>)</p>
 </dd></dl>
 
 <dl class="function">
@@ -1511,6 +1519,33 @@ profile of the RMS horizontal velocity.</p>
 </dd></dl>
 
 <dl class="method">
+<dt id="ppmpy.ppm.yprofile.computeData">
+<code class="descname">computeData</code><span class="sig-paren">(</span><em>attri</em>, <em>fname</em>, <em>numtype='ndump'</em>, <em>silent=False</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.computeData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Method for computing data not in Yprofile file</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>attri</strong> (<em>str</em>) – What you are looking for</li>
+<li><strong>fname</strong> (<em>int</em>) – what dump or time you are look for attri at
+time or dump specifies by numtype.</li>
+<li><strong>numtype</strong> (<em>str</em><em>, </em><em>optional</em>) – ‘ndump’ or ‘time’ depending on which you are
+looking for</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>attri</strong> – An array for the attirbute you are looking for</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">array</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
 <dt id="ppmpy.ppm.yprofile.findFile">
 <code class="descname">findFile</code><span class="sig-paren">(</span><em>FName</em>, <em>numType='FILE'</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.findFile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Function that finds the associated file for FName when Fname
@@ -1519,7 +1554,7 @@ is time or NDump.</p>
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
 <li><strong>FName</strong> (<em>string</em>) – The name of the file, Ndump or time we are looking for.</li>
 <li><strong>numType</strong> (<em>string</em><em>, </em><em>optional</em>) – Designates how this function acts and how it interprets
 FName.  If numType is ‘file’, this function will get the
@@ -1528,6 +1563,12 @@ function will look at the cycle with that nDump.  If
 numType is ‘T’ or ‘time’ function will find the cycle with
 the closest time stamp.  The default is “FILE”.</li>
 </ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><strong>FName</strong> – The number corresponding to the file.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">int</p>
 </td>
 </tr>
 </tbody>
@@ -1574,7 +1615,8 @@ largest, ‘l’ will return the lowest. The default is ‘H’.</li>
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.getColData">
 <code class="descname">getColData</code><span class="sig-paren">(</span><em>attri</em>, <em>FName</em>, <em>numType='ndump'</em>, <em>resolution='H'</em>, <em>cycle=False</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.getColData" title="Permalink to this definition">¶</a></dt>
-<dd><table class="docutils field-list" frame="void" rules="none">
+<dd><p>Method that returns column data.</p>
+<table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
@@ -1777,10 +1819,18 @@ more than one case</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<p>import ppm
-run=’/rpod3/fherwig/PPM/RUNS_DATA/VLTP_MESA_M0.542/C1’
-YY=ppm.yprofile(run)
-YY.prof_time([0,5,10,15,20,25],logy=False,num_type=’time’,radbase=10.7681,radtop=23.4042)</p>
+<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
+<span class="gp">   ...: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
+<span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
+<span class="gp">   ...: </span>
+
+<span class="gp">In [5]: </span><span class="n">D2</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D2&#39;</span><span class="p">)</span>
+<span class="gp">   ...: </span><span class="n">D2</span><span class="o">.</span><span class="n">prof_time</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">10</span><span class="p">],</span><span class="n">logy</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span><span class="n">num_type</span><span class="o">=</span><span class="s1">&#39;time&#39;</span><span class="p">)</span>
+<span class="gp">   ...: </span>
+</pre></div>
+</div>
+<p>(<a class="reference external" href="../_autosummary/ppmpy-ppm-3.py">Source code</a>)</p>
 </dd></dl>
 
 <dl class="method">
