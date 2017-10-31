@@ -5,7 +5,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>ppmpy.ppm &#8212; PPMstar 0 documentation</title>
+    <title>ppm &#8212; PPMstar 0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
     <script type="text/javascript">
@@ -24,7 +24,7 @@
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="prev" title="PyPPM" href="../index.html" />
+    <link rel="prev" title="Installation" href="../installation.html" />
    
   <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
   
@@ -33,115 +33,118 @@
 
   </head>
   <body>
-  
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../index.html">
+    <img class="logo" src="../_static/logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">PPMstar</h1>
+    
+  </a>
+</p>
 
-    <div class="document">
+
+
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=PPMstar&repo=PyPPM&type=watch&count=true&size=large&v=2"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html#data-assumptions">Data Assumptions</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">ppm</a></li>
+</ul>
+
+
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
       <div class="documentwrapper">
         <div class="bodywrapper">
           <div class="body" role="main">
             
   <div class="section" id="module-ppmpy.ppm">
-<span id="ppmpy-ppm"></span><h1>ppmpy.ppm<a class="headerlink" href="#module-ppmpy.ppm" title="Permalink to this headline">¶</a></h1>
-<p>ppm.py</p>
+<span id="ppm"></span><h1>ppm<a class="headerlink" href="#module-ppmpy.ppm" title="Permalink to this headline">¶</a></h1>
+<p>ppmpy.ppm</p>
 <p>PPM is a Python module for reading Yprofile-01-xxxx.bobaaa files.
 Simple session for working with ppm.py, here I assume user’s working
 directory contains some YProfile files.</p>
 <p>If the user find any bugs or errors, please email us.</p>
-<div class="section" id="yprofile-files-assumptions">
-<h2>Yprofile files Assumptions<a class="headerlink" href="#yprofile-files-assumptions" title="Permalink to this headline">¶</a></h2>
-<ul class="simple">
-<li>labeled as YProfile-01-xxxx.bobaaa and the xxxx is the NDump that is
-located within each file.</li>
-<li>There can be a maximum of 9999 files in each directory.  The first 10
-lines of each file are the only place where header data is uniquely
-located.</li>
-<li>Header data is separated by five spaces and line breaks.</li>
-<li>An attribute cant be in the form of a number, ie if the user is able
-to ‘float(attribute)’ (in python) without an error attribute will not
-be returned.</li>
-<li>A row of column Names or Cycle Names is preceded and followed by a
-blank line.</li>
-<li>A block of data values are preceded and followed by a blank line
-except the last data block in the file, where it is not followed by a
-blank line.</li>
-<li>In the YProfile file, if a line of attributes contains the attribute
-Ndump, then that line of attributes and any other following lines of
-attributes in the file are cycle attributes.</li>
-</ul>
-</div>
-<div class="section" id="header-attribute-assumptions">
-<h2>Header Attribute Assumptions<a class="headerlink" href="#header-attribute-assumptions" title="Permalink to this headline">¶</a></h2>
-<ul class="simple">
-<li>Header attributes are separated by lines and instances of four spaces
-(    )</li>
-<li>Header attribute come in one of below here are things that do stuff
-with the data 6 types.</li>
-<li>The first type is the first attribute in the file. It is formatted in
-such a way that the name of the attribute is separated from its
-associated data with an equals sign ex.
-Stellar Conv. Luminosity =  1.61400E-02 x 10^43 ergs,</li>
-<li>The second type is when an attribute contains the sub string ‘grid;’.
-It is formatted in such a way such that there are 3 numerical values
-separated by ‘x’ which are then followed by the string ‘ grid;’ ex.
-384 x 384 x 384 grid;</li>
-<li>The third type is were name of the attribute is separated from its
-associated data with an equals sign.  Also that data may be followed
-by a unit of measurement. ex.
-Thickness (Mm) of heating shell =  1.00000E+00</li>
-<li>The fourth type is when an attribute contains a colon.  The String
-before the colon is the title of the attribute.  After the colon there
-is a list of n sub attributes, each with a sub title, and separated by
-its value with an equals sign.  Aslo each sub attribute is separated
-by a comma ex.
-At base of the convection zone:  R =  9.50000E+00,  g =  4.95450E-01,
-rho =  1.17400E+01,  p =  1.69600E+01</li>
-<li>The fifth is when an attribute starts with ‘and’.  after the and, the
-next word after has to be the same as one word contained in the
-previous attribute ex.
-and of transition from convection to stability =  5.00000E-01  at
-R =  3.00000E+01 Mm.</li>
-<li>The sixth is when there is a string or attribute title followed by two
-spaces followed by one value followed by two spaces followed by an
-‘and’ which is then followed by a second Value ex.
-Gravity turns on between radii   6.00000E+00  and   7.00000E+00  Mm.</li>
-</ul>
-<p class="rubric">Examples</p>
+<p class="rubric">Example</p>
 <p>Here is an example runthrough.</p>
-<div class="highlight-default"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">ppm</span> <span class="k">import</span> <span class="o">*</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">p</span><span class="o">=</span><span class="n">y_profile</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">head</span><span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">hattri</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">cols</span><span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">dcols</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">cyc</span><span class="o">=</span><span class="n">p</span><span class="o">.</span><span class="n">cattri</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span> <span class="n">head</span>
-<span class="go">[[&#39;Stellar Conv. Luminosity&#39;, &#39;1.61400E-02 x 10^43 ergs,&#39;], [&#39;384 x 384 x 384 grid;&#39;], ... ]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span> <span class="n">cols</span>
-<span class="go">[&#39;j&#39;, &#39;Y&#39;, &#39;FVconv&#39;, &#39;UYconv&#39;, ... , &#39;Ek H+He&#39;]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span> <span class="n">cyc</span>
-<span class="go">[&#39;Ndump&#39;, &#39;t&#39;, &#39;trescaled&#39;, &#39;Conv Ht&#39;, &#39;H+He Ht&#39;, ..., &#39;EkXZHHeMax&#39;]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">j2</span><span class="o">=</span><span class="n">p</span><span class="o">.</span><span class="n">getColData</span><span class="p">(</span><span class="s1">&#39;j&#39;</span><span class="p">,</span><span class="s1">&#39;Yprofile-01-0002&#39;</span><span class="p">,</span><span class="n">numType</span><span class="o">=</span><span class="s1">&#39;file&#39;</span><span class="p">,</span><span class="n">resolution</span><span class="o">=</span><span class="s1">&#39;a&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span> <span class="n">j2</span>
-<span class="go">[[384.0, 383.0, 382.0,..., 1.0],[192.0, 191.0, 190.0,...,1.0]]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">j2</span><span class="o">=</span><span class="n">p</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;j&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span> <span class="n">j2</span>
-<span class="go">[[384.0, 383.0, 382.0,..., 1.0],[192.0, 191.0, 190.0,...,1.0]]</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">j55</span><span class="o">=</span><span class="n">p</span><span class="o">.</span><span class="n">getColData</span><span class="p">(</span><span class="s1">&#39;j&#39;</span><span class="p">,</span><span class="mi">55</span><span class="p">,</span><span class="n">numType</span><span class="o">=</span><span class="s1">&#39;t&#39;</span><span class="p">,</span><span class="n">resolution</span><span class="o">=</span><span class="s1">&#39;l&#39;</span><span class="p">)</span>
-<span class="go">The closest time is at Ndump = 2</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span> <span class="n">j55</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">y</span><span class="o">=</span><span class="n">p</span><span class="o">.</span><span class="n">getColData</span><span class="p">(</span><span class="s1">&#39;Rho1 H+He&#39;</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span> <span class="n">resolution</span><span class="o">=</span><span class="s1">&#39;L&#39;</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span> <span class="n">y</span>
-<span class="go">[2.0420099999999999e-07, 5.4816300000000004e-07, ... , 0]</span>
+<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
+<span class="gp">   ...: </span><span class="o">!</span>ls /data/ppm_rpod2/YProfiles/
+<span class="gp">   ...: </span>
+<span class="go">AGBTP_M2.0Z1.e-5  O-shell-M25	  agb-entrainment-convergence</span>
+<span class="go">C-ingestion	  O-shell-mixing  sakurai</span>
+<span class="go">M4ZAMS		  RAWD		  sakurai-num-exp-robustness-onset-GOSH</span>
+
+<span class="gp">In [3]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
+<span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
+<span class="gp">   ...: </span>
+
+<span class="gp">In [6]: </span><span class="n">ppm</span><span class="o">.</span><span class="n">cases</span>
+<span class="gh">Out[6]: </span><span class="go"></span>
+<span class="go">[&#39;D10&#39;,</span>
+<span class="go"> &#39;D11&#39;,</span>
+<span class="go"> &#39;D14&#39;,</span>
+<span class="go"> &#39;D23&#39;,</span>
+<span class="go"> &#39;D17&#39;,</span>
+<span class="go"> &#39;D4&#39;,</span>
+<span class="go"> &#39;D24b&#39;,</span>
+<span class="go"> &#39;D1_toomuchoutput&#39;,</span>
+<span class="go"> &#39;D5&#39;,</span>
+<span class="go"> &#39;D3&#39;,</span>
+<span class="go"> &#39;D9&#39;,</span>
+<span class="go"> &#39;D26&#39;,</span>
+<span class="go"> &#39;D22&#39;,</span>
+<span class="go"> &#39;D19&#39;,</span>
+<span class="go"> &#39;D15&#39;,</span>
+<span class="go"> &#39;D16&#39;,</span>
+<span class="go"> &#39;D28&#39;,</span>
+<span class="go"> &#39;D27&#39;,</span>
+<span class="go"> &#39;D8&#39;,</span>
+<span class="go"> &#39;D1&#39;,</span>
+<span class="go"> &#39;D18&#39;,</span>
+<span class="go"> &#39;D6&#39;,</span>
+<span class="go"> &#39;D12&#39;,</span>
+<span class="go"> &#39;D25&#39;,</span>
+<span class="go"> &#39;D20&#39;,</span>
+<span class="go"> &#39;D24a&#39;,</span>
+<span class="go"> &#39;D21&#39;,</span>
+<span class="go"> &#39;D2&#39;]</span>
+
+<span class="gp">In [7]: </span><span class="n">D2</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D2&#39;</span><span class="p">)</span>
+<span class="gp">   ...: </span><span class="n">D2</span><span class="o">.</span><span class="n">vprofs</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+<span class="gp">   ...: </span>
 </pre></div>
 </div>
 <p>and</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">x</span> <span class="o">=</span> <span class="mi">2</span>
-
-<span class="gp">In [2]: </span><span class="k">print</span><span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mi">3</span><span class="p">)</span>
-<span class="go">8</span>
-
-<span class="gp">In [3]: </span><span class="k">print</span><span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mi">3</span><span class="p">)</span>
-<span class="go">8</span>
-</pre></div>
-</div>
 <p>(<a class="reference external" href="../_autosummary/ppmpy-ppm-1.py">Source code</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-1.png">png</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-1.hires.png">hires.png</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-1.pdf">pdf</a>)</p>
 <div class="figure">
 <img alt="../_images/ppmpy-ppm-1.png" src="../_images/ppmpy-ppm-1.png" />
@@ -1605,7 +1608,9 @@ The default is False.</li>
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.getCycleData">
 <code class="descname">getCycleData</code><span class="sig-paren">(</span><em>attri</em>, <em>FName=None</em>, <em>numType='ndump'</em>, <em>Single=False</em>, <em>resolution='H'</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.getCycleData" title="Permalink to this definition">¶</a></dt>
-<dd><table class="docutils field-list" frame="void" rules="none">
+<dd><p>Method that returns a Datalist of values for the given attribute or a
+single attribute in the file FName.</p>
+<table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
@@ -1655,13 +1660,14 @@ single attribute in the file FName.</p>
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.getHeaderData">
 <code class="descname">getHeaderData</code><span class="sig-paren">(</span><em>attri</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.getHeaderData" title="Permalink to this definition">¶</a></dt>
-<dd><table class="docutils field-list" frame="void" rules="none">
+<dd><p>Method returns header attributes.</p>
+<table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>attri</strong> (<em>string</em>) – The name of the attribute.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Header data that is associated with the attri.</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><strong>data</strong> – Header data that is associated with the attri.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">string or integer</td>
 </tr>
@@ -1690,9 +1696,9 @@ associated key of the filename’s Ndump.</p>
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>fileList</strong> (<em>list</em>) – A list of yprofile filenames.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">the filenamem, ndump dictionary</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><strong>dictionary</strong> – the filenamem, ndump dictionary</td>
 </tr>
-<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">dictionary</td>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">dict</td>
 </tr>
 </tbody>
 </table>
@@ -1744,7 +1750,11 @@ tangential velocities.
 The default is ‘vY’.</li>
 <li><strong>logy</strong> (<em>boolean</em>) – Should the velocity axis be logarithmic?
 The default value is False</li>
-<li><strong>radtop</strong> (<em>radbase</em><em>,</em>) – Radii of the base and top of the convective region,
+<li><strong>radbase</strong> (<em>float</em>) – Radii of the base of the convective region,
+respectively. If not None, dashed vertical lines will
+be drawn to mark these boundaries.
+The default value is None.</li>
+<li><strong>radtop</strong> (<em>float</em>) – Radii of the top of the convective region,
 respectively. If not None, dashed vertical lines will
 be drawn to mark these boundaries.
 The default value is None.</li>
@@ -1958,61 +1968,13 @@ YY.vprofs([90,100],log_logic=True)</p>
 </dd></dl>
 
 </div>
-</div>
 
 
           </div>
         </div>
       </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
-        <div class="sphinxsidebarwrapper">
-<p class="logo">
-  <a href="../index.html">
-    <img class="logo" src="../_static/logo.png" alt="Logo"/>
-    
-    <h1 class="logo logo-name">PPMstar</h1>
-    
-  </a>
-</p>
-
-
-
-
-
-
-<p>
-<iframe src="https://ghbtns.com/github-btn.html?user=PPMstar&repo=PyPPM&type=watch&count=true&size=large&v=2"
-  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
-</p>
-
-
-
-
-
-<h3>Navigation</h3>
-<ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">ppmpy.ppm</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#yprofile-files-assumptions">Yprofile files Assumptions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#header-attribute-assumptions">Header Attribute Assumptions</a></li>
-</ul>
-</li>
-</ul>
-
-
-<div id="searchbox" style="display: none" role="search">
-  <h3>Quick search</h3>
-    <form class="search" action="../search.html" method="get">
-      <div><input type="text" name="q" /></div>
-      <div><input type="submit" value="Go" /></div>
-      <input type="hidden" name="check_keywords" value="yes" />
-      <input type="hidden" name="area" value="default" />
-    </form>
-</div>
-<script type="text/javascript">$('#searchbox').show(0);</script>
-        </div>
-      </div>
-      <div class="clearer"></div>
-    </div>
+    <div class="clearer"></div>
+  </div>
     <div class="footer">
       &copy;2017, PPMstar.
       

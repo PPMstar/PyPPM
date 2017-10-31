@@ -1,4 +1,4 @@
-ppmpy\.ppm
+ppm
 ==========
 
 .. automodule:: ppmpy.ppm
