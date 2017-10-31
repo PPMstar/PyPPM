@@ -1040,14 +1040,21 @@ The default is True.</li>
 
 <span class="gp">In [5]: </span><span class="n">D2</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D2&#39;</span><span class="p">)</span>
 <span class="gp">   ...: </span><span class="n">D1</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D1&#39;</span><span class="p">)</span>
-<span class="gp">   ...: </span><span class="n">prof_compare</span><span class="p">([</span><span class="n">D2</span><span class="p">,</span><span class="n">D1</span><span class="p">])</span>
+<span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">prof_compare</span><span class="p">([</span><span class="n">D2</span><span class="p">,</span><span class="n">D1</span><span class="p">])</span>
 <span class="gp">   ...: </span>
 <span class="gt">---------------------------------------------------------------------------</span>
-<span class="ne">NameError</span><span class="g g-Whitespace">                                 </span>Traceback (most recent call last)
-<span class="nn">&lt;ipython-input-7-b4268366d5f3&gt;</span> in <span class="ni">&lt;module&gt;</span><span class="nt">()</span>
-<span class="ne">----&gt; </span><span class="mi">1</span> <span class="n">prof_compare</span><span class="p">([</span><span class="n">D2</span><span class="p">,</span><span class="n">D1</span><span class="p">])</span>
+<span class="ne">IndexError</span><span class="g g-Whitespace">                                </span>Traceback (most recent call last)
+<span class="nn">&lt;ipython-input-7-d4263a9df346&gt;</span> in <span class="ni">&lt;module&gt;</span><span class="nt">()</span>
+<span class="ne">----&gt; </span><span class="mi">1</span> <span class="n">ppm</span><span class="o">.</span><span class="n">prof_compare</span><span class="p">([</span><span class="n">D2</span><span class="p">,</span><span class="n">D1</span><span class="p">])</span>
 
-<span class="ne">NameError</span>: name &#39;prof_compare&#39; is not defined
+<span class="nn">/home/user/test/ppmpy/ppm.py</span> in <span class="ni">prof_compare</span><span class="nt">(cases, ndump, yaxis_thing, ifig, num_type, labels, logy)</span>
+<span class="g g-Whitespace">    </span><span class="mi">231</span>         <span class="k">if</span> <span class="n">labels</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+<span class="g g-Whitespace">    </span><span class="mi">232</span>             <span class="n">labels</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+<span class="ne">--&gt; </span><span class="mi">233</span>         <span class="n">Y</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s1">&#39;Y&#39;</span><span class="p">,</span><span class="n">yaxis_thing</span><span class="p">,</span><span class="n">fname</span><span class="o">=</span><span class="n">ndump</span><span class="p">,</span><span class="n">numtype</span><span class="o">=</span><span class="n">num_type</span><span class="p">,</span><span class="n">legend</span><span class="o">=</span><span class="n">labels</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>\
+<span class="g g-Whitespace">    </span><span class="mi">234</span>                <span class="n">logy</span><span class="o">=</span><span class="n">logy</span><span class="p">,</span><span class="n">shape</span><span class="o">=</span><span class="n">utils</span><span class="o">.</span><span class="n">linestyle</span><span class="p">(</span><span class="n">j</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span><span class="n">markevery</span><span class="o">=</span><span class="n">utils</span><span class="o">.</span><span class="n">linestyle</span><span class="p">(</span><span class="n">j</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span>
+<span class="g g-Whitespace">    </span><span class="mi">235</span>         <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+
+<span class="ne">IndexError</span>: list index out of range
 </pre></div>
 </div>
 <p>(<a class="reference external" href="../_autosummary/ppmpy-ppm-2.py">Source code</a>)</p>
@@ -1830,7 +1837,10 @@ more than one case</li>
 <span class="gp">   ...: </span>
 </pre></div>
 </div>
-<p>(<a class="reference external" href="../_autosummary/ppmpy-ppm-3.py">Source code</a>)</p>
+<p>(<a class="reference external" href="../_autosummary/ppmpy-ppm-3.py">Source code</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-3.png">png</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-3.hires.png">hires.png</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-3.pdf">pdf</a>)</p>
+<div class="figure">
+<img alt="../_images/ppmpy-ppm-3.png" src="../_images/ppmpy-ppm-3.png" />
+</div>
 </dd></dl>
 
 <dl class="method">
@@ -2012,10 +2022,22 @@ respectively True to plot</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<p>import ppm
-run=’/rpod3/fherwig/PPM/RUNS_DATA/VLTP_MESA_M0.542/C1’
-YY=ppm.yprofile(run)
-YY.vprofs([90,100],log_logic=True)</p>
+<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
+<span class="gp">   ...: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
+<span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
+<span class="gp">   ...: </span>
+
+<span class="gp">In [5]: </span><span class="n">D2</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D2&#39;</span><span class="p">)</span>
+<span class="gp">   ...: </span><span class="n">D2</span><span class="o">.</span><span class="n">prof_time</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">10</span><span class="p">],</span><span class="n">logy</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span><span class="n">num_type</span><span class="o">=</span><span class="s1">&#39;time&#39;</span><span class="p">)</span>
+<span class="gp">   ...: </span>
+</pre></div>
+</div>
+<a class="reference internal image-reference" href="../_images/hist_with_text.png"><img alt="../_images/hist_with_text.png" src="../_images/hist_with_text.png" style="width: 4in;" /></a>
+<p>(<a class="reference external" href="../_autosummary/ppmpy-ppm-4.py">Source code</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-4.png">png</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-4.hires.png">hires.png</a>, <a class="reference external" href="../_autosummary/ppmpy-ppm-4.pdf">pdf</a>)</p>
+<div class="figure">
+<img alt="../_images/ppmpy-ppm-4.png" src="../_images/ppmpy-ppm-4.png" />
+</div>
 </dd></dl>
 
 </dd></dl>
