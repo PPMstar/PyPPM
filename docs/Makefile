@@ -15,6 +15,7 @@ help:
 .PHONY: help Makefile
 
 gh-pages:
+	$(shell bash -c 'read -s -p "THIS PROCESS PUSHES YOUR LOCAL REPO TO THE MASTER ON GITHUB. Would you like to continue? [enter] = continue, [^C] = exit: " pwd; echo $$pwd')
 	make clean
 	make html
 	git add -A && git commit -m "building and pushing docs" && git push origin master
