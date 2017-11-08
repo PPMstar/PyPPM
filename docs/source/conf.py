@@ -126,11 +126,13 @@ html_theme = 'alabaster'
 html_theme_options = {
     'logo': 'logo.png',
     'logo_name': True,
-    'github_repo': 'PyPPM',
-    'github_user': 'PPMstar',
-    'github_button': True,
     'show_related': True,
-    'fixed_sidebar': True
+    'fixed_sidebar': True,
+}
+
+html_theme_options['extra_nav_links'] = {
+    "home page": 'https://ppmstar.github.io/PyPPM/',
+    "view on Github": 'https://github.com/PPMstar/PyPPM',   
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,

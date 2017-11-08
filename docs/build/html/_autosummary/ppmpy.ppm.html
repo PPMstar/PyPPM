@@ -51,13 +51,6 @@
 
 
 
-<p>
-<iframe src="https://ghbtns.com/github-btn.html?user=PPMstar&repo=PyPPM&type=watch&count=true&size=large&v=2"
-  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
-</p>
-
-
-
 
 
 <h3>Navigation</h3>
@@ -70,6 +63,15 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">ppm</a></li>
 </ul>
 
+
+<hr />
+<ul>
+    
+    <li class="toctree-l1"><a href="https://ppmstar.github.io/PyPPM/">home page</a></li>
+    
+    <li class="toctree-l1"><a href="https://github.com/PPMstar/PyPPM">view on Github</a></li>
+    
+</ul>
 
 <div id="searchbox" style="display: none" role="search">
   <h3>Quick search</h3>
@@ -193,7 +195,7 @@ some analysis involving Rprofile files and Mesa stellar models.</p>
 <tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_heat_source" title="ppmpy.ppm.get_heat_source"><code class="xref py py-obj docutils literal"><span class="pre">get_heat_source</span></code></a>(yprof[,&nbsp;radbase,&nbsp;dlayerbot,&nbsp;…])</td>
 <td>returns estimation of yprofiles energy</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_mach_number" title="ppmpy.ppm.get_mach_number"><code class="xref py py-obj docutils literal"><span class="pre">get_mach_number</span></code></a>(rp_set,&nbsp;yp,&nbsp;dumps,&nbsp;comp)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_mach_number" title="ppmpy.ppm.get_mach_number"><code class="xref py py-obj docutils literal"><span class="pre">get_mach_number</span></code></a>(rp_set,&nbsp;yp,&nbsp;dumps,&nbsp;comp[,&nbsp;…])</td>
 <td>Returns max Mach number and matching time vector</td>
 </tr>
 <tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_mesa_time_evo" title="ppmpy.ppm.get_mesa_time_evo"><code class="xref py py-obj docutils literal"><span class="pre">get_mesa_time_evo</span></code></a>(mesa_path,&nbsp;mesa_logs,&nbsp;t_end)</td>
@@ -394,7 +396,7 @@ compare_entrained_material([yp1,yp2],[‘O shell’,’AGB’], fname = 271)</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.energy_comparison">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">energy_comparison</code><span class="sig-paren">(</span><em>yprof, mesa_model, xthing='m', ifig=2, silent=True, range_conv1=None, range_conv2=None, xlim=[0.5, 2.5], ylim=[8, 13], radbase=4.1297, dlayerbot=0.5, totallum=20.153</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.energy_comparison" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">energy_comparison</code><span class="sig-paren">(</span><em>yprof, mesa_model, xthing=u'm', ifig=2, silent=True, range_conv1=None, range_conv2=None, xlim=[0.5, 2.5], ylim=[8, 13], radbase=4.1297, dlayerbot=0.5, totallum=20.153</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.energy_comparison" title="Permalink to this definition">¶</a></dt>
 <dd><p>Nuclear  energy  generation  rate (enuc) thermal  neutrino
 energy   loss   rate (enu) and   luminosity   profiles (L) for MESA
 plotted with ppmstar energy estimation (eppm)</p>
@@ -499,7 +501,7 @@ totallum = 20.153</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.get_mach_number">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">get_mach_number</code><span class="sig-paren">(</span><em>rp_set</em>, <em>yp</em>, <em>dumps</em>, <em>comp</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.get_mach_number" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">get_mach_number</code><span class="sig-paren">(</span><em>rp_set</em>, <em>yp</em>, <em>dumps</em>, <em>comp</em>, <em>filename_offset=1</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.get_mach_number" title="Permalink to this definition">¶</a></dt>
 <dd><p>Returns max Mach number and matching time vector</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -763,7 +765,7 @@ plot_Mollweide(rp_set, 100,209,7.4,8.4)</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.plot_N2">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_N2</code><span class="sig-paren">(</span><em>case</em>, <em>dump1</em>, <em>dump2</em>, <em>lims1</em>, <em>lims2</em>, <em>mesa_A_model_num</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_N2" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_N2</code><span class="sig-paren">(</span><em>case</em>, <em>dump1</em>, <em>dump2</em>, <em>lims1</em>, <em>lims2</em>, <em>mesa_logs_path</em>, <em>mesa_model_num</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_N2" title="Permalink to this definition">¶</a></dt>
 <dd><p>plots squared Brunt-Vaisala frequency N^2 with zoom window</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -782,7 +784,7 @@ plot_Mollweide(rp_set, 100,209,7.4,8.4)</p>
 <p class="rubric">Examples</p>
 <p>import ppm
 set_YProf_path(‘/data/ppm_rpod2/YProfiles/O-shell-M25/’)
-plot_N2(‘D1’, 0, 132, mesa_A_model_num = 29350, mesa_B_model_num = 28950)</p>
+plot_N2(‘D1’, 0, 132, mesa_model_num = 29350, mesa_B_model_num = 28950)</p>
 </dd></dl>
 
 <dl class="function">
@@ -828,7 +830,7 @@ between sensitivity and the amount of noise.</li>
 
 <dl class="function">
 <dt id="ppmpy.ppm.plot_diffusion_profiles">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_diffusion_profiles</code><span class="sig-paren">(</span><em>run</em>, <em>mesa_path</em>, <em>mesa_log</em>, <em>rtop</em>, <em>Dsolve_range</em>, <em>tauconv</em>, <em>r0</em>, <em>D0</em>, <em>f1</em>, <em>f2</em>, <em>alpha</em>, <em>fluid='FV H+He'</em>, <em>markevery=25</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_diffusion_profiles" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_diffusion_profiles</code><span class="sig-paren">(</span><em>run</em>, <em>mesa_path</em>, <em>mesa_log</em>, <em>rtop</em>, <em>Dsolve_range</em>, <em>tauconv</em>, <em>r0</em>, <em>D0</em>, <em>f1</em>, <em>f2</em>, <em>alpha</em>, <em>fluid=u'FV H+He'</em>, <em>markevery=25</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_diffusion_profiles" title="Permalink to this definition">¶</a></dt>
 <dd><p>This is a function that generates various diffusion profiles
 it is dependant on the functions Dsolvedown and Dov2</p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -911,7 +913,7 @@ plot_entr_v_ut(cases,c0,10,7.5,8.5,ifig = 3,integrate_both_fluids = False)</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.plot_mach_number">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_mach_number</code><span class="sig-paren">(</span><em>rp_set</em>, <em>yp</em>, <em>dumps</em>, <em>comp='max'</em>, <em>ifig=1</em>, <em>lims=None</em>, <em>insert=False</em>, <em>save=False</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>lims_insert=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_mach_number" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_mach_number</code><span class="sig-paren">(</span><em>rp_set</em>, <em>yp</em>, <em>dumps</em>, <em>comp=u'max'</em>, <em>ifig=1</em>, <em>lims=None</em>, <em>insert=False</em>, <em>save=False</em>, <em>prefix=u'PPM'</em>, <em>format=u'pdf'</em>, <em>lims_insert=None</em>, <em>f_offset=1</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_mach_number" title="Permalink to this definition">¶</a></dt>
 <dd><p>A function for geterating the time evolution of the mach number.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -965,7 +967,7 @@ The default value is False.</li>
 
 <dl class="function">
 <dt id="ppmpy.ppm.plot_p_top">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_p_top</code><span class="sig-paren">(</span><em>yp</em>, <em>dumps</em>, <em>r_top</em>, <em>ifig=1</em>, <em>lims=None</em>, <em>insert=False</em>, <em>save=False</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>lims_insert=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_p_top" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_p_top</code><span class="sig-paren">(</span><em>yp</em>, <em>dumps</em>, <em>r_top</em>, <em>ifig=1</em>, <em>lims=None</em>, <em>insert=False</em>, <em>save=False</em>, <em>prefix=u'PPM'</em>, <em>format=u'pdf'</em>, <em>lims_insert=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_p_top" title="Permalink to this definition">¶</a></dt>
 <dd><table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -993,7 +995,7 @@ The default value is False.</li>
 
 <dl class="function">
 <dt id="ppmpy.ppm.plot_power_spectrum_RProfile">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_power_spectrum_RProfile</code><span class="sig-paren">(</span><em>t</em>, <em>l</em>, <em>power</em>, <em>ifig=1</em>, <em>title=''</em>, <em>vmin=0.01</em>, <em>vmax=1.0</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_power_spectrum_RProfile" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">plot_power_spectrum_RProfile</code><span class="sig-paren">(</span><em>t</em>, <em>l</em>, <em>power</em>, <em>ifig=1</em>, <em>title=u''</em>, <em>vmin=0.01</em>, <em>vmax=1.0</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.plot_power_spectrum_RProfile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots power spectra of radial velocity</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1012,7 +1014,7 @@ get_power_spectrum_RProfile()</li>
 
 <dl class="function">
 <dt id="ppmpy.ppm.prep_Yprofile_data">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">prep_Yprofile_data</code><span class="sig-paren">(</span><em>user='Paul'</em>, <em>run='BW-Sakurai-1536-N13'</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.prep_Yprofile_data" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">prep_Yprofile_data</code><span class="sig-paren">(</span><em>user=u'Paul'</em>, <em>run=u'BW-Sakurai-1536-N13'</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.prep_Yprofile_data" title="Permalink to this definition">¶</a></dt>
 <dd><p>for given user and run create YProfile dir in run dir and link all
 YProfile data from dump directories</p>
 <p>this is for use on BlueWaters</p>
@@ -1020,7 +1022,7 @@ YProfile data from dump directories</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.prof_compare">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">prof_compare</code><span class="sig-paren">(</span><em>cases</em>, <em>ndump=None</em>, <em>yaxis_thing='FV H+He'</em>, <em>ifig=None</em>, <em>num_type='ndump'</em>, <em>labels=None</em>, <em>logy=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.prof_compare" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">prof_compare</code><span class="sig-paren">(</span><em>cases</em>, <em>ndump=None</em>, <em>yaxis_thing=u'FV H+He'</em>, <em>ifig=None</em>, <em>num_type=u'ndump'</em>, <em>labels=None</em>, <em>logy=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.prof_compare" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compare profiles of quantities from multiple PPM Yprofile instances at a
 given time of nump number.</p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -1069,7 +1071,7 @@ The default is True.</li>
 
 <dl class="function">
 <dt id="ppmpy.ppm.set_YProf_path">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">set_YProf_path</code><span class="sig-paren">(</span><em>path</em>, <em>YProf_fname='YProfile-01-0000.bobaaa'</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.set_YProf_path" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">set_YProf_path</code><span class="sig-paren">(</span><em>path</em>, <em>YProf_fname=u'YProfile-01-0000.bobaaa'</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.set_YProf_path" title="Permalink to this definition">¶</a></dt>
 <dd><p>Set path to location where YProfile directories can be found.</p>
 <p>For example, set path to the swj/PPM/RUNS_DIR VOSpace directory
 as a global variable, so that it need only be set once during
@@ -1083,7 +1085,7 @@ YProfile files</p>
 
 <dl class="function">
 <dt id="ppmpy.ppm.upper_bound_ut">
-<code class="descclassname">ppmpy.ppm.</code><code class="descname">upper_bound_ut</code><span class="sig-paren">(</span><em>data_path</em>, <em>dump_to_plot</em>, <em>hist_dump_min</em>, <em>hist_dump_max</em>, <em>ylims=None</em>, <em>derivative=False</em>, <em>r1=7.4</em>, <em>r2=8.4</em>, <em>silent=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.upper_bound_ut" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">ppmpy.ppm.</code><code class="descname">upper_bound_ut</code><span class="sig-paren">(</span><em>data_path</em>, <em>dump_to_plot</em>, <em>hist_dump_min</em>, <em>hist_dump_max</em>, <em>r1</em>, <em>r2</em>, <em>ylims=None</em>, <em>derivative=False</em>, <em>silent=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.upper_bound_ut" title="Permalink to this definition">¶</a></dt>
 <dd><p>Finds the upper convective boundary as defined by the steepest decline in
 tangential velocity.</p>
 <dl class="docutils">
@@ -1118,6 +1120,19 @@ boundary in the range between r1/r2</li>
 <span class="gp">   ...: </span>
 
 <span class="gp">In [4]: </span><span class="n">ppm</span><span class="o">.</span><span class="n">upper_bound_ut</span><span class="p">(</span><span class="n">data_path</span><span class="p">,</span><span class="n">dump</span><span class="p">,</span> <span class="n">hist_dmin</span><span class="p">,</span> <span class="n">hist_dmax</span><span class="p">,</span><span class="n">r1</span> <span class="o">=</span> <span class="n">r_lim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">r2</span> <span class="o">=</span> <span class="mi">31</span><span class="p">,</span> <span class="n">derivative</span> <span class="o">=</span> <span class="bp">False</span><span class="p">,</span><span class="n">ylims</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1e-3</span><span class="p">,</span><span class="mf">19.</span><span class="p">])</span>
+<span class="gt">---------------------------------------------------------------------------</span>
+<span class="ne">AttributeError</span><span class="g g-Whitespace">                            </span>Traceback (most recent call last)
+<span class="nn">&lt;ipython-input-4-74790479830d&gt;</span> in <span class="ni">&lt;module&gt;</span><span class="nt">()</span>
+<span class="ne">----&gt; </span><span class="mi">1</span> <span class="n">ppm</span><span class="o">.</span><span class="n">upper_bound_ut</span><span class="p">(</span><span class="n">data_path</span><span class="p">,</span><span class="n">dump</span><span class="p">,</span> <span class="n">hist_dmin</span><span class="p">,</span> <span class="n">hist_dmax</span><span class="p">,</span><span class="n">r1</span> <span class="o">=</span> <span class="n">r_lim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">r2</span> <span class="o">=</span> <span class="mi">31</span><span class="p">,</span> <span class="n">derivative</span> <span class="o">=</span> <span class="bp">False</span><span class="p">,</span><span class="n">ylims</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1e-3</span><span class="p">,</span><span class="mf">19.</span><span class="p">])</span>
+
+<span class="nn">../../PyPPM/ppmpy/ppm.py</span> in <span class="ni">upper_bound_ut</span><span class="nt">(data_path, dump_to_plot, hist_dump_min, hist_dump_max, r1, r2, ylims, derivative, silent)</span>
+<span class="g g-Whitespace">   </span><span class="mi">5379</span>     <span class="n">rp_set</span> <span class="o">=</span> <span class="n">rprof</span><span class="o">.</span><span class="n">rprofile_set</span><span class="p">(</span><span class="n">data_path</span><span class="p">)</span>
+<span class="g g-Whitespace">   </span><span class="mi">5380</span>     <span class="n">rp</span> <span class="o">=</span> <span class="n">rp_set</span><span class="o">.</span><span class="n">get_dump</span><span class="p">(</span><span class="n">dump_to_plot</span><span class="p">)</span>
+<span class="ne">-&gt; </span><span class="mi">5381</span>     <span class="n">nr</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">))</span>
+<span class="g g-Whitespace">   </span><span class="mi">5382</span>     
+<span class="g g-Whitespace">   </span><span class="mi">5383</span>     <span class="n">sparse</span> <span class="o">=</span> <span class="mi">1</span>
+
+<span class="ne">AttributeError</span>: &#39;NoneType&#39; object has no attribute &#39;get&#39;
 </pre></div>
 </div>
 <a class="reference internal image-reference" href="../_images/upper_bound.png"><img alt="../_images/upper_bound.png" src="../_images/upper_bound.png" style="width: 6in;" /></a>
@@ -1143,7 +1158,7 @@ is necessary and not the full path ex. cases = [‘D1’, ‘D2’]</li>
 <li><strong>comp</strong> (<em>string</em>) – component that the velocity is in. option: ‘radial’, ‘tangential’</li>
 <li><strong>RMS</strong> (<em>string</em>) – options: ‘min’, ‘max’ or ‘mean’. What aspect of the RMS velocity
 to look at</li>
-<li><strong>first_dump</strong><strong>,</strong><strong>last_dump</strong> (<em>int</em><em>, </em><em>optional</em>) – Gives the range of dumps to plot if larger than last dump
+<li><strong>dumps</strong> (<em>int</em><em>, </em><em>optional</em>) – Gives the range of dumps to plot if larger than last dump
 will plot up to last dump</li>
 <li><strong>lims</strong> (<em>array</em>) – axes lims [xl,xu,yl,yu]</li>
 </ul>
@@ -1158,7 +1173,7 @@ ppm.v_evolution([‘D15’,’D2’,’D1’], 4., 8.,’max’,’radial’)</p
 
 <dl class="class">
 <dt id="ppmpy.ppm.yprofile">
-<em class="property">class </em><code class="descclassname">ppmpy.ppm.</code><code class="descname">yprofile</code><span class="sig-paren">(</span><em>sldir='.'</em>, <em>filename_offset=0</em>, <em>silent=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">ppmpy.ppm.</code><code class="descname">yprofile</code><span class="sig-paren">(</span><em>sldir=u'.'</em>, <em>filename_offset=0</em>, <em>silent=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Data structure for holding data in the  YProfile.bobaaa files.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1170,7 +1185,7 @@ ppm.v_evolution([‘D15’,’D2’,’D1’], 4., 8.,’max’,’radial’)</p
 </table>
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.Aprof_time">
-<code class="descname">Aprof_time</code><span class="sig-paren">(</span><em>tau</em>, <em>Nl</em>, <em>lims=None</em>, <em>save=False</em>, <em>silent=True</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>initial_conv_boundaries=True</em>, <em>lw=1.0</em>, <em>ifig=12</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Aprof_time" title="Permalink to this definition">¶</a></dt>
+<code class="descname">Aprof_time</code><span class="sig-paren">(</span><em>tau</em>, <em>Nl</em>, <em>lims=None</em>, <em>save=False</em>, <em>silent=True</em>, <em>prefix=u'PPM'</em>, <em>format=u'pdf'</em>, <em>initial_conv_boundaries=True</em>, <em>lw=1.0</em>, <em>ifig=12</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Aprof_time" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots the same velocity profile at different times</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1218,7 +1233,7 @@ attributes in YProfiles</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.Dinv">
-<code class="descname">Dinv</code><span class="sig-paren">(</span><em>fname1</em>, <em>fname2</em>, <em>fluid='FV H+He'</em>, <em>numtype='ndump'</em>, <em>newton=False</em>, <em>niter=3</em>, <em>debug=False</em>, <em>grid=False</em>, <em>FVaverage=False</em>, <em>tauconv=None</em>, <em>returnY=False</em>, <em>plot_Dlt0=True</em>, <em>silent=True</em>, <em>initial_conv_boundaries=True</em>, <em>approx_D=False</em>, <em>linelims=None</em>, <em>r0=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Dinv" title="Permalink to this definition">¶</a></dt>
+<code class="descname">Dinv</code><span class="sig-paren">(</span><em>fname1</em>, <em>fname2</em>, <em>fluid=u'FV H+He'</em>, <em>numtype=u'ndump'</em>, <em>newton=False</em>, <em>niter=3</em>, <em>debug=False</em>, <em>grid=False</em>, <em>FVaverage=False</em>, <em>tauconv=None</em>, <em>returnY=False</em>, <em>plot_Dlt0=True</em>, <em>silent=True</em>, <em>initial_conv_boundaries=True</em>, <em>approx_D=False</em>, <em>linelims=None</em>, <em>r0=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Dinv" title="Permalink to this definition">¶</a></dt>
 <dd><p>Solve inverted diffusion equation to see what diffusion coefficient
 profile would have been appropriate to mimic the mixing of species
 seen in the Yprofile dumps.</p>
@@ -1354,7 +1369,7 @@ the decays exponentially</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.Dsolve">
-<code class="descname">Dsolve</code><span class="sig-paren">(</span><em>fname1</em>, <em>fname2</em>, <em>fluid='FV H+He'</em>, <em>numtype='ndump'</em>, <em>newton=False</em>, <em>niter=3</em>, <em>debug=False</em>, <em>grid=False</em>, <em>FVaverage=False</em>, <em>tauconv=None</em>, <em>returnY=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Dsolve" title="Permalink to this definition">¶</a></dt>
+<code class="descname">Dsolve</code><span class="sig-paren">(</span><em>fname1</em>, <em>fname2</em>, <em>fluid=u'FV H+He'</em>, <em>numtype=u'ndump'</em>, <em>newton=False</em>, <em>niter=3</em>, <em>debug=False</em>, <em>grid=False</em>, <em>FVaverage=False</em>, <em>tauconv=None</em>, <em>returnY=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Dsolve" title="Permalink to this definition">¶</a></dt>
 <dd><p>Solve inverse diffusion equation sequentially by iterating over the spatial
 domain using a lower boundary condition (see MEB’s thesis, page
 223, Eq. B.15).</p>
@@ -1407,7 +1422,7 @@ The default is False.</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.Dsolvedown">
-<code class="descname">Dsolvedown</code><span class="sig-paren">(</span><em>fname1</em>, <em>fname2</em>, <em>fluid='FV H+He'</em>, <em>numtype='ndump'</em>, <em>newton=False</em>, <em>niter=3</em>, <em>debug=False</em>, <em>grid=False</em>, <em>FVaverage=False</em>, <em>tauconv=None</em>, <em>returnY=False</em>, <em>smooth=False</em>, <em>plot_Dlt0=True</em>, <em>sinusoidal_FV=False</em>, <em>log_X=True</em>, <em>Xlim=None</em>, <em>Dlim=None</em>, <em>silent=True</em>, <em>showfig=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Dsolvedown" title="Permalink to this definition">¶</a></dt>
+<code class="descname">Dsolvedown</code><span class="sig-paren">(</span><em>fname1</em>, <em>fname2</em>, <em>fluid=u'FV H+He'</em>, <em>numtype=u'ndump'</em>, <em>newton=False</em>, <em>niter=3</em>, <em>debug=False</em>, <em>grid=False</em>, <em>FVaverage=False</em>, <em>tauconv=None</em>, <em>returnY=False</em>, <em>smooth=False</em>, <em>plot_Dlt0=True</em>, <em>sinusoidal_FV=False</em>, <em>log_X=True</em>, <em>Xlim=None</em>, <em>Dlim=None</em>, <em>silent=True</em>, <em>showfig=True</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Dsolvedown" title="Permalink to this definition">¶</a></dt>
 <dd><p>Solve diffusion equation sequentially by iterating over the spatial
 domain inwards from the upper boundary.</p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -1462,7 +1477,7 @@ the default value is True</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.Dsolvedownexp">
-<code class="descname">Dsolvedownexp</code><span class="sig-paren">(</span><em>fname1</em>, <em>fname2</em>, <em>fluid='FV H+He'</em>, <em>numtype='ndump'</em>, <em>newton=False</em>, <em>niter=3</em>, <em>debug=False</em>, <em>grid=False</em>, <em>FVaverage=False</em>, <em>tauconv=None</em>, <em>returnY=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Dsolvedownexp" title="Permalink to this definition">¶</a></dt>
+<code class="descname">Dsolvedownexp</code><span class="sig-paren">(</span><em>fname1</em>, <em>fname2</em>, <em>fluid=u'FV H+He'</em>, <em>numtype=u'ndump'</em>, <em>newton=False</em>, <em>niter=3</em>, <em>debug=False</em>, <em>grid=False</em>, <em>FVaverage=False</em>, <em>tauconv=None</em>, <em>returnY=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.Dsolvedownexp" title="Permalink to this definition">¶</a></dt>
 <dd><p>Solve diffusion equation sequentially by iterating over the spatial
 domain inwards from the upper boundary. This version of the method is
 explicit.</p>
@@ -1567,7 +1582,7 @@ profile of the RMS horizontal velocity.</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.boundary_radius">
-<code class="descname">boundary_radius</code><span class="sig-paren">(</span><em>cycles</em>, <em>r_min</em>, <em>r_max</em>, <em>var='vxz'</em>, <em>criterion='min_grad'</em>, <em>var_value=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.boundary_radius" title="Permalink to this definition">¶</a></dt>
+<code class="descname">boundary_radius</code><span class="sig-paren">(</span><em>cycles</em>, <em>r_min</em>, <em>r_max</em>, <em>var=u'vxz'</em>, <em>criterion=u'min_grad'</em>, <em>var_value=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.boundary_radius" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculates the boundary of the yprofile.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1592,7 +1607,7 @@ profile of the RMS horizontal velocity.</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.computeData">
-<code class="descname">computeData</code><span class="sig-paren">(</span><em>attri</em>, <em>fname</em>, <em>numtype='ndump'</em>, <em>silent=False</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.computeData" title="Permalink to this definition">¶</a></dt>
+<code class="descname">computeData</code><span class="sig-paren">(</span><em>attri</em>, <em>fname</em>, <em>numtype=u'ndump'</em>, <em>silent=False</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.computeData" title="Permalink to this definition">¶</a></dt>
 <dd><p>Method for computing data not in Yprofile file</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1619,7 +1634,7 @@ looking for</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.entrainment_rate">
-<code class="descname">entrainment_rate</code><span class="sig-paren">(</span><em>cycles</em>, <em>r_min</em>, <em>r_max</em>, <em>var='vxz'</em>, <em>criterion='min_grad'</em>, <em>offset=0.0</em>, <em>integrate_both_fluids=False</em>, <em>integrate_upwards=False</em>, <em>show_output=True</em>, <em>ifig0=1</em>, <em>silent=True</em>, <em>mdot_curve_label=None</em>, <em>file_name=None</em>, <em>return_time_series=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.entrainment_rate" title="Permalink to this definition">¶</a></dt>
+<code class="descname">entrainment_rate</code><span class="sig-paren">(</span><em>cycles</em>, <em>r_min</em>, <em>r_max</em>, <em>var=u'vxz'</em>, <em>criterion=u'min_grad'</em>, <em>offset=0.0</em>, <em>integrate_both_fluids=False</em>, <em>integrate_upwards=False</em>, <em>show_output=True</em>, <em>ifig0=1</em>, <em>silent=True</em>, <em>mdot_curve_label=None</em>, <em>file_name=None</em>, <em>return_time_series=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.entrainment_rate" title="Permalink to this definition">¶</a></dt>
 <dd><p>Function for calculating entrainment rates.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1652,7 +1667,7 @@ looking for</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.findFile">
-<code class="descname">findFile</code><span class="sig-paren">(</span><em>FName</em>, <em>numType='FILE'</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.findFile" title="Permalink to this definition">¶</a></dt>
+<code class="descname">findFile</code><span class="sig-paren">(</span><em>FName</em>, <em>numType=u'FILE'</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.findFile" title="Permalink to this definition">¶</a></dt>
 <dd><p>Function that finds the associated file for FName when Fname
 is time or NDump.</p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -1682,7 +1697,7 @@ the closest time stamp.  The default is “FILE”.</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.get">
-<code class="descname">get</code><span class="sig-paren">(</span><em>attri</em>, <em>fname=None</em>, <em>numtype='ndump'</em>, <em>resolution='H'</em>, <em>silent=True</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.get" title="Permalink to this definition">¶</a></dt>
+<code class="descname">get</code><span class="sig-paren">(</span><em>attri</em>, <em>fname=None</em>, <em>numtype=u'ndump'</em>, <em>resolution=u'H'</em>, <em>silent=True</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.get" title="Permalink to this definition">¶</a></dt>
 <dd><p>Method that dynamically determines the type of attribute that is
 passed into this method.  Also it then returns that attribute’s
 associated data.</p>
@@ -1719,7 +1734,7 @@ largest, ‘l’ will return the lowest. The default is ‘H’.</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.getColData">
-<code class="descname">getColData</code><span class="sig-paren">(</span><em>attri</em>, <em>FName</em>, <em>numType='ndump'</em>, <em>resolution='H'</em>, <em>cycle=False</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.getColData" title="Permalink to this definition">¶</a></dt>
+<code class="descname">getColData</code><span class="sig-paren">(</span><em>attri</em>, <em>FName</em>, <em>numType=u'ndump'</em>, <em>resolution=u'H'</em>, <em>cycle=False</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.getColData" title="Permalink to this definition">¶</a></dt>
 <dd><p>Method that returns column data.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1757,7 +1772,7 @@ The default is False.</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.getCycleData">
-<code class="descname">getCycleData</code><span class="sig-paren">(</span><em>attri</em>, <em>FName=None</em>, <em>numType='ndump'</em>, <em>Single=False</em>, <em>resolution='H'</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.getCycleData" title="Permalink to this definition">¶</a></dt>
+<code class="descname">getCycleData</code><span class="sig-paren">(</span><em>attri</em>, <em>FName=None</em>, <em>numType=u'ndump'</em>, <em>Single=False</em>, <em>resolution=u'H'</em>, <em>silent=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.getCycleData" title="Permalink to this definition">¶</a></dt>
 <dd><p>Method that returns a Datalist of values for the given attribute or a
 single attribute in the file FName.</p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -1895,7 +1910,7 @@ rate units in minutes</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.prof_time">
-<code class="descname">prof_time</code><span class="sig-paren">(</span><em>fname</em>, <em>yaxis_thing='vY'</em>, <em>num_type='ndump'</em>, <em>logy=False</em>, <em>radbase=None</em>, <em>radtop=None</em>, <em>ifig=101</em>, <em>ls_offset=0</em>, <em>label_case=''</em>, <em>markevery=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.prof_time" title="Permalink to this definition">¶</a></dt>
+<code class="descname">prof_time</code><span class="sig-paren">(</span><em>fname</em>, <em>yaxis_thing=u'vY'</em>, <em>num_type=u'ndump'</em>, <em>logy=False</em>, <em>radbase=None</em>, <em>radtop=None</em>, <em>ifig=101</em>, <em>ls_offset=0</em>, <em>label_case=u''</em>, <em>markevery=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.prof_time" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot the time evolution of a profile from multiple
 dumps of the same run (…on the same figure).</p>
 <p>Velocities ‘v’, ‘vY’ and/or ‘vXZ’ may also be plotted.</p>
@@ -1946,6 +1961,19 @@ more than one case</li>
 <span class="gp">In [5]: </span><span class="n">D2</span> <span class="o">=</span> <span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D2&#39;</span><span class="p">)</span>
 <span class="gp">   ...: </span><span class="n">D2</span><span class="o">.</span><span class="n">prof_time</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">10</span><span class="p">],</span><span class="n">logy</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span><span class="n">num_type</span><span class="o">=</span><span class="s1">&#39;time&#39;</span><span class="p">)</span>
 <span class="gp">   ...: </span>
+<span class="gt">---------------------------------------------------------------------------</span>
+<span class="ne">UnboundLocalError</span><span class="g g-Whitespace">                         </span>Traceback (most recent call last)
+<span class="nn">&lt;ipython-input-6-812bebf2a031&gt;</span> in <span class="ni">&lt;module&gt;</span><span class="nt">()</span>
+<span class="ne">----&gt; </span><span class="mi">1</span> <span class="n">D2</span><span class="o">.</span><span class="n">prof_time</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">10</span><span class="p">],</span><span class="n">logy</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span><span class="n">num_type</span><span class="o">=</span><span class="s1">&#39;time&#39;</span><span class="p">)</span>
+
+<span class="nn">../../PyPPM/ppmpy/ppm.py</span> in <span class="ni">prof_time</span><span class="nt">(self, fname, yaxis_thing, num_type, logy, radbase, radtop, ifig, ls_offset, label_case, markevery, **kwargs)</span>
+<span class="g g-Whitespace">   </span><span class="mi">1726</span>             <span class="k">else</span><span class="p">:</span>
+<span class="g g-Whitespace">   </span><span class="mi">1727</span>                 <span class="n">pl</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">Y</span><span class="p">,</span><span class="n">y</span><span class="p">,</span><span class="n">utils</span><span class="o">.</span><span class="n">linestyle</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="n">ls_offset</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span>
+<span class="ne">-&gt; </span><span class="mi">1728</span>                         <span class="n">markevery</span><span class="o">=</span><span class="n">markevery</span><span class="p">,</span><span class="n">label</span><span class="o">=</span><span class="n">lab</span><span class="p">,</span>
+<span class="g g-Whitespace">   </span><span class="mi">1729</span>                        <span class="n">color</span> <span class="o">=</span> <span class="n">cb</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+<span class="g g-Whitespace">   </span><span class="mi">1730</span> 
+
+<span class="ne">UnboundLocalError</span>: local variable &#39;lab&#39; referenced before assignment
 </pre></div>
 </div>
 <a class="reference internal image-reference" href="../_images/prof_time.png"><img alt="../_images/prof_time.png" src="../_images/prof_time.png" style="width: 6in;" /></a>
@@ -1953,7 +1981,7 @@ more than one case</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.readTop">
-<code class="descname">readTop</code><span class="sig-paren">(</span><em>atri</em>, <em>filename</em>, <em>stddir='./'</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.readTop" title="Permalink to this definition">¶</a></dt>
+<code class="descname">readTop</code><span class="sig-paren">(</span><em>atri</em>, <em>filename</em>, <em>stddir=u'./'</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.readTop" title="Permalink to this definition">¶</a></dt>
 <dd><p>Private routine that Finds and returns the associated value for
 attribute in the header section of the file.</p>
 <p>Input:
@@ -1965,7 +1993,7 @@ working Directory.</p>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.spacetime_diagram">
-<code class="descname">spacetime_diagram</code><span class="sig-paren">(</span><em>var_name</em>, <em>nt</em>, <em>fig</em>, <em>tlim=None</em>, <em>rlim=None</em>, <em>vlim=None</em>, <em>logscale=True</em>, <em>cmap='viridis'</em>, <em>aspect=0.3333333333333333</em>, <em>zero_intervals=None</em>, <em>patience0=5</em>, <em>patience=30</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.spacetime_diagram" title="Permalink to this definition">¶</a></dt>
+<code class="descname">spacetime_diagram</code><span class="sig-paren">(</span><em>var_name</em>, <em>nt</em>, <em>fig</em>, <em>tlim=None</em>, <em>rlim=None</em>, <em>vlim=None</em>, <em>logscale=True</em>, <em>cmap=u'viridis'</em>, <em>aspect=0.3333333333333333</em>, <em>zero_intervals=None</em>, <em>patience0=5</em>, <em>patience=30</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.spacetime_diagram" title="Permalink to this definition">¶</a></dt>
 <dd><p>Creates a spacetime diagram.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1998,7 +2026,7 @@ working Directory.</p>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.tEkmax">
-<code class="descname">tEkmax</code><span class="sig-paren">(</span><em>ifig=None</em>, <em>label=None</em>, <em>save=False</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>logy=False</em>, <em>id=0</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.tEkmax" title="Permalink to this definition">¶</a></dt>
+<code class="descname">tEkmax</code><span class="sig-paren">(</span><em>ifig=None</em>, <em>label=None</em>, <em>save=False</em>, <em>prefix=u'PPM'</em>, <em>format=u'pdf'</em>, <em>logy=False</em>, <em>id=0</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.tEkmax" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot maximum kinetic energy as a function of time.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -2042,7 +2070,7 @@ The default is 0</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.tvmax">
-<code class="descname">tvmax</code><span class="sig-paren">(</span><em>ifig=None</em>, <em>label=None</em>, <em>save=False</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>logy=False</em>, <em>id=0</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.tvmax" title="Permalink to this definition">¶</a></dt>
+<code class="descname">tvmax</code><span class="sig-paren">(</span><em>ifig=None</em>, <em>label=None</em>, <em>save=False</em>, <em>prefix=u'PPM'</em>, <em>format=u'pdf'</em>, <em>logy=False</em>, <em>id=0</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.tvmax" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot maximum velocity as a function of time.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -2086,7 +2114,7 @@ The default is 0</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.vaverage">
-<code class="descname">vaverage</code><span class="sig-paren">(</span><em>vi='v'</em>, <em>transient=0.0</em>, <em>sparse=1</em>, <em>showfig=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.vaverage" title="Permalink to this definition">¶</a></dt>
+<code class="descname">vaverage</code><span class="sig-paren">(</span><em>vi=u'v'</em>, <em>transient=0.0</em>, <em>sparse=1</em>, <em>showfig=False</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.vaverage" title="Permalink to this definition">¶</a></dt>
 <dd><p>plots and returns the average velocity profile for a given
 orientation (total, radial or tangential) over a range of dumps
 and excluding an initial user-specified transient in seconds.</p>
@@ -2094,7 +2122,7 @@ and excluding an initial user-specified transient in seconds.</p>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.vprof_time">
-<code class="descname">vprof_time</code><span class="sig-paren">(</span><em>dumps</em>, <em>Np</em>, <em>comp='r'</em>, <em>lims=None</em>, <em>save=False</em>, <em>prefix='PPM'</em>, <em>format='pdf'</em>, <em>initial_conv_boundaries=True</em>, <em>lw=1.0</em>, <em>ifig=12</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.vprof_time" title="Permalink to this definition">¶</a></dt>
+<code class="descname">vprof_time</code><span class="sig-paren">(</span><em>dumps</em>, <em>Np</em>, <em>comp=u'r'</em>, <em>lims=None</em>, <em>save=False</em>, <em>prefix=u'PPM'</em>, <em>format=u'pdf'</em>, <em>initial_conv_boundaries=True</em>, <em>lw=1.0</em>, <em>ifig=12</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.vprof_time" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots the same velocity profile at different times</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -2130,7 +2158,7 @@ attributes in YProfiles</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.vprofs">
-<code class="descname">vprofs</code><span class="sig-paren">(</span><em>fname, fname_type='discrete', log_logic=False, lims=None, save=False, prefix='PPM', format='pdf', initial_conv_boundaries=True, lw=1.0, label=True, ifig=11, which_to_plot=[True, True, True], run=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.vprofs" title="Permalink to this definition">¶</a></dt>
+<code class="descname">vprofs</code><span class="sig-paren">(</span><em>fname, fname_type=u'discrete', log_logic=False, lims=None, save=False, prefix=u'PPM', format=u'pdf', initial_conv_boundaries=True, lw=1.0, label=True, ifig=11, which_to_plot=[True, True, True], run=None</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.vprofs" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot velocity profiles v_tot, v_Y and v_XZ for a given cycle number
 or list of cycle numbers (fname).
 If a list of cycle number is given, separate figures are made for
@@ -2181,7 +2209,7 @@ respectively True to plot</li>
 <span class="gp">   ...: </span>
 </pre></div>
 </div>
-<a class="reference internal image-reference" href="../_images/prof_time.png"><img alt="../_images/prof_time.png" src="../_images/prof_time.png" style="width: 6in;" /></a>
+<a class="reference internal image-reference" href="../_images/vprofs.png"><img alt="../_images/vprofs.png" src="../_images/vprofs.png" style="width: 6in;" /></a>
 </dd></dl>
 
 </dd></dl>
