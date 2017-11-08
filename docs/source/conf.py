@@ -132,7 +132,8 @@ html_theme_options = {
 
 html_theme_options['extra_nav_links'] = {
     "home page": 'https://ppmstar.github.io/PyPPM/',
-    "view on Github": 'https://github.com/PPMstar/PyPPM',   
+    "view on Github": 'https://github.com/PPMstar/PyPPM',
+    "Index" : "genindex.html"
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,

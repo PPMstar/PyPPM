@@ -57,7 +57,7 @@
 <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../installation.html#data-assumptions">Data Assumptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html#data-assumptions">Data assumptions</a></li>
 </ul>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">ppm</a></li>
@@ -66,6 +66,8 @@
 
 <hr />
 <ul>
+    
+    <li class="toctree-l1"><a href="genindex.html">Index</a></li>
     
     <li class="toctree-l1"><a href="https://ppmstar.github.io/PyPPM/">home page</a></li>
     
@@ -1126,11 +1128,11 @@ boundary in the range between r1/r2</li>
 <span class="ne">----&gt; </span><span class="mi">1</span> <span class="n">ppm</span><span class="o">.</span><span class="n">upper_bound_ut</span><span class="p">(</span><span class="n">data_path</span><span class="p">,</span><span class="n">dump</span><span class="p">,</span> <span class="n">hist_dmin</span><span class="p">,</span> <span class="n">hist_dmax</span><span class="p">,</span><span class="n">r1</span> <span class="o">=</span> <span class="n">r_lim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">r2</span> <span class="o">=</span> <span class="mi">31</span><span class="p">,</span> <span class="n">derivative</span> <span class="o">=</span> <span class="bp">False</span><span class="p">,</span><span class="n">ylims</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1e-3</span><span class="p">,</span><span class="mf">19.</span><span class="p">])</span>
 
 <span class="nn">../../PyPPM/ppmpy/ppm.py</span> in <span class="ni">upper_bound_ut</span><span class="nt">(data_path, dump_to_plot, hist_dump_min, hist_dump_max, r1, r2, ylims, derivative, silent)</span>
-<span class="g g-Whitespace">   </span><span class="mi">5379</span>     <span class="n">rp_set</span> <span class="o">=</span> <span class="n">rprof</span><span class="o">.</span><span class="n">rprofile_set</span><span class="p">(</span><span class="n">data_path</span><span class="p">)</span>
-<span class="g g-Whitespace">   </span><span class="mi">5380</span>     <span class="n">rp</span> <span class="o">=</span> <span class="n">rp_set</span><span class="o">.</span><span class="n">get_dump</span><span class="p">(</span><span class="n">dump_to_plot</span><span class="p">)</span>
-<span class="ne">-&gt; </span><span class="mi">5381</span>     <span class="n">nr</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">))</span>
-<span class="g g-Whitespace">   </span><span class="mi">5382</span>     
-<span class="g g-Whitespace">   </span><span class="mi">5383</span>     <span class="n">sparse</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="g g-Whitespace">   </span><span class="mi">5383</span>     <span class="n">rp_set</span> <span class="o">=</span> <span class="n">rprof</span><span class="o">.</span><span class="n">rprofile_set</span><span class="p">(</span><span class="n">data_path</span><span class="p">)</span>
+<span class="g g-Whitespace">   </span><span class="mi">5384</span>     <span class="n">rp</span> <span class="o">=</span> <span class="n">rp_set</span><span class="o">.</span><span class="n">get_dump</span><span class="p">(</span><span class="n">dump_to_plot</span><span class="p">)</span>
+<span class="ne">-&gt; </span><span class="mi">5385</span>     <span class="n">nr</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">rp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">))</span>
+<span class="g g-Whitespace">   </span><span class="mi">5386</span>     
+<span class="g g-Whitespace">   </span><span class="mi">5387</span>     <span class="n">sparse</span> <span class="o">=</span> <span class="mi">1</span>
 
 <span class="ne">AttributeError</span>: &#39;NoneType&#39; object has no attribute &#39;get&#39;
 </pre></div>
@@ -1910,7 +1912,7 @@ rate units in minutes</li>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.prof_time">
-<code class="descname">prof_time</code><span class="sig-paren">(</span><em>fname</em>, <em>yaxis_thing=u'vY'</em>, <em>num_type=u'ndump'</em>, <em>logy=False</em>, <em>radbase=None</em>, <em>radtop=None</em>, <em>ifig=101</em>, <em>ls_offset=0</em>, <em>label_case=u''</em>, <em>markevery=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.prof_time" title="Permalink to this definition">¶</a></dt>
+<code class="descname">prof_time</code><span class="sig-paren">(</span><em>fname</em>, <em>yaxis_thing=u'vY'</em>, <em>num_type=u'ndump'</em>, <em>logy=False</em>, <em>radbase=None</em>, <em>radtop=None</em>, <em>ifig=101</em>, <em>ls_offset=0</em>, <em>label_case=u' '</em>, <em>markevery=None</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.prof_time" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plot the time evolution of a profile from multiple
 dumps of the same run (…on the same figure).</p>
 <p>Velocities ‘v’, ‘vY’ and/or ‘vXZ’ may also be plotted.</p>
@@ -1967,11 +1969,11 @@ more than one case</li>
 <span class="ne">----&gt; </span><span class="mi">1</span> <span class="n">D2</span><span class="o">.</span><span class="n">prof_time</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">10</span><span class="p">],</span><span class="n">logy</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span><span class="n">num_type</span><span class="o">=</span><span class="s1">&#39;time&#39;</span><span class="p">)</span>
 
 <span class="nn">../../PyPPM/ppmpy/ppm.py</span> in <span class="ni">prof_time</span><span class="nt">(self, fname, yaxis_thing, num_type, logy, radbase, radtop, ifig, ls_offset, label_case, markevery, **kwargs)</span>
-<span class="g g-Whitespace">   </span><span class="mi">1726</span>             <span class="k">else</span><span class="p">:</span>
-<span class="g g-Whitespace">   </span><span class="mi">1727</span>                 <span class="n">pl</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">Y</span><span class="p">,</span><span class="n">y</span><span class="p">,</span><span class="n">utils</span><span class="o">.</span><span class="n">linestyle</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="n">ls_offset</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span>
-<span class="ne">-&gt; </span><span class="mi">1728</span>                         <span class="n">markevery</span><span class="o">=</span><span class="n">markevery</span><span class="p">,</span><span class="n">label</span><span class="o">=</span><span class="n">lab</span><span class="p">,</span>
-<span class="g g-Whitespace">   </span><span class="mi">1729</span>                        <span class="n">color</span> <span class="o">=</span> <span class="n">cb</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
-<span class="g g-Whitespace">   </span><span class="mi">1730</span> 
+<span class="g g-Whitespace">   </span><span class="mi">1730</span>             <span class="k">else</span><span class="p">:</span>
+<span class="g g-Whitespace">   </span><span class="mi">1731</span>                 <span class="n">pl</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">Y</span><span class="p">,</span><span class="n">y</span><span class="p">,</span><span class="n">utils</span><span class="o">.</span><span class="n">linestyle</span><span class="p">(</span><span class="n">i</span><span class="o">+</span><span class="n">ls_offset</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span>
+<span class="ne">-&gt; </span><span class="mi">1732</span>                         <span class="n">markevery</span><span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">markevery</span><span class="p">),</span><span class="n">label</span><span class="o">=</span><span class="n">lab</span><span class="p">,</span>
+<span class="g g-Whitespace">   </span><span class="mi">1733</span>                         <span class="n">color</span> <span class="o">=</span> <span class="n">cb</span><span class="p">(</span><span class="n">i</span><span class="p">))</span>
+<span class="g g-Whitespace">   </span><span class="mi">1734</span> 
 
 <span class="ne">UnboundLocalError</span>: local variable &#39;lab&#39; referenced before assignment
 </pre></div>

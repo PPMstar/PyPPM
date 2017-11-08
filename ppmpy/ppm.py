@@ -58,6 +58,12 @@ plots the data.
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 
+from builtins import zip
+from builtins import input
+from builtins import str
+from builtins import range
+from builtins import object
+from past.utils import old_div
 
 from numpy import *
 import numpy as np
@@ -1574,7 +1580,7 @@ class yprofile(DataPlot):
 # server utils/YProfPy directory
     
     def prof_time(self,fname,yaxis_thing='vY',num_type='ndump',logy=False,
-                  radbase=None,radtop=None,ifig=101,ls_offset=0,label_case="",markevery = None,
+                  radbase=None,radtop=None,ifig=101,ls_offset=0,label_case=" ",markevery = None,
                   **kwargs):
         """
         Plot the time evolution of a profile from multiple
@@ -1649,11 +1655,10 @@ class yprofile(DataPlot):
         #'ytick.labelsize':   fsize*0.8,
         #'text.usetex':       False}
         #pl.rcParams.update(params)
-
         if type(fname) is not list:
             fname = [fname]
         if num_type is 'time':
-                fname = [f * 60 for f in fname]
+            fname = [f * 60 for f in fname]
         
         pl.figure(ifig)
         i=0
@@ -1704,7 +1709,6 @@ class yprofile(DataPlot):
                 y = self.get(yaxis_thing,fname=dump,numtype=num_type,resolution='L', **kwargs)
                 ylab = yaxis_thing
                 if logy: ylab = 'log '+ylab
-
             if num_type is 'ndump':
                 lab = label_case+', '+str(dump)
                 leg_tit = num_type
@@ -1721,12 +1725,12 @@ class yprofile(DataPlot):
                 markevery = utils.linestyle(i+ls_offset)[1]
             if logy:
                 pl.plot(Y,np.log10(y),utils.linestyle(i+ls_offset)[0],
-                        markevery= markevery,label=lab,
+                        markevery= int(markevery),label=lab,
                        color = cb(i))
             else:
                 pl.plot(Y,y,utils.linestyle(i+ls_offset)[0],
-                        markevery=markevery,label=lab,
-                       color = cb(i))
+                        markevery= int(markevery),label=lab,
+                        color = cb(i))
 
             if radbase is not None and dump is fname[0]:
                 pl.axvline(radbase,linestyle='dashed',color='k')

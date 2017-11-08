@@ -26,7 +26,7 @@ Dependancies
 As well as rprofile.py which can be found on the astrohub server in /data/ppm_rpod2/lib/lcse
 
 ==================
-Data Assumptions
+Data assumptions
 ==================
 
 Yprofile files Assumptions
