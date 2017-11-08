@@ -20,7 +20,7 @@
 import os
 import sys
 
-sys.path.insert(0, '../../test/')
+sys.path.insert(0, '../../PyPPM/')
 #sys.path = ['../ppmpy'] + sys.path
 sys.path.append(os.path.abspath('sphinxext'))
 
