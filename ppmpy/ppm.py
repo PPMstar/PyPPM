@@ -99,7 +99,7 @@ def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
     login_names = {'Paul': 'pwoodwar',\
                    'Stou': 'sandalsk',\
                    'Falk': 'fherwig'  }
-    run_dir = '/scratch/sciteam/'+login_names[user]+'/'+run
+    run_dir = '/scratch/sciteam/v_evol'+login_names[user]+'/'+run
     data_dir = run_dir+'/YProfiles'
     mkdir_command = 'mkdir '+data_dir
     subprocess.call([mkdir_command],shell=True)
@@ -3998,7 +3998,7 @@ class yprofile(DataPlot):
         else:
             return x/1.e8,D
         
-    def plot_entrainment_rates(self,dumps,r1,r2,fit=False,fit_bounds=None,save=False,lims=None,
+    def plot_entrainment_rates(self,dumps,r1,r2,fit=False,fit_bounds=None,save=False,lims=None,ifig=4,
                               Q = 1.944*1.60218e-6/1e43,RR = 8.3144598,amu = 1.66054e-24/1e27,
                               airmu = 1.39165,cldmu = 0.725,fkair = 0.203606102635,
                               fkcld = 0.885906040268,AtomicNoair = 6.65742024965,
@@ -4093,7 +4093,7 @@ class yprofile(DataPlot):
             lbl2 = r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
                   format(mantissa, exponent)
 
-        ifig = 1; pl.close(ifig); pl.figure(ifig)
+        pl.close(ifig); pl.figure(ifig)
         if fit:
             pl.plot(t[idx2]/60., m_HHe_total_fit2, '-', color =  'k', lw = 0.5, \
                      zorder = 102, label = lbl2)
@@ -5621,7 +5621,6 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
     pl.ylabel(r'v$_r$ / km s$^{-1}$')
     if lims is not None:
         pl.axis(lims)
-        print('p')
     pl.legend(loc = 0)
    
 def luminosity_for_dump(path, get_t = False):
