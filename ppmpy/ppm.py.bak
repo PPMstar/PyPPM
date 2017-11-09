@@ -55,7 +55,7 @@ plots the data.
     D2.vprofs(100)
 
 """
-
+'''
 from __future__ import (division,
                         print_function)
 
@@ -65,7 +65,7 @@ from builtins import str
 from builtins import range
 from builtins import object
 from past.utils import old_div
-
+'''
 from numpy import *
 import numpy as np
 from math import *
@@ -1640,7 +1640,7 @@ class yprofile(DataPlot):
             
             @savefig prof_time.png width=6in
             In [136]: D2 = ppm.yprofile('D2')
-               .....: D2.prof_time([0,5,10],logy=False,num_type='time',ifig=78)       
+               .....: D2.prof_time([0,5,10],logy=False,num_type='time')       
 
         """
     

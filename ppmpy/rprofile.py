@@ -55,7 +55,7 @@ class rprofile_set(object):
         rp.get_table("fv")
     """
 
-    self.path = source if isinstance(source, str) else None
+    self.path = source
     self.files = source if isinstance(source, list) else []
     self.lazy = kwargs.get('lazy', True)
     self.stride = kwargs.get('stride', 1)
