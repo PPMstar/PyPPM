@@ -82,7 +82,7 @@ import scipy.interpolate as interpolate
 from scipy import optimize
 from scipy import integrate as integrate
 import copy
-from . import rprofile as rprof
+from . import rprofile as bprof
 from nugridpy import utils
 cb = utils.colourblind
 
@@ -5381,7 +5381,7 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
 
     '''
     cb = utils.colourblind
-    rp_set = rprof.rprofile_set(data_path)
+    rp_set = bprof.rprofile_set(data_path)
     rp = rp_set.get_dump(dump_to_plot)
     nr = len(rp.get('y'))
     
@@ -5657,7 +5657,7 @@ def luminosity_for_dump(path, get_t = False):
         is_yprofile = True
     except:
         
-        rp_set = rprof.rprofile_set(path)
+        rp_set = bprof.rprofile_set(path)
         dumps = list(range(rp_set.dumps[0],\
                       #rp_set.dumps[0]+100,1)
                       rp_set.dumps[-1]+1,1))
@@ -5887,7 +5887,7 @@ def get_upper_bound(data_path, r1, r2, sparse = 10):
     
     '''
 
-    rp_set = rprof.rprofile_set(data_path)
+    rp_set = bprof.rprofile_set(data_path)
 
     n_dumps = len(rp_set.dumps)
     nt = len(list(range(0,n_dumps,sparse)))
@@ -5960,7 +5960,7 @@ def get_r_int(data_path, r_ref, gamma, sparse = 1):
     r_int : interface radius
     t: time
     '''
-    rp_set = rprof.rprofile_set(data_path)
+    rp_set = bprof.rprofile_set(data_path)
     rp = rp_set.get_dump(rp_set.dumps[0])
     n_buckets = rp.get('nbuckets')
     r = rp.get('y')
@@ -6062,7 +6062,7 @@ def plot_boundary_evolution(data_path, r1, r2, t_fit_start=700,
     '''
     cb = utils.colourblind
     
-    rp_set = rprof.rprofile_set(data_path)
+    rp_set = bprof.rprofile_set(data_path)
     
     n_dumps = len(rp_set.dumps)
     n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
@@ -7373,3 +7373,104 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
     pl.legend(loc='center left',numpoints=1).draw_frame(False)
     pl.ylabel('$\log(D\,/\,{\\rm cm}^2\,{\\rm s}^{-1})$')
     pl.xlabel('r / Mm')
+
+
+
+
+
+class rprof:
+    def __init__(self, path):
+        self.path = path # path to the rprof file
+        
+        with open(path, 'r') as fin:
+            lines = fin.readlines()
+
+        l = 0 # line index
+
+        # find simulation time
+        while not lines[l].startswith('DUMP'):
+            l += 1
+        self.t = float(lines[l].split('=')[1].split(',')[0])
+
+        # find resolution
+        while not lines[l].startswith('Nx ='):
+            l += 1
+        self.Nx = int(lines[l].split()[-1])
+
+        self.lrdata = {} # low-resolution data columns
+        self.hrdata = {} # high-resolution data columns
+
+        eof = False
+        while l < len(lines):
+            # find the next table
+            while True:
+                sline = lines[l].split()
+                if len(sline) > 0 and sline[0] == 'IR':
+                    col_names = sline
+                    break
+                l += 1
+                if l == len(lines):
+                   eof = True
+                   break
+            if eof:
+                break
+ 
+            # go to the table's body
+            l += 2 
+            sline = lines[l].split()
+            n = int(sline[0]) # number of radial zones
+
+            # n should equal Nx/2 for standard-resolution columns
+            # and Nx for high-resolution ones
+            ishr = False
+            if n > self.Nx/2:
+                ishr = True 
+
+            # register the columns, skipping the 1st one (IR)
+            for i in range(1, len(col_names)):
+                if ishr:
+                    self.hrdata[col_names[i]] = np.zeros(n)
+                else:
+                    self.lrdata[col_names[i]] = np.zeros(n)
+
+            for i in range(n):
+                sline = lines[l].split()
+                idx = int(sline[0])
+                for i in range(1, len(col_names)):
+                    val = float(sline[i])
+                    if ishr:
+                        self.hrdata[col_names[i]][idx-1] = val
+                    else:
+                        self.lrdata[col_names[i]][idx-1] = val
+                l += 1
+
+    def plot_FV(self,idec=3,xxlim=None, yylim=None,legend='', ylog=True):
+        np.warnings.filterwarnings('ignore')
+        FV = self.lrdata['FV'] 
+        R = self.lrdata['R']
+        yy = FV
+        if ylog: yy = np.log10(FV)
+        pl.plot(R, yy, utils.linestylecb(idec)[0], \
+            color=utils.linestylecb(idec)[2], \
+            label=legend+', {:.1f} min'.format(self.t/60.))
+        pl.xlim(xxlim)
+        pl.ylim(yylim)
+        pl.xlabel('r / Mm')
+        pl.ylabel('FV')
+        pl.legend(loc=2)
+        pl.tight_layout()
+
+    def plot_A(self,idec=3,xxlim=None, yylim=None,legend=''):
+        R = self.lrdata['R']
+        A = self.lrdata['A']
+        pl.plot(R, A,  utils.linestylecb(idec)[0], \
+            color=utils.linestylecb(idec)[2], \
+            label=legend+', {:.1f} min'.format(self.t/60.))
+        pl.xlim(xxlim)
+        pl.ylim(yylim)
+        pl.xlabel('r / Mm')
+        pl.ylabel('A')
+        pl.legend(loc=2)
+        pl.tight_layout()
+
+    
