@@ -85,6 +85,9 @@ import copy
 from . import rprofile as bprof
 from nugridpy import utils
 cb = utils.colourblind
+from dateutil.parser import parse
+import time
+import glob
 
 # from rprofile import rprofile_reader
 
@@ -7376,29 +7379,351 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
 
 
 
-
-
-class rprof:
-    def __init__(self, path):
-        self.path = path # path to the rprof file
+class Messenger:
+    def __init__(self, verbose=3):
+        # Print everything by default (verbose=3).
+        self.__print_messages = True
+        self.__print_warnings = True
+        self.__print_errors = True
         
-        with open(path, 'r') as fin:
-            lines = fin.readlines()
+        vrbs = int(verbose)
+        if vrbs > 3:
+            self.__verbose = 3
+        elif vrbs < 0:
+            self.__verbose = 0
+        else:
+            self.__verbose = vrbs
+            
+        if self.__verbose < 3:
+            self.__print_messages = False
+        if self.__verbose < 2:
+            self.__print_warnings = False
+        if self.__verbose < 1:
+            self.__print_errors = False
+    
+    def message(self, message):
+        if self.__print_messages:
+            print(message)
+            
+    def warning(self, warning):
+        if self.__print_warnings:
+            print('Warning: ' + warning)
+    
+    def error(self, error):
+        if self.__print_errors:
+            print('Error: ' + error)
+
+
+
+class RprofHistory:
+    def __init__(self, file_path, verbose=3):
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+        
+        # __read_history_file() will set the following variables,
+        # if successful:
+        self.__file_path = ''
+        self.__vars = []
+        self.__data = {}
+        if not self.__read_history_file(file_path):
+            return
+        
+        # Instance successfully initialized.
+        self.__is_valid = True
+        
+    def __read_history_file(self, file_path):
+        try:
+            with open(file_path, 'r') as fin:
+                msg = "Reading history file '{:s}'.".format(file_path)
+                self.__messenger.message(msg)
+                lines = fin.readlines()
+            self.__file_path = file_path
+        except FileNotFoundError as e:
+            err = "History file '{:s}' not found.".format(file_path)
+            self.__messenger.error(err)
+            return False
+        except OSError as e:
+            err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
+            self.__messenger.error(err)
+            return False
+        
+        n_lines = len(lines)
+        l = 0 # line index
+
+        # Find the header.
+        while not lines[l].startswith('NDump'):
+            l += 1
+        # Get column names.
+        self.__vars = lines[l].split()
+        l += 1
+        
+        for this_var in self.__vars:
+            self.__data[this_var] = []
+        
+        # Read the data table.
+        while l < n_lines:
+            if lines[l].strip() == '':
+                l += 1
+                continue
+            
+            sline = lines[l].split()
+            
+            # The 1st variable is always NDump.
+            self.__data['NDump'].append(int(sline[0]))
+            
+            # Another len(self.__vars) - 2 columns contain floats.
+            for i in range(1, len(self.__vars) - 1):
+                self.__data[self.__vars[i]].append(float(sline[i]))
+                
+            # The last column is always TimeStamp (which contains spaces,
+            # so we have to put it back together). We parse the datetime
+            # string and convert it to a UNIX time stamp (float). We do
+            # not care what time zone the datetime string corresponds to,
+            # because we only care about time differences.
+            timestamp_str = ' '.join(sline[len(self.__vars)-1:])
+            timestamp = time.mktime(parse(timestamp_str).timetuple())
+            self.__data['TimeStamp'].append(timestamp)
+            l += 1
+        
+        return True
+        
+    def is_valid(self):
+        return self.__is_valid
+        
+    def get_variables(self):
+        # Return a copy.
+        return list(self.__vars)
+    
+    def get(self, var_name):
+        if var_name in self.__vars:
+            # Return a copy.
+            return np.array(self.__data[var_name])
+        else:
+            err = "Variable '{:s}' does not exist.".format(var_name)
+            self.__messenger.error(err)
+            
+            msg = 'Available variables: \n'
+            msg += str(self.__vars)
+            self.__messenger.message(msg)
+            
+            return None
+
+    def plot_wct_per_dump(self):
+        dumps = self.get('NDump')
+        timestamps = self.get('TimeStamp')
+        
+        wct_per_dump = (np.roll(timestamps, -1) - timestamps)/\
+                       (np.roll(dumps, -1) - dumps)
+        
+        pl.plot(dumps[:-1], wct_per_dump[:-1])
+        pl.xlabel('NDump')
+        pl.ylabel('WCT per dump / s')
+
+        
+        
+class RprofSet:
+    def __init__(self, dir_name, verbose=3):
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+        
+        # __find_dumps() will set the following variables,
+        # if successful:
+        self.__dir_name = ''
+        self.__run_id = ''
+        self.__dumps = []
+        if not self.__find_dumps(dir_name):
+            return
+
+        history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
+                                                         self.__run_id)
+        self.__history = RprofHistory(history_file_path, verbose=verbose)
+        if not self.__history.is_valid():
+            wrng = ('History not available. You will not be able to access '
+                   'rprof data by simulation time.')
+            self.__messenger.warning(wrng)
+        
+        self.__is_valid = True
+
+    def __find_dumps(self, dir_name):
+        if not os.path.isdir(dir_name):
+            err = "Directory '{:s}' does not exist.".format(dir_name)
+            self.__messenger.error(err)
+            return False
+        
+        # join() will add a trailing slash if not present.
+        self.__dir_name = os.path.join(dir_name, '')
+
+        rprof_files = glob.glob(self.__dir_name + '*.rprof')
+        if len(rprof_files) == 0:
+            err = "No rprof files found in '{:s}'.".format(self.__dir_name)
+            self.__messenger.error(err)
+            return False
+        
+        rprof_files = [os.path.basename(rprof_files[i]) \
+                       for i in range(len(rprof_files))]
+        
+        # run_id is always separated from the rest of the file name
+        # by a single dash.
+        self.__run_id = rprof_files[0].split('-')[0]
+        for i in range(len(rprof_files)):
+            split1 = rprof_files[i].split('-')
+            if split1[0] != self.__run_id:
+                wrng = ("rprof files with multiple run ids found in '{:s}'."
+                        "Using only those with run id '{:s}'.").\
+                       format(self.__dir_name, self.__run_id)
+                self.__messenger.warning(wrng)
+                continue
+            
+            # Skip files that do not fit the rprof naming pattern.
+            if len(split1) < 2:
+                continue
+
+            # Get rid of the extension and try to parse the dump number.
+            # Skip files that do not fit the rprof naming pattern.
+            split2 = split1[1].split('.')
+            try:
+                dump_num = int(split2[0])
+                self.__dumps.append(dump_num)
+            except:
+                continue
+        
+        self.__dumps = sorted(self.__dumps)
+        msg = "{:d} rprof files found in '{:s}.\n".format(len(self.__dumps), \
+              self.__dir_name)
+        msg += "Dump numbers range from {:d} to {:d}.".format(\
+               self.__dumps[0], self.__dumps[-1])
+        self.__messenger.message(msg)
+        if (self.__dumps[-1] - self.__dumps[0] + 1) != len(self.__dumps):
+            wrng = 'Some dumps are missing.'
+            self.__messenger.warning(wrng)
+
+        return True
+     
+    def is_valid(self):
+        return self.__is_valid
+    
+    def get_run_id(self):
+        return str(self.__run_id)
+    
+    def get_history(self):
+        if self.__history is not None:
+            return self.__history
+        else:
+            self.__messenger.error('History not available.')
+            return None
+    
+    def get_dump_list(self):
+        return list(self.__dumps)
+    
+    def get_dump(self, dump):
+        if dump not in self.__dumps:
+            err = 'Dump {:d} is not available.'.format(dump)
+            self.__messenger.error(err)
+            return None
+        
+        file_path = '{:s}{:s}-{:04d}.rprof'.format(self.__dir_name, \
+                                                   self.__run_id, dump)
+        
+        return Rprof(file_path)
+    
+    def get(self, var, fname, num_type='NDump', resolution='l'):
+        if num_type.lower() == 'ndump':
+            rp = self.get_dump(fname)
+        elif num_type.lower() == 't':
+            if self.__history is None:
+                err = 'History not available. Cannot search by t.'
+                self.__messenger.error(err)
+                return None
+            
+            t = self.__history.get('time(secs)')
+            ndump = self.__history.get('NDump')
+            
+            closest_idx = np.argmin(np.abs(t - fname))
+            closest_dump = ndump[closest_idx]
+            closest_t = t[closest_idx]
+            msg = ('Dump {:d} at t = {:.2f} min is the closest to '
+                   't = {:.2f} min.').format(closest_dump, \
+                  closest_t/60., fname/60.)
+            self.__messenger.message(msg)
+            rp = self.get_dump(closest_dump)
+        
+        if rp is not None:
+            return rp.get(var, resolution=resolution)
+        else:
+            return None
+        
+    def plot_FV(self, fname, num_type='NDump', resolution='l', idec=3, xxlim=None, \
+                yylim=None,legend='', ylog=True):
+        np.warnings.filterwarnings('ignore')
+        R = self.get('R', fname=fname, num_type=num_type, resolution='l') 
+        FV = self.get('FV', fname=fname, num_type=num_type, resolution='l') 
+        t = self.get('t', fname=fname, num_type=num_type)
+        yy = FV
+        if ylog: yy = np.log10(FV)
+        pl.plot(R, yy, utils.linestylecb(idec)[0], \
+                color=utils.linestylecb(idec)[2], \
+                label=legend+', {:.1f} min'.format(t/60.))
+        pl.xlim(xxlim)
+        pl.ylim(yylim)
+        pl.xlabel('r / Mm')
+        pl.ylabel('FV')
+        pl.legend(loc=2)
+        pl.tight_layout()
+
+    def plot_A(self, fname, num_type='NDump', resolution='l', idec=3,xxlim=None, \
+               yylim=None, legend=''):
+        R = self.get('R', fname=fname, num_type=num_type, resolution='l') 
+        A = self.get('A', fname=fname, num_type=num_type, resolution='l')
+        t = self.get('t', fname=fname, num_type=num_type)
+        pl.plot(R, A,  utils.linestylecb(idec)[0], \
+                color=utils.linestylecb(idec)[2], \
+                label=legend+', {:.1f} min'.format(t/60.))
+        pl.xlim(xxlim)
+        pl.ylim(yylim)
+        pl.xlabel('r / Mm')
+        pl.ylabel('A')
+        pl.legend(loc=2)
+        pl.tight_layout()
+
+class Rprof:
+    def __init__(self, file_path, verbose=3):
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+        if self.__read_rprof_file(file_path) != 0:
+            return
+        
+        self.__is_valid = True
+        
+    def __read_rprof_file(self, file_path):
+        try:
+            with open(file_path, 'r') as fin:
+                lines = fin.readlines()
+            self.__file_path = file_path
+        except IOError as e:
+            err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
+            self.__messenger.error(err)
+            return None
+        
+        self.__header_vars = []
+        self.__header_data = {}
+        self.__lr_vars = [] # low-resolution data columns
+        self.__lr_data = {} # low-resolution data columns
+        self.__hr_vars = [] # high-resolution data columns
+        self.__hr_data = {} # high-resolution data columns
 
         l = 0 # line index
 
-        # find simulation time
+        # Find simulation time.
         while not lines[l].startswith('DUMP'):
             l += 1
-        self.t = float(lines[l].split('=')[1].split(',')[0])
+        self.__header_vars.append('t')
+        self.__header_data['t'] = float(lines[l].split('=')[1].split(',')[0])
 
-        # find resolution
+        # Find resolution.
         while not lines[l].startswith('Nx ='):
             l += 1
-        self.Nx = int(lines[l].split()[-1])
-
-        self.lrdata = {} # low-resolution data columns
-        self.hrdata = {} # high-resolution data columns
+        self.__header_vars.append('Nx')
+        self.__header_data['Nx'] = int(lines[l].split()[-1])
 
         eof = False
         while l < len(lines):
@@ -7416,61 +7741,79 @@ class rprof:
                 break
  
             # go to the table's body
-            l += 2 
+            l += 2
             sline = lines[l].split()
             n = int(sline[0]) # number of radial zones
 
             # n should equal Nx/2 for standard-resolution columns
             # and Nx for high-resolution ones
-            ishr = False
-            if n > self.Nx/2:
-                ishr = True 
+            is_hr = False
+            if n > self.__header_data['Nx']/2:
+                is_hr = True
 
             # register the columns, skipping the 1st one (IR)
             for i in range(1, len(col_names)):
-                if ishr:
-                    self.hrdata[col_names[i]] = np.zeros(n)
+                if is_hr:
+                    self.__hr_vars.append(col_names[i])
+                    self.__hr_data[col_names[i]] = np.zeros(n)
                 else:
-                    self.lrdata[col_names[i]] = np.zeros(n)
+                    self.__lr_vars.append(col_names[i])
+                    self.__lr_data[col_names[i]] = np.zeros(n)
 
             for i in range(n):
                 sline = lines[l].split()
                 idx = int(sline[0])
                 for i in range(1, len(col_names)):
                     val = float(sline[i])
-                    if ishr:
-                        self.hrdata[col_names[i]][idx-1] = val
+                    if is_hr:
+                        self.__hr_data[col_names[i]][idx-1] = val
                     else:
-                        self.lrdata[col_names[i]][idx-1] = val
+                        self.__lr_data[col_names[i]][idx-1] = val
                 l += 1
-
-    def plot_FV(self,idec=3,xxlim=None, yylim=None,legend='', ylog=True):
-        np.warnings.filterwarnings('ignore')
-        FV = self.lrdata['FV'] 
-        R = self.lrdata['R']
-        yy = FV
-        if ylog: yy = np.log10(FV)
-        pl.plot(R, yy, utils.linestylecb(idec)[0], \
-            color=utils.linestylecb(idec)[2], \
-            label=legend+', {:.1f} min'.format(self.t/60.))
-        pl.xlim(xxlim)
-        pl.ylim(yylim)
-        pl.xlabel('r / Mm')
-        pl.ylabel('FV')
-        pl.legend(loc=2)
-        pl.tight_layout()
-
-    def plot_A(self,idec=3,xxlim=None, yylim=None,legend=''):
-        R = self.lrdata['R']
-        A = self.lrdata['A']
-        pl.plot(R, A,  utils.linestylecb(idec)[0], \
-            color=utils.linestylecb(idec)[2], \
-            label=legend+', {:.1f} min'.format(self.t/60.))
-        pl.xlim(xxlim)
-        pl.ylim(yylim)
-        pl.xlabel('r / Mm')
-        pl.ylabel('A')
-        pl.legend(loc=2)
-        pl.tight_layout()
-
+                
+        return 0
+     
+    def is_valid(self):
+        return self.__is_valid
+     
+    def get_header_variables(self):
+        # Return a copy.
+        return list(self.__header_vars)
     
+    def get_lr_variables(self):
+        # Return a copy.
+        return list(self.__lr_vars)
+    
+    def get_hr_variables(self):
+        # Return a copy.
+        return list(self.__hr_vars)
+
+    def get(self, var, resolution='l'):
+        if var in self.__header_vars:
+            return self.__header_data[var]
+        else:
+            if resolution.lower() == 'l':
+                if var in self.__lr_vars:
+                    return np.array(self.__lr_data[var])
+                else:
+                    err = ("Low-resolution data not available for variable "
+                          "{:s}.").format(var)
+                    self.__messenger.error(err)
+                    
+                    msg = 'Available low-resolution variables:\n'
+                    msg += str(self.__lr_vars)
+                    self.__messenger.message(msg)
+            elif resolution.lower() == 'h':
+                if var in self.__hr_vars:
+                    return np.array(self.__hr_data[var])
+                else:
+                    err = ("High-resolution data not available for variable "
+                          "{:s}.").format(var)
+                    self.__messenger.error(err)
+                    
+                    msg = 'Available high-resolution variables:\n'
+                    msg += str(self.__hr_vars)
+                    self.__messenger.message(msg)
+            else:
+                err = "Unknown resolution setting '{:s}'.".format(resolution)
+                self.__messenger.error(err)
