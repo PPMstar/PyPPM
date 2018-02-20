@@ -7381,7 +7381,22 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
 
 
 class Messenger:
+    '''
+    Messenger reports messages, warnings, and errors to the user.
+    '''
+    
     def __init__(self, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        verbose: integer
+            Verbosity level: no output (0), errors only (1), errors and
+            warnings (2), everything (3). Negative values are replaced
+            with 0 and any values greater than 3 are considered to be 3.
+        '''
+        
         # Print everything by default (verbose=3).
         self.__print_messages = True
         self.__print_warnings = True
@@ -7403,14 +7418,41 @@ class Messenger:
             self.__print_errors = False
     
     def message(self, message):
+        '''
+        Reports a message to the user. The message is currently printed to
+        stdout.
+        
+        Parameters
+        ----------
+        message: string
+        '''
+        
         if self.__print_messages:
             print(message)
             
     def warning(self, warning):
+        '''
+        Reports a warning to the user. The warning is currently printed to
+        stdout.
+        
+        Parameters
+        ----------
+        warning: string
+        '''
+        
         if self.__print_warnings:
             print('Warning: ' + warning)
     
     def error(self, error):
+        '''
+        Reports an error to the user. The error is currently printed to
+        stdout.
+        
+        Parameters
+        ----------
+        error: string
+        '''
+        
         if self.__print_errors:
             print('Error: ' + error)
 
