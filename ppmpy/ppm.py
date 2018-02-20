@@ -5,6 +5,7 @@
 # (c) 2010 - 2013 Daniel Alexander Bertolino Conti
 # (c) 2011 - 2013 Falk Herwig
 # (c) 2014 - 2015 Sam Jones, Falk Herwig, Robert Andrassy
+# (c) 2016 - 2018 Robert Andrassy, Jericho O'Connell, Falk Herwig
 #
 
 """ 
@@ -7727,7 +7728,7 @@ class Rprof:
 
         eof = False
         while l < len(lines):
-            # find the next table
+            # Find the next table.
             while True:
                 sline = lines[l].split()
                 if len(sline) > 0 and sline[0] == 'IR':
@@ -7740,23 +7741,32 @@ class Rprof:
             if eof:
                 break
  
-            # go to the table's body
-            l += 2
+            # Go to the table's body.
+            while True:
+                stripped_line = lines[l].strip()
+                if len(stripped_line) > 0 and stripped_line[0].isdigit():
+                    break
+                l += 1
+            
             sline = lines[l].split()
-            n = int(sline[0]) # number of radial zones
+            # The first number is always the number of radial zones.
+            n = int(sline[0])
 
             # n should equal Nx/2 for standard-resolution columns
-            # and Nx for high-resolution ones
+            # and Nx for high-resolution ones.
             is_hr = False
             if n > self.__header_data['Nx']/2:
                 is_hr = True
 
-            # register the columns, skipping the 1st one (IR)
+            # Register the columns, skipping the 1st one (IR) and any
+            # that are already registered (some columns appear in
+            # multiple places in rprof files, probably to make them
+            # easier for humans to read).
             for i in range(1, len(col_names)):
-                if is_hr:
+                if is_hr and col_names[i] not in self.__hr_vars:
                     self.__hr_vars.append(col_names[i])
                     self.__hr_data[col_names[i]] = np.zeros(n)
-                else:
+                elif col_names[i] not in self.__lr_vars:
                     self.__lr_vars.append(col_names[i])
                     self.__lr_data[col_names[i]] = np.zeros(n)
 
