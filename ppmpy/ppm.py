@@ -7583,11 +7583,14 @@ class RprofHistory:
         Parameters
         ----------
         var_name: string
+            Name of the variable.
         
         Returns
         -------
-        Variable as a numpy array or None if var_name is not
-        a valid variable name.
+        numpy.ndarray
+            Variable var_name if it exists.
+        NoneType
+            If variable var_name does not exist.
         '''
         
         if var_name in self.__vars:
@@ -7672,7 +7675,8 @@ class RprofSet:
         
         Returns
         -------
-        True when a set of .rprof files has been found. False otherwise.
+        boolean
+            True when a set of .rprof files has been found. False otherwise.
         '''
         
         if not os.path.isdir(dir_name):
@@ -7735,7 +7739,8 @@ class RprofSet:
         
         Returns
         -------
-        True if the instance is valid. False otherwise.
+        boolean
+            True if the instance is valid. False otherwise.
         '''
         
         return self.__is_valid
@@ -7775,7 +7780,10 @@ class RprofSet:
         ----------
         dump: integer
             
-        
+        Returns
+        -------
+        Rprof
+            Rprof object corresponding to the selected dump.
         '''
         
         if dump not in self.__dumps:
@@ -7812,8 +7820,11 @@ class RprofSet:
             
         Returns
         -------
-        Variable var as given by Rprof.get() if the Rprof corresponding to
-        fname exists and None otherwise.
+        numpy.ndarray
+            Variable var as given by Rprof.get() if the Rprof corresponding
+            to fname exists.
+        NoneType
+            If the Rprof corresponding to fname does not exist.
         '''
         
         if num_type.lower() == 'ndump':
@@ -7910,7 +7921,10 @@ class Rprof:
             
         Returns
         -------
-        0 on success, None otherwise.
+        int
+            0 on success.
+        NoneType
+            Something failed.
         ''' 
         
         try:
@@ -8006,7 +8020,8 @@ class Rprof:
         
         Returns
         -------
-        True if the instance is valid. False otherwise.
+        boolean
+            True if the instance is valid. False otherwise.
         '''
         
         return self.__is_valid
@@ -8052,7 +8067,8 @@ class Rprof:
         
         Returns
         -------
-        Variable var, if found.
+        np.ndarray
+            Variable var, if found.
         '''
         
         if var in self.__header_vars:
