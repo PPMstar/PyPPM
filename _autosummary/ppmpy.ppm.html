@@ -4,20 +4,12 @@
 
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
+        <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <title>ppm &#8212; PPMstar 0 documentation</title>
     <link rel="stylesheet" href="../_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
-    <script type="text/javascript">
-      var DOCUMENTATION_OPTIONS = {
-        URL_ROOT:    '../',
-        VERSION:     '0',
-        COLLAPSE_INDEX: false,
-        FILE_SUFFIX: '.html',
-        HAS_SOURCE:  true,
-        SOURCELINK_SUFFIX: '.txt'
-      };
-    </script>
+    <script type="text/javascript" src="../_static/documentation_options.js"></script>
     <script type="text/javascript" src="../_static/jquery.js"></script>
     <script type="text/javascript" src="../_static/underscore.js"></script>
     <script type="text/javascript" src="../_static/doctools.js"></script>
@@ -31,8 +23,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
 
-  </head>
-  <body>
+  </head><body>
   <div class="document">
     
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
@@ -67,22 +58,24 @@
 <hr />
 <ul>
     
+    <li class="toctree-l1"><a href="https://github.com/PPMstar/PyPPM">view on Github</a></li>
+    
     <li class="toctree-l1"><a href="genindex.html">Index</a></li>
     
     <li class="toctree-l1"><a href="https://ppmstar.github.io/PyPPM/">home page</a></li>
-    
-    <li class="toctree-l1"><a href="https://github.com/PPMstar/PyPPM">view on Github</a></li>
     
 </ul>
 
 <div id="searchbox" style="display: none" role="search">
   <h3>Quick search</h3>
+    <div class="searchformwrapper">
     <form class="search" action="../search.html" method="get">
-      <div><input type="text" name="q" /></div>
-      <div><input type="submit" value="Go" /></div>
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
       <input type="hidden" name="check_keywords" value="yes" />
       <input type="hidden" name="area" value="default" />
     </form>
+    </div>
 </div>
 <script type="text/javascript">$('#searchbox').show(0);</script>
         </div>
@@ -102,7 +95,7 @@ some analysis involving Rprofile files and Mesa stellar models.</p>
 <p>If the user find any bugs or errors, please email us.</p>
 <p class="rubric">Examples</p>
 <p>Here is an example runthrough.</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
 <span class="gp">   ...: </span><span class="o">!</span>ls /data/ppm_rpod2/YProfiles/
 <span class="gp">   ...: </span>
 <span class="go">AGBTP_M2.0Z1.e-5  O-shell-M25	  agb-entrainment-convergence</span>
@@ -147,7 +140,7 @@ some analysis involving Rprofile files and Mesa stellar models.</p>
 </pre></div>
 </div>
 <p>and</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [7]: </span><span class="n">D2</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D2&#39;</span><span class="p">)</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [7]: </span><span class="n">D2</span><span class="o">=</span><span class="n">ppm</span><span class="o">.</span><span class="n">yprofile</span><span class="p">(</span><span class="s1">&#39;D2&#39;</span><span class="p">)</span>
 <span class="gp">   ...: </span><span class="n">D2</span><span class="o">.</span><span class="n">vprofs</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
 <span class="gp">   ...: </span>
 </pre></div>
@@ -164,91 +157,91 @@ some analysis involving Rprofile files and Mesa stellar models.</p>
 <col width="90%" />
 </colgroup>
 <tbody valign="top">
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.L_H_L_He_comparison" title="ppmpy.ppm.L_H_L_He_comparison"><code class="xref py py-obj docutils literal"><span class="pre">L_H_L_He_comparison</span></code></a>(cases[,&nbsp;sparse,&nbsp;ifig,&nbsp;…])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.L_H_L_He_comparison" title="ppmpy.ppm.L_H_L_He_comparison"><code class="xref py py-obj docutils literal notranslate"><span class="pre">L_H_L_He_comparison</span></code></a>(cases[,&nbsp;sparse,&nbsp;ifig,&nbsp;…])</td>
 <td>Compares L_H to L_He, optional values are set to values from O-shell burning paper.</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.analyse_dump" title="ppmpy.ppm.analyse_dump"><code class="xref py py-obj docutils literal"><span class="pre">analyse_dump</span></code></a>(rp,&nbsp;r1,&nbsp;r2)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.analyse_dump" title="ppmpy.ppm.analyse_dump"><code class="xref py py-obj docutils literal notranslate"><span class="pre">analyse_dump</span></code></a>(rp,&nbsp;r1,&nbsp;r2)</td>
 <td>This function analyses ray profiles of one dump and returns</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.bucket_map" title="ppmpy.ppm.bucket_map"><code class="xref py py-obj docutils literal"><span class="pre">bucket_map</span></code></a>(rprofile,&nbsp;quantity[,&nbsp;limits,&nbsp;…])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.bucket_map" title="ppmpy.ppm.bucket_map"><code class="xref py py-obj docutils literal notranslate"><span class="pre">bucket_map</span></code></a>(rprofile,&nbsp;quantity[,&nbsp;limits,&nbsp;…])</td>
 <td>Plots a Mollweide projection of the rprofile object using the mpl_toolkits.basemap package</td>
 </tr>
-<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">cdiff</span></code>(x)</td>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal notranslate"><span class="pre">cdiff</span></code>(x)</td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">cmap_from_str</span></code>(str[,&nbsp;segment])</td>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal notranslate"><span class="pre">cmap_from_str</span></code>(str[,&nbsp;segment])</td>
 <td></td>
 </tr>
-<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">colourmap_from_str</span></code>(str[,&nbsp;segment])</td>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal notranslate"><span class="pre">colourmap_from_str</span></code>(str[,&nbsp;segment])</td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.compare_entrained_material" title="ppmpy.ppm.compare_entrained_material"><code class="xref py py-obj docutils literal"><span class="pre">compare_entrained_material</span></code></a>(yps,&nbsp;labels,&nbsp;fname)</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.compare_entrained_material" title="ppmpy.ppm.compare_entrained_material"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compare_entrained_material</span></code></a>(yps,&nbsp;labels,&nbsp;fname)</td>
 <td>Compares the entrainment rate of two seperate yprofile objects</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.energy_comparison" title="ppmpy.ppm.energy_comparison"><code class="xref py py-obj docutils literal"><span class="pre">energy_comparison</span></code></a>(yprof,&nbsp;mesa_model[,&nbsp;…])</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.energy_comparison" title="ppmpy.ppm.energy_comparison"><code class="xref py py-obj docutils literal notranslate"><span class="pre">energy_comparison</span></code></a>(yprof,&nbsp;mesa_model[,&nbsp;…])</td>
 <td>Nuclear  energy  generation  rate (enuc) thermal  neutrino</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_N2" title="ppmpy.ppm.get_N2"><code class="xref py py-obj docutils literal"><span class="pre">get_N2</span></code></a>(yp,&nbsp;dump)</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_N2" title="ppmpy.ppm.get_N2"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_N2</span></code></a>(yp,&nbsp;dump)</td>
 <td>squared Brunt-Vaisala frequency N^2</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_avg_rms_velocities" title="ppmpy.ppm.get_avg_rms_velocities"><code class="xref py py-obj docutils literal"><span class="pre">get_avg_rms_velocities</span></code></a>(prof,&nbsp;dumps,&nbsp;comp)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_avg_rms_velocities" title="ppmpy.ppm.get_avg_rms_velocities"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_avg_rms_velocities</span></code></a>(prof,&nbsp;dumps,&nbsp;comp)</td>
 <td>Finds an average velocity vector as a function of radius for a given range of dumps.</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_heat_source" title="ppmpy.ppm.get_heat_source"><code class="xref py py-obj docutils literal"><span class="pre">get_heat_source</span></code></a>(yprof[,&nbsp;radbase,&nbsp;dlayerbot,&nbsp;…])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_heat_source" title="ppmpy.ppm.get_heat_source"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_heat_source</span></code></a>(yprof[,&nbsp;radbase,&nbsp;dlayerbot,&nbsp;…])</td>
 <td>returns estimation of yprofiles energy</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_mach_number" title="ppmpy.ppm.get_mach_number"><code class="xref py py-obj docutils literal"><span class="pre">get_mach_number</span></code></a>(rp_set,&nbsp;yp,&nbsp;dumps,&nbsp;comp[,&nbsp;…])</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_mach_number" title="ppmpy.ppm.get_mach_number"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_mach_number</span></code></a>(rp_set,&nbsp;yp,&nbsp;dumps,&nbsp;comp[,&nbsp;…])</td>
 <td>Returns max Mach number and matching time vector</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_mesa_time_evo" title="ppmpy.ppm.get_mesa_time_evo"><code class="xref py py-obj docutils literal"><span class="pre">get_mesa_time_evo</span></code></a>(mesa_path,&nbsp;mesa_logs,&nbsp;t_end)</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_mesa_time_evo" title="ppmpy.ppm.get_mesa_time_evo"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_mesa_time_evo</span></code></a>(mesa_path,&nbsp;mesa_logs,&nbsp;t_end)</td>
 <td>Function to generate data for figure 5 in O-shell paper.</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_p_top" title="ppmpy.ppm.get_p_top"><code class="xref py py-obj docutils literal"><span class="pre">get_p_top</span></code></a>(prof,&nbsp;dumps,&nbsp;r_top)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_p_top" title="ppmpy.ppm.get_p_top"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_p_top</span></code></a>(prof,&nbsp;dumps,&nbsp;r_top)</td>
 <td>Returns p_top and matching time vector</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_power_spectrum_RProfile" title="ppmpy.ppm.get_power_spectrum_RProfile"><code class="xref py py-obj docutils literal"><span class="pre">get_power_spectrum_RProfile</span></code></a>(yprof_path,&nbsp;…)</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_power_spectrum_RProfile" title="ppmpy.ppm.get_power_spectrum_RProfile"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_power_spectrum_RProfile</span></code></a>(yprof_path,&nbsp;…)</td>
 <td>Calculates power spectra of radial velocity</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_r_int" title="ppmpy.ppm.get_r_int"><code class="xref py py-obj docutils literal"><span class="pre">get_r_int</span></code></a>(data_path,&nbsp;r_ref,&nbsp;gamma[,&nbsp;sparse])</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_r_int" title="ppmpy.ppm.get_r_int"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_r_int</span></code></a>(data_path,&nbsp;r_ref,&nbsp;gamma[,&nbsp;sparse])</td>
 <td>Returns values for radius of interface for a given reference radius.</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_upper_bound" title="ppmpy.ppm.get_upper_bound"><code class="xref py py-obj docutils literal"><span class="pre">get_upper_bound</span></code></a>(data_path,&nbsp;r1,&nbsp;r2[,&nbsp;sparse])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.get_upper_bound" title="ppmpy.ppm.get_upper_bound"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_upper_bound</span></code></a>(data_path,&nbsp;r1,&nbsp;r2[,&nbsp;sparse])</td>
 <td>Returns information about the upper convective boundary</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_v_evolution" title="ppmpy.ppm.get_v_evolution"><code class="xref py py-obj docutils literal"><span class="pre">get_v_evolution</span></code></a>(prof,&nbsp;cycles,&nbsp;r1,&nbsp;r2,&nbsp;comp,&nbsp;RMS)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.get_v_evolution" title="ppmpy.ppm.get_v_evolution"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_v_evolution</span></code></a>(prof,&nbsp;cycles,&nbsp;r1,&nbsp;r2,&nbsp;comp,&nbsp;RMS)</td>
 <td>Finds a velocity vector and a time vector for a range of cycles</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.luminosity_for_dump" title="ppmpy.ppm.luminosity_for_dump"><code class="xref py py-obj docutils literal"><span class="pre">luminosity_for_dump</span></code></a>(path[,&nbsp;get_t])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.luminosity_for_dump" title="ppmpy.ppm.luminosity_for_dump"><code class="xref py py-obj docutils literal notranslate"><span class="pre">luminosity_for_dump</span></code></a>(path[,&nbsp;get_t])</td>
 <td>Takes a directory and returns luminosity and time vector with entry</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.make_colourmap" title="ppmpy.ppm.make_colourmap"><code class="xref py py-obj docutils literal"><span class="pre">make_colourmap</span></code></a>(colours[,&nbsp;alphas])</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.make_colourmap" title="ppmpy.ppm.make_colourmap"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_colourmap</span></code></a>(colours[,&nbsp;alphas])</td>
 <td>make a matplotlib colormap given a list of index [0-255], RGB tuple values</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_Mollweide" title="ppmpy.ppm.plot_Mollweide"><code class="xref py py-obj docutils literal"><span class="pre">plot_Mollweide</span></code></a>(rp_set,&nbsp;dump_min,&nbsp;dump_max,&nbsp;…)</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_Mollweide" title="ppmpy.ppm.plot_Mollweide"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_Mollweide</span></code></a>(rp_set,&nbsp;dump_min,&nbsp;dump_max,&nbsp;…)</td>
 <td>Plot Mollweide spherical projection plot</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_N2" title="ppmpy.ppm.plot_N2"><code class="xref py py-obj docutils literal"><span class="pre">plot_N2</span></code></a>(case,&nbsp;dump1,&nbsp;dump2,&nbsp;lims1,&nbsp;lims2,&nbsp;…)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_N2" title="ppmpy.ppm.plot_N2"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_N2</span></code></a>(case,&nbsp;dump1,&nbsp;dump2,&nbsp;lims1,&nbsp;lims2,&nbsp;…)</td>
 <td>plots squared Brunt-Vaisala frequency N^2 with zoom window</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_boundary_evolution" title="ppmpy.ppm.plot_boundary_evolution"><code class="xref py py-obj docutils literal"><span class="pre">plot_boundary_evolution</span></code></a>(data_path,&nbsp;r1,&nbsp;r2[,&nbsp;…])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_boundary_evolution" title="ppmpy.ppm.plot_boundary_evolution"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_boundary_evolution</span></code></a>(data_path,&nbsp;r1,&nbsp;r2[,&nbsp;…])</td>
 <td>Displays the time evolution of the convective boundary or Interface radius</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_diffusion_profiles" title="ppmpy.ppm.plot_diffusion_profiles"><code class="xref py py-obj docutils literal"><span class="pre">plot_diffusion_profiles</span></code></a>(run,&nbsp;mesa_path,&nbsp;…)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_diffusion_profiles" title="ppmpy.ppm.plot_diffusion_profiles"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_diffusion_profiles</span></code></a>(run,&nbsp;mesa_path,&nbsp;…)</td>
 <td>This is a function that generates various diffusion profiles</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_entr_v_ut" title="ppmpy.ppm.plot_entr_v_ut"><code class="xref py py-obj docutils literal"><span class="pre">plot_entr_v_ut</span></code></a>(cases,&nbsp;c0,&nbsp;Ncycles,&nbsp;r1,&nbsp;r2,&nbsp;…)</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_entr_v_ut" title="ppmpy.ppm.plot_entr_v_ut"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_entr_v_ut</span></code></a>(cases,&nbsp;c0,&nbsp;Ncycles,&nbsp;r1,&nbsp;r2,&nbsp;…)</td>
 <td>Plots entrainment rate vs max radial or tangential velocity.</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_luminosity" title="ppmpy.ppm.plot_luminosity"><code class="xref py py-obj docutils literal"><span class="pre">plot_luminosity</span></code></a>(L_H_yp,&nbsp;L_H_rp,&nbsp;t)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_luminosity" title="ppmpy.ppm.plot_luminosity"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_luminosity</span></code></a>(L_H_yp,&nbsp;L_H_rp,&nbsp;t)</td>
 <td>Plots two luminosity vectors against the same time vector</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_mach_number" title="ppmpy.ppm.plot_mach_number"><code class="xref py py-obj docutils literal"><span class="pre">plot_mach_number</span></code></a>(rp_set,&nbsp;yp,&nbsp;dumps[,&nbsp;comp,&nbsp;…])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_mach_number" title="ppmpy.ppm.plot_mach_number"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_mach_number</span></code></a>(rp_set,&nbsp;yp,&nbsp;dumps[,&nbsp;comp,&nbsp;…])</td>
 <td>A function for geterating the time evolution of the mach number.</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_mesa_time_evo" title="ppmpy.ppm.plot_mesa_time_evo"><code class="xref py py-obj docutils literal"><span class="pre">plot_mesa_time_evo</span></code></a>(mesa_path,&nbsp;mesa_logs,&nbsp;t_end)</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_mesa_time_evo" title="ppmpy.ppm.plot_mesa_time_evo"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_mesa_time_evo</span></code></a>(mesa_path,&nbsp;mesa_logs,&nbsp;t_end)</td>
 <td>Function to plot data for figure 5 in O-shell paper.</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_p_top" title="ppmpy.ppm.plot_p_top"><code class="xref py py-obj docutils literal"><span class="pre">plot_p_top</span></code></a>(yp,&nbsp;dumps,&nbsp;r_top[,&nbsp;ifig,&nbsp;lims,&nbsp;…])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.plot_p_top" title="ppmpy.ppm.plot_p_top"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_p_top</span></code></a>(yp,&nbsp;dumps,&nbsp;r_top[,&nbsp;ifig,&nbsp;lims,&nbsp;…])</td>
 <td><table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -259,25 +252,25 @@ some analysis involving Rprofile files and Mesa stellar models.</p>
 </table>
 </td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_power_spectrum_RProfile" title="ppmpy.ppm.plot_power_spectrum_RProfile"><code class="xref py py-obj docutils literal"><span class="pre">plot_power_spectrum_RProfile</span></code></a>(t,&nbsp;l,&nbsp;power[,&nbsp;…])</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.plot_power_spectrum_RProfile" title="ppmpy.ppm.plot_power_spectrum_RProfile"><code class="xref py py-obj docutils literal notranslate"><span class="pre">plot_power_spectrum_RProfile</span></code></a>(t,&nbsp;l,&nbsp;power[,&nbsp;…])</td>
 <td>Plots power spectra of radial velocity</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.prep_Yprofile_data" title="ppmpy.ppm.prep_Yprofile_data"><code class="xref py py-obj docutils literal"><span class="pre">prep_Yprofile_data</span></code></a>([user,&nbsp;run])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.prep_Yprofile_data" title="ppmpy.ppm.prep_Yprofile_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prep_Yprofile_data</span></code></a>([user,&nbsp;run])</td>
 <td>for given user and run create YProfile dir in run dir and link all</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.prof_compare" title="ppmpy.ppm.prof_compare"><code class="xref py py-obj docutils literal"><span class="pre">prof_compare</span></code></a>(cases[,&nbsp;ndump,&nbsp;yaxis_thing,&nbsp;…])</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.prof_compare" title="ppmpy.ppm.prof_compare"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prof_compare</span></code></a>(cases[,&nbsp;ndump,&nbsp;yaxis_thing,&nbsp;…])</td>
 <td>Compare profiles of quantities from multiple PPM Yprofile instances at a given time of nump number.</td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.set_YProf_path" title="ppmpy.ppm.set_YProf_path"><code class="xref py py-obj docutils literal"><span class="pre">set_YProf_path</span></code></a>(path[,&nbsp;YProf_fname])</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.set_YProf_path" title="ppmpy.ppm.set_YProf_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_YProf_path</span></code></a>(path[,&nbsp;YProf_fname])</td>
 <td>Set path to location where YProfile directories can be found.</td>
 </tr>
-<tr class="row-even"><td><code class="xref py py-obj docutils literal"><span class="pre">set_nice_params</span></code>()</td>
+<tr class="row-even"><td><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_nice_params</span></code>()</td>
 <td></td>
 </tr>
-<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.upper_bound_ut" title="ppmpy.ppm.upper_bound_ut"><code class="xref py py-obj docutils literal"><span class="pre">upper_bound_ut</span></code></a>(data_path,&nbsp;dump_to_plot,&nbsp;…)</td>
+<tr class="row-odd"><td><a class="reference internal" href="#ppmpy.ppm.upper_bound_ut" title="ppmpy.ppm.upper_bound_ut"><code class="xref py py-obj docutils literal notranslate"><span class="pre">upper_bound_ut</span></code></a>(data_path,&nbsp;dump_to_plot,&nbsp;…)</td>
 <td>Finds the upper convective boundary as defined by the steepest decline in tangential velocity.</td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.v_evolution" title="ppmpy.ppm.v_evolution"><code class="xref py py-obj docutils literal"><span class="pre">v_evolution</span></code></a>(cases,&nbsp;ymin,&nbsp;ymax,&nbsp;comp,&nbsp;RMS[,&nbsp;…])</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.v_evolution" title="ppmpy.ppm.v_evolution"><code class="xref py py-obj docutils literal notranslate"><span class="pre">v_evolution</span></code></a>(cases,&nbsp;ymin,&nbsp;ymax,&nbsp;comp,&nbsp;RMS[,&nbsp;…])</td>
 <td>Compares the time evolution of the max RMS velocity of different runs</td>
 </tr>
 </tbody>
@@ -289,10 +282,10 @@ some analysis involving Rprofile files and Mesa stellar models.</p>
 <col width="90%" />
 </colgroup>
 <tbody valign="top">
-<tr class="row-odd"><td><code class="xref py py-obj docutils literal"><span class="pre">LUT</span></code>(lutfile,&nbsp;p0,&nbsp;p1,&nbsp;s0,&nbsp;s1[,&nbsp;posdef])</td>
+<tr class="row-odd"><td><code class="xref py py-obj docutils literal notranslate"><span class="pre">LUT</span></code>(lutfile,&nbsp;p0,&nbsp;p1,&nbsp;s0,&nbsp;s1[,&nbsp;posdef])</td>
 <td></td>
 </tr>
-<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile" title="ppmpy.ppm.yprofile"><code class="xref py py-obj docutils literal"><span class="pre">yprofile</span></code></a>([sldir,&nbsp;filename_offset,&nbsp;silent])</td>
+<tr class="row-even"><td><a class="reference internal" href="#ppmpy.ppm.yprofile" title="ppmpy.ppm.yprofile"><code class="xref py py-obj docutils literal notranslate"><span class="pre">yprofile</span></code></a>([sldir,&nbsp;filename_offset,&nbsp;silent])</td>
 <td>Data structure for holding data in the  YProfile.bobaaa files.</td>
 </tr>
 </tbody>
@@ -317,6 +310,271 @@ burning paper.</p>
 </tr>
 </tbody>
 </table>
+</dd></dl>
+
+<dl class="class">
+<dt id="ppmpy.ppm.Messenger">
+<em class="property">class </em><code class="descclassname">ppmpy.ppm.</code><code class="descname">Messenger</code><span class="sig-paren">(</span><em>verbose=3</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Messenger" title="Permalink to this definition">¶</a></dt>
+<dd><p>Messenger reports messages, warnings, and errors to the user.</p>
+<dl class="method">
+<dt id="ppmpy.ppm.Messenger.error">
+<code class="descname">error</code><span class="sig-paren">(</span><em>error</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Messenger.error" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reports an error to the user. The error is currently printed to
+stdout.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>error</strong> (<em>string</em>) – </td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.Messenger.message">
+<code class="descname">message</code><span class="sig-paren">(</span><em>message</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Messenger.message" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reports a message to the user. The message is currently printed to
+stdout.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>message</strong> (<em>string</em>) – </td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.Messenger.warning">
+<code class="descname">warning</code><span class="sig-paren">(</span><em>warning</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Messenger.warning" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reports a warning to the user. The warning is currently printed to
+stdout.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>warning</strong> (<em>string</em>) – </td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="ppmpy.ppm.Rprof">
+<em class="property">class </em><code class="descclassname">ppmpy.ppm.</code><code class="descname">Rprof</code><span class="sig-paren">(</span><em>file_path</em>, <em>verbose=3</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Rprof" title="Permalink to this definition">¶</a></dt>
+<dd><p>Rprof reads and holds the contents of a single .rprof file written by
+PPMstar 2.0.</p>
+<dl class="method">
+<dt id="ppmpy.ppm.Rprof.get">
+<code class="descname">get</code><span class="sig-paren">(</span><em>var</em>, <em>resolution='l'</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Rprof.get" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns variable var if it exists. The method first searches for
+a variable name match in this order: header variables, low-
+resolution variables, and high-resolution variables.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>var</strong> (<em>string</em>) – Variable name.</li>
+<li><strong>resolution</strong> (<em>string</em><em> (</em><em>case insensitive</em><em>)</em>) – ‘l’ (low) or ‘h’ (high). A few variables are available at
+double resolution (‘h’), the rest correspond to the resolution
+of the computational grid (‘l’).</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"></p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Variable var, if found.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.Rprof.get_header_variables">
+<code class="descname">get_header_variables</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Rprof.get_header_variables" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a list of header variables available.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.Rprof.get_hr_variables">
+<code class="descname">get_hr_variables</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Rprof.get_hr_variables" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a list of high-resolution variables available.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.Rprof.get_lr_variables">
+<code class="descname">get_lr_variables</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Rprof.get_lr_variables" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a list of low-resolution variables available.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.Rprof.is_valid">
+<code class="descname">is_valid</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.Rprof.is_valid" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks if the instance is valid, i.e. fully initialised.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"></td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body">True if the instance is valid. False otherwise.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="ppmpy.ppm.RprofHistory">
+<em class="property">class </em><code class="descclassname">ppmpy.ppm.</code><code class="descname">RprofHistory</code><span class="sig-paren">(</span><em>file_path</em>, <em>verbose=3</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofHistory" title="Permalink to this definition">¶</a></dt>
+<dd><p>RprofHistory reads .hstry files produced by PPMstar 2.0.</p>
+<dl class="method">
+<dt id="ppmpy.ppm.RprofHistory.get">
+<code class="descname">get</code><span class="sig-paren">(</span><em>var_name</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofHistory.get" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns variable var_name if it exists.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>var_name</strong> (<em>string</em>) – </td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><ul class="simple">
+<li><em>Variable as a numpy array or None if var_name is not</em></li>
+<li><em>a valid variable name.</em></li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.RprofHistory.get_variables">
+<code class="descname">get_variables</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofHistory.get_variables" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a list of variables available.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.RprofHistory.is_valid">
+<code class="descname">is_valid</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofHistory.is_valid" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks if the instance is valid, i.e. fully initialised.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"></td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body">True if the instance is valid. False otherwise.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.RprofHistory.plot_wct_per_dump">
+<code class="descname">plot_wct_per_dump</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofHistory.plot_wct_per_dump" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots wall-clock time (WCT) per dump as a function of dump
+number.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="ppmpy.ppm.RprofSet">
+<em class="property">class </em><code class="descclassname">ppmpy.ppm.</code><code class="descname">RprofSet</code><span class="sig-paren">(</span><em>dir_name</em>, <em>verbose=3</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofSet" title="Permalink to this definition">¶</a></dt>
+<dd><p>RprofSet holds a set of .rprof files from a single run
+of PPMstar 2.0.</p>
+<dl class="method">
+<dt id="ppmpy.ppm.RprofSet.get">
+<code class="descname">get</code><span class="sig-paren">(</span><em>var</em>, <em>fname</em>, <em>num_type='NDump'</em>, <em>resolution='l'</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofSet.get" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns variable var at a specific point in the simulation’s time
+evolution.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>var</strong> (<em>string</em>) – Name of the variable.</li>
+<li><strong>fname</strong> (<em>integer/float</em>) – Dump number or time in seconds depending on the value of
+num_type.</li>
+<li><strong>num_type</strong> (<em>string</em><em> (</em><em>case insensitive</em><em>)</em>) – If ‘ndump’ fname is expected to be a dump number (integer).
+If ‘t’ fname is expected to be a time value in seconds; run
+history file (.hstry) must be available to search by time value.</li>
+<li><strong>resolution</strong> (<em>string</em><em> (</em><em>case insensitive</em><em>)</em>) – ‘l’ (low) or ‘h’ (high). A few variables are available at
+double resolution (‘h’), the rest correspond to the resolution
+of the computational grid (‘l’).</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last"><ul class="simple">
+<li><em>Variable var as given by Rprof.get() if the Rprof corresponding to</em></li>
+<li><em>fname exists and None otherwise.</em></li>
+</ul>
+</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.RprofSet.get_dump">
+<code class="descname">get_dump</code><span class="sig-paren">(</span><em>dump</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofSet.get_dump" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a single dump.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>dump</strong> (<em>integer</em>) – </td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.RprofSet.get_dump_list">
+<code class="descname">get_dump_list</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofSet.get_dump_list" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a list of dumps available.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.RprofSet.get_history">
+<code class="descname">get_history</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofSet.get_history" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the RprofHistory object associated with this instance if available
+and None otherwise.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.RprofSet.get_run_id">
+<code class="descname">get_run_id</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofSet.get_run_id" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the run identifier that precedes the dump number in the names
+of .rprof files.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="ppmpy.ppm.RprofSet.is_valid">
+<code class="descname">is_valid</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.RprofSet.is_valid" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks if the instance is valid, i.e. fully initialised.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Returns:</th><td class="field-body"></td>
+</tr>
+<tr class="field-even field"><th class="field-name">Return type:</th><td class="field-body">True if the instance is valid. False otherwise.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
 </dd></dl>
 
 <dl class="function">
@@ -1056,7 +1314,7 @@ The default is True.</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
 <span class="gp">   ...: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
@@ -1116,7 +1374,7 @@ boundary in the range between r1/r2</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_path</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/RProfiles/AGBTP_M2.0Z1.e-5/F4/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_path</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/RProfiles/AGBTP_M2.0Z1.e-5/F4/&#39;</span>
 <span class="gp">   ...: </span><span class="n">dump</span> <span class="o">=</span> <span class="mi">560</span><span class="p">;</span> <span class="n">hist_dmin</span> <span class="o">=</span> <span class="n">dump</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span> <span class="n">hist_dmax</span> <span class="o">=</span> <span class="n">dump</span> <span class="o">+</span> <span class="mi">1</span>
 <span class="gp">   ...: </span><span class="n">r_lim</span> <span class="o">=</span> <span class="p">(</span><span class="mf">27.0</span><span class="p">,</span> <span class="mf">30.5</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -1205,7 +1463,7 @@ attributes in YProfiles</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;AGBTP_M2.0Z1.e-5&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -1281,7 +1539,7 @@ for approx_D</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;AGBTP_M2.0Z1.e-5&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -1554,7 +1812,7 @@ profile of the RMS horizontal velocity.</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;AGBTP_M2.0Z1.e-5&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -1639,7 +1897,7 @@ looking for</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;AGBTP_M2.0Z1.e-5&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -1834,7 +2092,7 @@ instance.getHattrs().</p>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.get_mass_fraction">
-<code class="descname">get_mass_fraction</code><span class="sig-paren">(</span><em>fluid</em>, <em>fname</em>, <em>resolution</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.get_mass_fraction" title="Permalink to this definition">¶</a></dt>
+<code class="descname">get_mass_fraction</code><span class="sig-paren">(</span><em>fname</em>, <em>resolution</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.get_mass_fraction" title="Permalink to this definition">¶</a></dt>
 <dd><p>Get mass fraction profile of fluid ‘fluid’ at fname with resolution
 ‘resolution’.</p>
 </dd></dl>
@@ -1860,7 +2118,7 @@ associated key of the filename’s Ndump.</p>
 
 <dl class="method">
 <dt id="ppmpy.ppm.yprofile.plot_entrainment_rates">
-<code class="descname">plot_entrainment_rates</code><span class="sig-paren">(</span><em>dumps</em>, <em>r1</em>, <em>r2</em>, <em>fit=False</em>, <em>fit_bounds=None</em>, <em>save=False</em>, <em>lims=None</em>, <em>Q=3.1146379199999996e-49</em>, <em>RR=8.3144598</em>, <em>amu=1.66054e-51</em>, <em>airmu=1.39165</em>, <em>cldmu=0.725</em>, <em>fkair=0.203606102635</em>, <em>fkcld=0.885906040268</em>, <em>AtomicNoair=6.65742024965</em>, <em>AtomicNocld=1.34228187919</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.plot_entrainment_rates" title="Permalink to this definition">¶</a></dt>
+<code class="descname">plot_entrainment_rates</code><span class="sig-paren">(</span><em>dumps</em>, <em>r1</em>, <em>r2</em>, <em>fit=False</em>, <em>fit_bounds=None</em>, <em>save=False</em>, <em>lims=None</em>, <em>ifig=4</em>, <em>Q=3.1146379199999996e-49</em>, <em>RR=8.3144598</em>, <em>amu=1.66054e-51</em>, <em>airmu=1.39165</em>, <em>cldmu=0.725</em>, <em>fkair=0.203606102635</em>, <em>fkcld=0.885906040268</em>, <em>AtomicNoair=6.65742024965</em>, <em>AtomicNocld=1.34228187919</em><span class="sig-paren">)</span><a class="headerlink" href="#ppmpy.ppm.yprofile.plot_entrainment_rates" title="Permalink to this definition">¶</a></dt>
 <dd><p>Plots entrainment rates for burnt and unburnt material</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -1882,7 +2140,7 @@ rate units in minutes</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;AGBTP_M2.0Z1.e-5&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -1891,7 +2149,6 @@ rate units in minutes</li>
 <span class="gp">   ...: </span><span class="n">dumps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1400</span><span class="p">,</span><span class="mi">100</span><span class="p">))</span>
 <span class="gp">   ...: </span><span class="n">F4</span><span class="o">.</span><span class="n">plot_entrainment_rates</span><span class="p">(</span><span class="n">dumps</span><span class="p">,</span><span class="mf">27.7</span><span class="p">,</span><span class="mf">28.5</span><span class="p">)</span>
 <span class="gp">   ...: </span>
-<span class="go">Processing will be done in 1 s.</span>
 </pre></div>
 </div>
 <a class="reference internal image-reference" href="../_images/plot_entrainment_rates.png"><img alt="../_images/plot_entrainment_rates.png" src="../_images/plot_entrainment_rates.png" style="width: 6in;" /></a>
@@ -1941,7 +2198,7 @@ more than one case</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="kn">from</span> <span class="nn">ppmpy</span> <span class="kn">import</span> <span class="n">ppm</span>
 <span class="gp">   ...: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
@@ -1984,7 +2241,7 @@ working Directory.</p>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;AGBTP_M2.0Z1.e-5&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -2031,7 +2288,7 @@ The default is 0</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -2075,7 +2332,7 @@ The default is 0</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -2175,7 +2432,7 @@ respectively True to plot</li>
 </tbody>
 </table>
 <p class="rubric">Examples</p>
-<div class="highlight-ipython"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
+<div class="highlight-ipython notranslate"><div class="highlight"><pre><span></span><span class="gp">In [1]: </span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;/data/ppm_rpod2/YProfiles/&#39;</span>
 <span class="gp">   ...: </span><span class="n">project</span> <span class="o">=</span> <span class="s1">&#39;O-shell-M25&#39;</span>
 <span class="gp">   ...: </span><span class="n">ppm</span><span class="o">.</span><span class="n">set_YProf_path</span><span class="p">(</span><span class="n">data_dir</span><span class="o">+</span><span class="n">project</span><span class="p">)</span>
 <span class="gp">   ...: </span>
@@ -2202,7 +2459,7 @@ respectively True to plot</li>
       &copy;2017, PPMstar.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.6.5</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.7.0</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.10</a>
       
       |
