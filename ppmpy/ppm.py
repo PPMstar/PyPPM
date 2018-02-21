@@ -7459,7 +7459,22 @@ class Messenger:
 
 
 class RprofHistory:
+    '''
+    RprofHistory reads .hstry files produced by PPMstar 2.0.
+    '''
+    
     def __init__(self, file_path, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the .hstry file to be read.
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''
+        
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
         
@@ -7475,6 +7490,18 @@ class RprofHistory:
         self.__is_valid = True
         
     def __read_history_file(self, file_path):
+        '''
+        Reads a .hstry file written by PPMstar 2.0.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the .hstry file to be read.
+        
+        Returns
+        -------
+        True when the file has been successfully read. False otherwise.
+        '''
         try:
             with open(file_path, 'r') as fin:
                 msg = "Reading history file '{:s}'.".format(file_path)
@@ -7531,13 +7558,38 @@ class RprofHistory:
         return True
         
     def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        True if the instance is valid. False otherwise.
+        '''
+        
         return self.__is_valid
         
     def get_variables(self):
+        '''
+        Returns a list of variables available.
+        '''
+        
         # Return a copy.
         return list(self.__vars)
     
     def get(self, var_name):
+        '''
+        Returns variable var_name if it exists.
+        
+        Parameters
+        ----------
+        var_name: string
+        
+        Returns
+        -------
+        Variable as a numpy array or None if var_name is not
+        a valid variable name.
+        '''
+        
         if var_name in self.__vars:
             # Return a copy.
             return np.array(self.__data[var_name])
@@ -7552,6 +7604,11 @@ class RprofHistory:
             return None
 
     def plot_wct_per_dump(self):
+        '''
+        Plots wall-clock time (WCT) per dump as a function of dump
+        number.
+        '''
+        
         dumps = self.get('NDump')
         timestamps = self.get('TimeStamp')
         
@@ -7565,7 +7622,23 @@ class RprofHistory:
         
         
 class RprofSet:
+    '''
+    RprofSet holds a set of .rprof files from a single run
+    of PPMstar 2.0.
+    '''
+    
     def __init__(self, dir_name, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for .rprof files.
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''        
+        
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
         
@@ -7588,6 +7661,20 @@ class RprofSet:
         self.__is_valid = True
 
     def __find_dumps(self, dir_name):
+        '''
+        Searches for .rprof files and creates an internal list of dump numbers
+        available.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for .rprof files.
+        
+        Returns
+        -------
+        True when a set of .rprof files has been found. False otherwise.
+        '''
+        
         if not os.path.isdir(dir_name):
             err = "Directory '{:s}' does not exist.".format(dir_name)
             self.__messenger.error(err)
@@ -7643,12 +7730,30 @@ class RprofSet:
         return True
      
     def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        True if the instance is valid. False otherwise.
+        '''
+        
         return self.__is_valid
     
     def get_run_id(self):
+        '''
+        Returns the run identifier that precedes the dump number in the names
+        of .rprof files.
+        '''
+        
         return str(self.__run_id)
     
     def get_history(self):
+        '''
+        Returns the RprofHistory object associated with this instance if available
+        and None otherwise.
+        '''
+        
         if self.__history is not None:
             return self.__history
         else:
@@ -7656,9 +7761,23 @@ class RprofSet:
             return None
     
     def get_dump_list(self):
+        '''
+        Returns a list of dumps available.
+        '''
+        
         return list(self.__dumps)
     
     def get_dump(self, dump):
+        '''
+        Returns a single dump.
+        
+        Parameters
+        ----------
+        dump: integer
+            
+        
+        '''
+        
         if dump not in self.__dumps:
             err = 'Dump {:d} is not available.'.format(dump)
             self.__messenger.error(err)
@@ -7670,6 +7789,33 @@ class RprofSet:
         return Rprof(file_path)
     
     def get(self, var, fname, num_type='NDump', resolution='l'):
+        '''
+        Returns variable var at a specific point in the simulation's time
+        evolution.
+        
+        Parameters
+        ----------
+        var: string
+            Name of the variable.
+        fname: integer/float
+            Dump number or time in seconds depending on the value of
+            num_type.
+        num_type: string (case insensitive)
+            If 'ndump' fname is expected to be a dump number (integer).
+            If 't' fname is expected to be a time value in seconds; run
+            history file (.hstry) must be available to search by time value.
+        resolution: string (case insensitive)
+            'l' (low) or 'h' (high). A few variables are available at
+            double resolution ('h'), the rest correspond to the resolution
+            of the computational grid ('l').
+            
+            
+        Returns
+        -------
+        Variable var as given by Rprof.get() if the Rprof corresponding to
+        fname exists and None otherwise.
+        '''
+        
         if num_type.lower() == 'ndump':
             rp = self.get_dump(fname)
         elif num_type.lower() == 't':
@@ -7729,7 +7875,23 @@ class RprofSet:
         pl.tight_layout()
 
 class Rprof:
+    '''
+    Rprof reads and holds the contents of a single .rprof file written by
+    PPMstar 2.0.
+    '''
+    
     def __init__(self, file_path, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the .rprof file.
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''        
+        
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
         if self.__read_rprof_file(file_path) != 0:
@@ -7738,6 +7900,19 @@ class Rprof:
         self.__is_valid = True
         
     def __read_rprof_file(self, file_path):
+        '''
+        Reads a single .rprof file written by PPMstar 2.0.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the .rprof file.
+            
+        Returns
+        -------
+        0 on success, None otherwise.
+        ''' 
+        
         try:
             with open(file_path, 'r') as fin:
                 lines = fin.readlines()
@@ -7826,21 +8001,60 @@ class Rprof:
         return 0
      
     def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        True if the instance is valid. False otherwise.
+        '''
+        
         return self.__is_valid
      
     def get_header_variables(self):
+        '''
+        Returns a list of header variables available.
+        '''
+        
         # Return a copy.
         return list(self.__header_vars)
     
     def get_lr_variables(self):
+        '''
+        Returns a list of low-resolution variables available.
+        '''
+        
         # Return a copy.
         return list(self.__lr_vars)
     
     def get_hr_variables(self):
+        '''
+        Returns a list of high-resolution variables available.
+        '''
+        
         # Return a copy.
         return list(self.__hr_vars)
 
     def get(self, var, resolution='l'):
+        '''
+        Returns variable var if it exists. The method first searches for
+        a variable name match in this order: header variables, low-
+        resolution variables, and high-resolution variables.
+        
+        Parameters
+        ----------
+        var: string
+            Variable name.
+        resolution: string (case insensitive)
+            'l' (low) or 'h' (high). A few variables are available at
+            double resolution ('h'), the rest correspond to the resolution
+            of the computational grid ('l').
+        
+        Returns
+        -------
+        Variable var, if found.
+        '''
+        
         if var in self.__header_vars:
             return self.__header_data[var]
         else:
