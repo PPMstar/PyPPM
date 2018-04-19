@@ -7885,6 +7885,203 @@ class RprofSet:
         pl.legend(loc=2)
         pl.tight_layout()
 
+    def entrainment_rate(self, cycles, r_min, r_max, airmu, cldmu, var='vxz', criterion='min_grad', \
+                         offset=0., integrate_both_fluids=False, 
+                         integrate_upwards=False, show_output=True, ifig0=1, \
+                         silent=True, mdot_curve_label=None, file_name=None,
+                         return_time_series=False):
+        '''
+        Function for calculating entrainment rates.
+        
+        Parameters
+        ----------
+        cycles : range
+            cycles to get entrainment rate for
+        r_min : float
+            minimum radius to look for boundary
+        r_max : float 
+            maximum radius to look for boundary
+        
+        Examples
+        ---------
+        .. ipython::
+
+            In [136]: data_dir = '/data/ppm_rpod2/YProfiles/'
+               .....: project = 'AGBTP_M2.0Z1.e-5'
+               .....: ppm.set_YProf_path(data_dir+project)
+
+            @savefig entrainment_rate.png width=6in
+            In [136]: F4 = ppm.yprofile('F4')
+               .....: dumps = np.array(range(0,1400,100))
+               .....: F4.entrainment_rate(dumps,27.7,28.5)
+               
+        '''
+
+        def regrid(x, y, x_int):
+            int_func = interpolate.CubicSpline(x[::-1], y[::-1])
+            return int_func(x_int)
+        
+        r = self.get('R', fname = cycles[0], resolution='l')[::-1]
+        
+        idx_min = np.argmin(np.abs(r - r_max))
+        idx_max = np.argmin(np.abs(r - r_min))
+
+        r_min = r[idx_max]
+        r_max = r[idx_min]
+        
+        r = r[idx_min:(idx_max + 1)]
+        r_int = np.linspace(r_min, r_max, num = 20.*(idx_max - idx_min + 1))
+        dr_int = cdiff(r_int)
+        
+        time = np.zeros(len(cycles))
+        r_b = np.zeros(len(cycles))
+        r_top = np.zeros(len(cycles))
+        for i in range(len(cycles)):
+            time[i] = self.get('t', fname = cycles[i], resolution='l')
+            
+            if var == 'vxz':
+                q = (self.get('|Ut|', fname = cycles[i], resolution='l')[::-1])[idx_min:(idx_max + 1)]**0.5
+            else:
+                q = (self.get(var, fname = cycles[i], resolution='l')[::-1])[idx_min:(idx_max + 1)]
+            
+            q_int = regrid(r, q, r_int)
+            grad = cdiff(q_int)/dr_int
+
+            if criterion == 'min_grad':
+                idx_b = np.argmin(grad)
+            elif criterion == 'max_grad':
+                idx_b = np.argmax(grad)
+            else:
+                idx_b = np.argmax(np.abs(grad))
+
+            r_b[i] = r_int[idx_b]
+            r_top[i] = r_b[i]
+            
+            # Optionally offset the integration limit by a multiple of q's
+            # scale height.
+            if np.abs(grad[idx_b]) > 0.:
+                H_b = q_int[idx_b]/np.abs(grad[idx_b])
+                r_top[i] += offset*H_b
+        
+        timelong = time
+        delta = 0.05*(np.max(time) - np.min(time))
+        timelong = np.insert(timelong,0, timelong[0] - delta)
+        timelong = np.append(timelong, timelong[-1] + delta)
+        
+        # fc = fit coefficients
+        r_b_fc = np.polyfit(time, r_b, 1)
+        r_b_fit = r_b_fc[0]*timelong + r_b_fc[1]
+        r_top_fc = np.polyfit(time, r_top, 1)
+        r_top_fit = r_top_fc[0]*timelong + r_top_fc[1]
+        
+        m_ir = np.zeros(len(cycles))
+        r = self.get('R', fname = cycles[0], resolution='h')[::-1]
+        r_int = np.linspace(np.min(r), np.max(r), num = 20.*len(r))
+        dr_int = cdiff(r_int)
+        for i in range(len(cycles)):
+            rho0 = self.get('Rho0', fname = cycles[i], resolution='h')[::-1]
+            rho1 = self.get('Rho1', fname = cycles[i], resolution='h')[::-1]
+            rho = rho0 + rho1
+            if not integrate_both_fluids:
+                FV_HHe = self.get('FV', fname = cycles[i], resolution='h')[::-1]
+                rhocldtoair = cldmu/airmu
+                rhoair = rho/((1. - FV_HHe) + FV_HHe*rhocldtoair)
+                rhocld = rhocldtoair*rhoair
+                rho_HHe = rhocld
+                rho = rho_HHe*FV_HHe
+            
+            rho_int = regrid(r, rho, r_int)
+            
+            idx_top = np.argmin(np.abs(r_int - r_top[i]))
+            dm = 4.*np.pi*r_int**2*dr_int*rho_int
+            
+            if integrate_upwards:
+                m_ir[i] = np.sum(dm[(idx_top + 1):-1])
+            else:
+                m_ir[i] = np.sum(dm[0:(idx_top + 1)])
+        
+        # fc = fit coefficients
+        m_ir *= 1e27/ast.msun_g
+        m_ir_fc = np.polyfit(time, m_ir, 1)
+        m_ir_fit = m_ir_fc[0]*timelong + m_ir_fc[1]
+        if integrate_upwards:
+            mdot = -m_ir_fc[0]
+        else:
+            mdot = m_ir_fc[0]
+
+        if show_output:
+            cb = utils.colourblind
+            pl.close(ifig0); fig1 = pl.figure(ifig0)
+            pl.plot(time/60., r_top, color = cb(5), ls = '-', label = r'r$_\mathrm{top}$')
+            pl.plot(time/60., r_b, color = cb(8), ls = '--', label = r'r$_\mathrm{b}$')
+            pl.plot(timelong/60., r_top_fit, color = cb(4), ls = '-', lw = 0.5)
+            pl.plot(timelong/60., r_b_fit, color = cb(4), ls = '-', lw = 0.5)
+            pl.xlabel('t / min')
+            pl.ylabel('r / Mm')
+            xfmt = ScalarFormatter(useMathText = True)
+            pl.gca().xaxis.set_major_formatter(xfmt)
+            pl.legend(loc = 0)
+            fig1.tight_layout()
+
+            if not silent:
+                print('r_b is the radius of the convective boundary.')
+                print('r_b_fc = ', r_b_fc)
+                print('dr_b/dt = {:.2e} km/s\n'.format(1e3*r_b_fc[0]))
+                print('r_top is the upper limit for mass integration.')
+                print('dr_top/dt = {:.2e} km/s'.format(1e3*r_top_fc[0]))
+            
+            max_val = np.max(m_ir)
+            #if show_fits:
+            max_val = np.max((max_val, np.max(m_ir_fit)))
+            max_val *= 1.1 # allow for some margin at the top
+            oom = int(np.floor(np.log10(max_val)))
+            
+            pl.close(ifig0 + 1); fig2 = pl.figure(ifig0 + 1)
+            pl.plot(time/60., m_ir/10**oom, color = cb(5), label=mdot_curve_label)
+            mdot_str = '{:e}'.format(mdot)
+            parts = mdot_str.split('e')
+            mantissa = float(parts[0])
+            exponent = int(parts[1])
+            #if show_fits:
+            if integrate_upwards:
+                lbl = r'$\dot{{\mathrm{{M}}}}_\mathrm{{a}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
+                          format(-mantissa, exponent)
+            else:
+                lbl = r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} \times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$'.\
+                          format(mantissa, exponent)
+            pl.plot(timelong/60., m_ir_fit/10**oom, color = cb(4), ls = '-', lw = 0.5, label = lbl)
+            pl.xlabel('t / min')
+            if integrate_upwards:
+                sub = 'a'
+            else:
+                sub = 'e'
+            ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
+            if oom == 0.:
+                ylbl = r'M$_{:s}$ / M$_\odot$'.format(sub)
+                
+            pl.ylabel(ylbl)
+            yfmt = FormatStrFormatter('%.1f')
+            fig2.gca().yaxis.set_major_formatter(yfmt)
+            fig2.tight_layout()
+            if integrate_upwards:
+                loc = 1
+            else:
+                loc = 2
+            pl.legend(loc = loc)
+            if file_name is not None:
+                fig2.savefig(file_name)
+        
+            if not silent:
+                print('Resolution: {:d}^3'.format(2*len(r)))
+                print('m_ir_fc = ', m_ir_fc)
+                print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
+        
+        if return_time_series:
+            return m_ir
+        else:
+            return mdot
+
+
 class Rprof:
     '''
     Rprof reads and holds the contents of a single .rprof file written by
