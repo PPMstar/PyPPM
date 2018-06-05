@@ -12,10 +12,17 @@ from nugridpy import astronomy as ast
 from ppmpy import ppm
 import numpy as np
 
-def reduce_h(r, r0):
+
+def reduce_h(r,r0=None):
     '''reduce double resolution array with error to single grid
     resolution'''
-    return r[::2]+r0[::2]
+
+    if r0 is None:
+        rreduc = (r[1::2]+r[0::2])/2.
+    else:
+        rreduc = r[::2]+r0[::2]
+
+    return rreduc
 
 def get_dm_and_dp(m,r1,r2,P,rho):
     '''
