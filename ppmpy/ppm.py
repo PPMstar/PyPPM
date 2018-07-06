@@ -375,8 +375,8 @@ class yprofile(DataPlot):
 
         return data
 
-    def get(self, attri, fname=None, numtype='ndump', resolution='H', \
-            silent=True, **kwargs):
+    def get(self, attri, fname=None, numtype='ndump', num_type=None, \
+            resolution='H', silent=True, **kwargs):
         """ 
         Method that dynamically determines the type of attribute that is
         passed into this method.  Also it then returns that attribute's
@@ -396,6 +396,8 @@ class yprofile(DataPlot):
             function will look at the cycle with that nDump.  If
             numType is 'T' or 'time' function will find the _cycle
             with the closest time stamp.  The default is "ndump".
+        num_type : string, optional
+            Overrides numtype if specified.
         Resolution : string, optional
             Data you want from a file, for example if the file contains
             two different sized columns of data for one attribute, the
@@ -420,6 +422,9 @@ class yprofile(DataPlot):
             isCol = True
         elif attri in self.hattrs:# if it is a header attribute
             isHead = True
+
+        if num_type is not None:
+            numtype = num_type
 
         # directing to proper get method
         if isCyc:
