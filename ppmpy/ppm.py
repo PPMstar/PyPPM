@@ -8160,18 +8160,32 @@ class Rprof:
         self.__header_data['Nx'] = int(lines[l].split()[-1])
 
         eof = False
+        footer_reached = False
         while l < len(lines):
             # Find the next table.
             while True:
                 sline = lines[l].split()
-                if len(sline) > 0 and sline[0] == 'IR':
-                    col_names = sline
-                    break
+                if len(sline) > 0:
+                    if sline[0] == 'IR':
+                        col_names = sline
+                        break
+
+                    if sline[0] == 'DATE:':
+                        footer_reached = True
+                        # The footer always starts with 16 lines of text. The
+                        # idea was to keep a brief run description there, but it
+                        # is hardcoded in PPMstar and no one seems to bother to
+                        # go and ever change it. We will skip those 16 lines to
+                        # get to an array of parameters, which we want to read.
+                        l += 16
+                        break
+
                 l += 1
                 if l == len(lines):
                    eof = True
                    break
-            if eof:
+
+            if footer_reached or eof:
                 break
  
             # Go to the table's body.
@@ -8213,7 +8227,35 @@ class Rprof:
                     else:
                         self.__lr_data[col_names[i]][idx-1] = val
                 l += 1
-                
+        
+        if footer_reached:
+            while l < len(lines):
+                sline = lines[l].split()
+                # The two consecutive lists of parameters that appear in the
+                # footer are formatted this way:
+                #
+                # line_index   par1_name   par1_value   par2_name   par2_value
+                #
+                # Most of them are probably constant, but some may change upon a
+                # restart.
+                if len(sline) == 5:
+                    for i in (1, 3):
+                        par_name = sline[i]
+                        if '.' in sline[i+1]:
+                            par_value = float(sline[i+1])
+                        else:
+                            par_value = int(sline[i+1])
+                        
+                        # Although we are technically in the file's footer, we
+                        # call these parameters "header variables".
+                        self.__header_vars.append(par_name)
+                        self.__header_data[par_name] = par_value
+                l += 1
+        
+        self.__lr_vars = sorted(self.__lr_vars, key=lambda s: s.lower())
+        self.__hr_vars = sorted(self.__hr_vars, key=lambda s: s.lower())
+        self.__header_vars = sorted(self.__header_vars, key=lambda s: s.lower())
+
         return 0
      
     def is_valid(self):
