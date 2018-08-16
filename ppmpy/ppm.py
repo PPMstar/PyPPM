@@ -247,7 +247,46 @@ def cdiff(x):
     return dx
 
 
-class yprofile(DataPlot):
+class PPMtools:
+    def __init__(self, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''
+
+        self.__messenger = Messenger(verbose=verbose)
+        self.__isyprofile = isinstance(self, yprofile)
+        self.__isRprofSet= isinstance(self, RprofSet)
+
+    def compute(self, quantity, fname, num_type='ndump', extra_args={}):
+        methods = {'Hp':self.compute_Hp, }
+
+        if quantity in methods.keys():
+            return methods[quantity](fname, num_type, **extra_args)
+        else:
+            self.__messenger.error("Unknown quantity '{:s}'.".format(quantity))
+
+
+    def compute_Hp(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            r = self.get('Y', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+
+        Hp = -cdiff(r)/cdiff(np.log(p))
+        return Hp
+
+
+
+class yprofile(DataPlot, PPMtools):
     """ 
     Data structure for holding data in the  YProfile.bobaaa files.
     
@@ -269,6 +308,7 @@ class yprofile(DataPlot):
         
         """
 
+        PPMtools.__init__(self)
         self.files = []  # List of files in this directory
         self.cycles= []  # list of cycles in this directory
         self.hattrs = [] # header attributes
@@ -7629,7 +7669,7 @@ class RprofHistory:
 
         
         
-class RprofSet:
+class RprofSet(PPMtools):
     '''
     RprofSet holds a set of .rprof files from a single run
     of PPMstar 2.0.
@@ -7647,6 +7687,7 @@ class RprofSet:
             Verbosity level as defined in class Messenger.
         '''        
         
+        PPMtools.__init__(self)
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
         
@@ -8256,6 +8297,10 @@ class Rprof:
         self.__hr_vars = sorted(self.__hr_vars, key=lambda s: s.lower())
         self.__header_vars = sorted(self.__header_vars, key=lambda s: s.lower())
 
+        # The list(set()) construct removes duplicate names.
+        self.__anyr_vars = sorted(list(set(self.__lr_vars+self.__hr_vars)), \
+                                  key=lambda s: s.lower())
+ 
         return 0
      
     def is_valid(self):
@@ -8310,6 +8355,7 @@ class Rprof:
             of the computational grid ('l').
         
         Returns
+
         -------
         np.ndarray
             Variable var, if found.
@@ -8322,13 +8368,19 @@ class Rprof:
                 if var in self.__lr_vars:
                     return np.array(self.__lr_data[var])
                 else:
-                    err = ("Low-resolution data not available for variable "
-                          "{:s}.").format(var)
-                    self.__messenger.error(err)
-                    
-                    msg = 'Available low-resolution variables:\n'
-                    msg += str(self.__lr_vars)
-                    self.__messenger.message(msg)
+                    if var in self.__hr_vars:
+                        data = np.array(self.__hr_data[var])
+                        # This will only work for arrays of even length, but
+                        # we always get such arrays from PPMstar.
+                        data = 0.5*(data[::2] + data[1::2])
+                        return data
+                    else:
+                        err = ("Variable '{:s}' does not exist.").format(var)
+                        self.__messenger.error(err)
+                        
+                        msg = 'Available variables:\n'
+                        msg += str(self.__anyr_vars)
+                        self.__messenger.message(msg)
             elif resolution.lower() == 'h':
                 if var in self.__hr_vars:
                     return np.array(self.__hr_data[var])
@@ -8343,3 +8395,5 @@ class Rprof:
             else:
                 err = "Unknown resolution setting '{:s}'.".format(resolution)
                 self.__messenger.error(err)
+
+
