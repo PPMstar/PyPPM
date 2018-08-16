@@ -263,13 +263,13 @@ class PPMtools:
         self.__isRprofSet= isinstance(self, RprofSet)
 
     def compute(self, quantity, fname, num_type='ndump', extra_args={}):
-        methods = {'Hp':self.compute_Hp, }
+        methods = {'Hp':self.compute_Hp, \
+                   'r4rho2':self.compute_r4rho2}
 
         if quantity in methods.keys():
             return methods[quantity](fname, num_type, **extra_args)
         else:
             self.__messenger.error("Unknown quantity '{:s}'.".format(quantity))
-
 
     def compute_Hp(self, fname, num_type='ndump'):
         if self.__isyprofile:
@@ -284,6 +284,17 @@ class PPMtools:
         Hp = -cdiff(r)/cdiff(np.log(p))
         return Hp
 
+    def compute_r4rho2(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            r = self.get('Y', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+
+        return r**4*rho**2
 
 
 class yprofile(DataPlot, PPMtools):
