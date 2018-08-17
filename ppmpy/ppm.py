@@ -79,7 +79,7 @@ import nugridpy.mesa as ms
 import os
 import re
 import nugridpy.astronomy as ast
-import scipy.interpolate as interpolate
+import scipy.interpolate
 from scipy import optimize
 from scipy import integrate as integrate
 import copy
@@ -246,6 +246,16 @@ def cdiff(x):
     
     return dx
 
+def interpolate(x, y, x_new):
+    inverse_order = (x[-1] < x[0])
+    xx = x[::-1] if inverse_order else x
+    yy = y[::-1] if inverse_order else y
+
+    cs = CubicSpline(xx, yy)
+    y_new = cs(x_new)
+    
+    return y_new
+
 
 class PPMtools:
     def __init__(self, verbose=3):
@@ -262,12 +272,31 @@ class PPMtools:
         self.__isyprofile = isinstance(self, yprofile)
         self.__isRprofSet= isinstance(self, RprofSet)
 
-    def compute(self, quantity, fname, num_type='ndump', extra_args={}):
-        methods = {'Hp':self.compute_Hp, \
-                   'r4rho2':self.compute_r4rho2}
+        # This sets which method computes which quantity.
+        self.__compute_methods = {'Hp':self.compute_Hp, \
+                                  'm':self.compute_m, \
+                                  'r4rho2':self.compute_r4rho2}
+        self.__computable_quantities = self.__compute_methods.keys()
 
-        if quantity in methods.keys():
-            return methods[quantity](fname, num_type, **extra_args)
+    def isyprofile():
+        return self.__isyprofile
+
+    def isRprofSet():
+        return self.__isRprofSet
+
+    def get_computable_quantities():
+        '''
+        Returns a list of computable quantities.
+        '''
+        
+        # Return a copy.
+        return list(self.__computable_quantities)
+
+
+    def compute(self, quantity, fname, num_type='ndump', extra_args={}):
+        if quantity in self.__computable_quantities:
+            m = self.__compute_methods[quantity]
+            return m(fname, num_type, **extra_args)
         else:
             self.__messenger.error("Unknown quantity '{:s}'.".format(quantity))
 
@@ -283,6 +312,26 @@ class PPMtools:
 
         Hp = -cdiff(r)/cdiff(np.log(p))
         return Hp
+
+    def compute_m(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            r = self.get('Y', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+
+        dm = 4.*np.pi*r**2*cdiff(r)*rho
+        m = np.cumsum(dm)
+
+	# yprofile stores everything from the surface to the core.
+        if self.__isyprofile:
+            m = m - m[-1]
+
+        return m
+ 
 
     def compute_r4rho2(self, fname, num_type='ndump'):
         if self.__isyprofile:
@@ -4326,7 +4375,7 @@ class yprofile(DataPlot, PPMtools):
         '''
 
         def regrid(x, y, x_int):
-            int_func = interpolate.CubicSpline(x[::-1], y[::-1])
+            int_func = scipy.interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
         
         r = self.get('Y', fname = cycles[0], resolution='l')
@@ -7975,7 +8024,7 @@ class RprofSet(PPMtools):
         '''
 
         def regrid(x, y, x_int):
-            int_func = interpolate.CubicSpline(x[::-1], y[::-1])
+            int_func = scipy.interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
         
         r = self.get('R', fname = cycles[0], resolution='l')[::-1]
@@ -8311,6 +8360,8 @@ class Rprof:
         # The list(set()) construct removes duplicate names.
         self.__anyr_vars = sorted(list(set(self.__lr_vars+self.__hr_vars)), \
                                   key=lambda s: s.lower())
+        self.__all_vars = sorted(list(set(self.__header_vars+self.__anyr_vars)), \
+                                  key=lambda s: s.lower())
  
         return 0
      
@@ -8341,7 +8392,7 @@ class Rprof:
         
         # Return a copy.
         return list(self.__lr_vars)
-    
+     
     def get_hr_variables(self):
         '''
         Returns a list of high-resolution variables available.
@@ -8349,6 +8400,14 @@ class Rprof:
         
         # Return a copy.
         return list(self.__hr_vars)
+   
+    def get_all_variables(self):
+        '''
+        Returns a list of all variables available.
+        '''
+        
+        # Return a copy.
+        return list(self.__all_vars)
 
     def get(self, var, resolution='l'):
         '''
@@ -8378,20 +8437,19 @@ class Rprof:
             if resolution.lower() == 'l':
                 if var in self.__lr_vars:
                     return np.array(self.__lr_data[var])
+                elif var in self.__hr_vars:
+                    data = np.array(self.__hr_data[var])
+                    # This will only work for arrays of even length, but
+                    # we always get such arrays from PPMstar.
+                    data = 0.5*(data[::2] + data[1::2])
+                    return data
                 else:
-                    if var in self.__hr_vars:
-                        data = np.array(self.__hr_data[var])
-                        # This will only work for arrays of even length, but
-                        # we always get such arrays from PPMstar.
-                        data = 0.5*(data[::2] + data[1::2])
-                        return data
-                    else:
-                        err = ("Variable '{:s}' does not exist.").format(var)
-                        self.__messenger.error(err)
-                        
-                        msg = 'Available variables:\n'
-                        msg += str(self.__anyr_vars)
-                        self.__messenger.message(msg)
+                    err = ("Variable '{:s}' does not exist.").format(var)
+                    self.__messenger.error(err)
+                    
+                    msg = 'Available variables:\n'
+                    msg += str(self.__anyr_vars)
+                    self.__messenger.message(msg)
             elif resolution.lower() == 'h':
                 if var in self.__hr_vars:
                     return np.array(self.__hr_data[var])
