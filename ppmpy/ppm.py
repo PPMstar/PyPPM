@@ -283,7 +283,8 @@ class PPMtools:
         # This sets which method computes which quantity.
         self.__compute_methods = {'Hp':self.compute_Hp, \
                                   'm':self.compute_m, \
-                                  'r4rho2':self.compute_r4rho2}
+                                  'r4rho2':self.compute_r4rho2, \
+                                  'Xcld':self.compute_Xcld}
         self.__computable_quantities = self.__compute_methods.keys()
 
     def isyprofile():
@@ -351,6 +352,26 @@ class PPMtools:
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
 
         return r**4*rho**2
+
+    def compute_Xcld(self, fname, num_type='ndump'):
+        # Different variables are available depending on data souce, so Xcld
+        # is computed in different ways. Both results will be biased, although
+        # in different ways, because the average of a product is not the
+        # product of the corresponding averages.
+
+        if self.__isyprofile:
+            fv = self.get('FV H+He', fname, num_type=num_type, resolution='l')
+            rho_cld = self.get('Rho H+He', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            Xcld = fv*rho_cld/rho
+
+        if self.__isRprofSet:
+            fv = self.get('FV', fname, num_type=num_type, resolution='l')
+            airmu = self.get('airmu', fname, num_type=num_type)
+            cldmu = self.get('cldmu', fname, num_type=num_type)
+            Xcld = fv/((1. - fv)*(airmu/cldmu) + fv)
+
+        return Xcld
 
     def average_profiles(self, fname, var, num_type='ndump', lagrangian=False, \
                          mass_correction=0,  rlim=None, extra_args=None):
