@@ -379,24 +379,33 @@ class PPMtools:
         var_list = any2list(var)
         avg_profs = {}
 
-        if mass_correction > 0 and rlim is None:
-            self.__messenger.error('rlim must not be None with mass_correction '
-                                   '> 0.')
-            return None
+        if mass_correction > 0:
+            if rlim is None:
+                self.__messenger.error('rlim must not be None with '
+                                       'mass_correction > 0.')
+                return None
+
+            if lagrangian == False:
+                self.__messenger.error('mass_correction > 0 can only be used '
+                                       'with lagrangian = True')
+                return None
 
         # The grid is assumed to be static, so we get the radial
         # scale only once at t = 0.
         if self.__isyprofile:
-            r = self.get('Y', 0, num_type='t', resolution='l')
+            radius_variable = 'Y'
+            r = self.get(radius_variable, 0, num_type='t', resolution='l')
             gettable_variables = self.getDCols()
 
         if self.__isRprofSet:
-            r = self.get('R', 0, num_type='t', resolution='l')
+            radius_variable = 'R'
+            r = self.get(radius_variable, 0, num_type='t', resolution='l')
             rp = self.get_dump(fname_list[0])
             gettable_variables = rp.get_anyr_variables()
 
         computable_quantities = self.__computable_quantities
 
+        data_slice = range(0, len(r))
         if rlim is not None:
             idx1 = np.argmin(np.abs(r - rlim[0]))
             idx2 = np.argmin(np.abs(r - rlim[1]))
@@ -406,15 +415,7 @@ class PPMtools:
             
             if self.__isRprofSet:
                 data_slice = range(idx1+1, idx2)
-
-            r = r[data_slice]
-
-        if self.__isyprofile:
-            avg_profs['Y'] = r
-
-        if self.__isRprofSet:
-            avg_profs['R'] = r
-            
+           
         if lagrangian:
             # Get the initial mass scale. Everything will be interpolated onto 
             # this scale.
@@ -424,8 +425,10 @@ class PPMtools:
             avg_profs['m'] = m0
             
         for v in var_list:
-            avg_profs[v] = np.zeros(len(r))
-              
+            avg_profs[v] = np.zeros(data_slice[-1] - data_slice[0] + 1)
+            avg_profs[radius_variable] = np.zeros(data_slice[-1] - \
+                                                  data_slice[0] + 1)
+             
             for i, fnm in enumerate(fname_list):
                 if v in gettable_variables:
                     data = self.get(v, fnm, num_type=num_type, resolution='l')
@@ -436,6 +439,7 @@ class PPMtools:
                          format(v))
                     break
                 
+                rr = r
                 if lagrangian:
                     # Interpolate everything on the initial mass scale.
                     m = self.compute('m', fnm, num_type=num_type)
@@ -451,10 +455,16 @@ class PPMtools:
                         m = m - delta_m
 
                     data = interpolate(m, data, m0)
+                    rr = interpolate(m, rr, m0)
+                else:
+                    data = data[data_slice]
+                    rr = rr[data_slice]
                 
                 avg_profs[v] += data
+                avg_profs[radius_variable] += rr
                     
             avg_profs[v] /= float(len(fname_list))
+            avg_profs[radius_variable] /= float(len(fname_list))
         
         return avg_profs
 
