@@ -251,10 +251,18 @@ def interpolate(x, y, x_new):
     xx = x[::-1] if inverse_order else x
     yy = y[::-1] if inverse_order else y
 
-    cs = CubicSpline(xx, yy)
+    cs = scipy.interpolate.CubicSpline(xx, yy, extrapolate=False)
     y_new = cs(x_new)
     
     return y_new
+
+def any2list(arg):
+    if isinstance(arg, str):
+        return [arg, ]
+    try:
+        return list(arg)
+    except TypeError:
+        return [arg, ]
 
 
 class PPMtools:
@@ -331,7 +339,6 @@ class PPMtools:
             m = m - m[-1]
 
         return m
- 
 
     def compute_r4rho2(self, fname, num_type='ndump'):
         if self.__isyprofile:
@@ -345,6 +352,90 @@ class PPMtools:
 
         return r**4*rho**2
 
+    def average_profiles(self, fname, var, num_type='ndump', lagrangian=False, \
+                         mass_correction=0,  rlim=None, extra_args=None):
+        fname_list = any2list(fname)
+        var_list = any2list(var)
+        avg_profs = {}
+
+        if mass_correction > 0 and rlim is None:
+            self.__messenger.error('rlim must not be None with mass_correction '
+                                   '> 0.')
+            return None
+
+        # The grid is assumed to be static, so we get the radial
+        # scale only once at t = 0.
+        if self.__isyprofile:
+            r = self.get('Y', 0, num_type='t', resolution='l')
+            gettable_variables = self.getDCols()
+
+        if self.__isRprofSet:
+            r = self.get('R', 0, num_type='t', resolution='l')
+            rp = self.get_dump(fname_list[0])
+            gettable_variables = rp.get_anyr_variables()
+
+        computable_quantities = self.__computable_quantities
+
+        if rlim is not None:
+            idx1 = np.argmin(np.abs(r - rlim[0]))
+            idx2 = np.argmin(np.abs(r - rlim[1]))
+
+            if self.__isyprofile:
+                data_slice = range(idx2+1, idx1)
+            
+            if self.__isRprofSet:
+                data_slice = range(idx1+1, idx2)
+
+            r = r[data_slice]
+
+        if self.__isyprofile:
+            avg_profs['Y'] = r
+
+        if self.__isRprofSet:
+            avg_profs['R'] = r
+            
+        if lagrangian:
+            # Get the initial mass scale. Everything will be interpolated onto 
+            # this scale.
+            m0 = self.compute('m', 0, num_type='t')
+            if rlim is not None:
+                m0 = m0[data_slice]
+            avg_profs['m'] = m0
+            
+        for v in var_list:
+            avg_profs[v] = np.zeros(len(r))
+              
+            for i, fnm in enumerate(fname_list):
+                if v in gettable_variables:
+                    data = self.get(v, fnm, num_type=num_type, resolution='l')
+                elif v in computable_quantities:
+                    data = self.compute(v, fnm, num_type=num_type)
+                else:
+                    self.__messenger.warning("Unknown quantity '{:s}'".\
+                         format(v))
+                    break
+                
+                if lagrangian:
+                    # Interpolate everything on the initial mass scale.
+                    m = self.compute('m', fnm, num_type=num_type)
+
+                    if mass_correction == 1:
+                        if self.__isyprofile:
+                            delta_m = (m[data_slice[0]] - m[data_slice[-1]]) - \
+                                      (m0[0] - m0[-1])
+
+                        if self.__isRprofSet:
+                            delta_m = (m[data_slice[-1]] - m[data_slice[0]]) - \
+                                      (m0[-1] - m0[0])
+                        m = m - delta_m
+
+                    data = interpolate(m, data, m0)
+                
+                avg_profs[v] += data
+                    
+            avg_profs[v] /= float(len(fname_list))
+        
+        return avg_profs
 
 class yprofile(DataPlot, PPMtools):
     """ 
@@ -8392,7 +8483,7 @@ class Rprof:
         
         # Return a copy.
         return list(self.__lr_vars)
-     
+      
     def get_hr_variables(self):
         '''
         Returns a list of high-resolution variables available.
@@ -8400,6 +8491,14 @@ class Rprof:
         
         # Return a copy.
         return list(self.__hr_vars)
+    
+    def get_anyr_variables(self):
+        '''
+        Returns a list of any-resolution variables available.
+        '''
+        
+        # Return a copy.
+        return list(self.__anyr_vars)
    
     def get_all_variables(self):
         '''
