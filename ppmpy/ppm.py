@@ -391,15 +391,15 @@ class PPMtools:
                 return None
 
         # The grid is assumed to be static, so we get the radial
-        # scale only once at t = 0.
+        # scale only once at fname_list[0].
         if self.__isyprofile:
             radius_variable = 'Y'
-            r = self.get(radius_variable, 0, num_type='t', resolution='l')
+            r = self.get(radius_variable, fname_list[0], resolution='l')
             gettable_variables = self.getDCols()
 
         if self.__isRprofSet:
             radius_variable = 'R'
-            r = self.get(radius_variable, 0, num_type='t', resolution='l')
+            r = self.get(radius_variable, fname_list[0], resolution='l')
             rp = self.get_dump(fname_list[0])
             gettable_variables = rp.get_anyr_variables()
 
@@ -415,7 +415,7 @@ class PPMtools:
             
             if self.__isRprofSet:
                 data_slice = range(idx1+1, idx2)
-           
+        
         if lagrangian:
             # Get the initial mass scale. Everything will be interpolated onto 
             # this scale.
@@ -423,7 +423,7 @@ class PPMtools:
             if rlim is not None:
                 m0 = m0[data_slice]
             avg_profs['m'] = m0
-            
+        
         for v in var_list:
             avg_profs[v] = np.zeros(data_slice[-1] - data_slice[0] + 1)
             avg_profs[radius_variable] = np.zeros(data_slice[-1] - \
