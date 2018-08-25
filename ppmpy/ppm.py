@@ -335,7 +335,7 @@ class PPMtools:
         dm = 4.*np.pi*r**2*cdiff(r)*rho
         m = np.cumsum(dm)
 
-	# yprofile stores everything from the surface to the core.
+        # yprofile stores everything from the surface to the core.
         if self.__isyprofile:
             m = m - m[-1]
 
@@ -467,6 +467,200 @@ class PPMtools:
             avg_profs[radius_variable] /= float(len(fname_list))
         
         return avg_profs
+    
+    def DsolveLgr(self, fname1, fname2, r_bot, r_top, var='Xcld', \
+                  num_type='ndump', run_id='', mass_correction=0, \
+                  varlim=None, rlim=None, Dlim=None, mlim=None, \
+                  sigmalim=None, fitrlim=None, logvar=False, \
+                  eps=1e-6, show_plots=True, ifig0=1):
+        fname1_list = any2list(fname1)
+        fname2_list = any2list(fname2)
+    
+        res1 = self.average_profiles(fname1_list, [var, 'Hp', 'r4rho2'], \
+               lagrangian=True, mass_correction=mass_correction, rlim=rlim)
+        t1 = 0.
+        for fn in fname1_list:
+            this_t = self.get('t', fn)
+            t1 += this_t[-1] if self.__isyprofile else this_t
+        t1 /= float(len(fname1_list))
+        m = res1['m']
+        if self.__isyprofile:
+            r1 = res1['Y']
+        if self.__isRprofSet:
+            r1 = res1['R']
+        x1 = res1[var]
+        Hp1 = res1['Hp']
+        r4rho2_1 = res1['r4rho2']
+        xsink1 = np.zeros(len(m))
+
+        res2 = self.average_profiles(fname2_list, [var, 'Hp', 'r4rho2'], \
+                   lagrangian=True, mass_correction=mass_correction, rlim=rlim)
+        t2 = 0.
+        for fn in fname2_list:
+            this_t = self.get('t', fn)
+            t2 += this_t[-1] if self.__isyprofile else this_t
+        t2 /= float(len(fname2_list))
+        m = res2['m']
+        if self.__isyprofile:
+            r2 = res2['Y']
+        if self.__isRprofSet:
+            r2 = res2['R']
+        x2 = res2[var]
+        Hp2 = res2['Hp']
+        r4rho2_2 = res2['r4rho2']
+        xsink2 = np.zeros(len(m))
+
+        if self.__isyprofile:
+            # Yprofiles store data from the surface to the core. Flip all input arrays
+            # to simplify the following calculations.
+            m = m[::-1]
+            r1 = r1[::-1]
+            r2 = r2[::-1]
+            x1 = x1[::-1]
+            x2 = x2[::-1]
+            Hp1 = Hp1[::-1]
+            Hp2 = Hp2[::-1]
+            r4rho2_1 = r4rho2_1[::-1]
+            r4rho2_2 = r4rho2_2[::-1]
+            xsink1 = xsink1[::-1]
+            xsink2 = xsink2[::-1]
+
+        r = 0.5*(r1 + r2)
+        Hp = 0.5*(Hp1 + Hp2)
+        xsink = 0.5*(xsink1 + xsink2)
+        r4rho2 = 0.5*(r4rho2_1 + r4rho2_2)
+
+        # sigma is the Lagrangian diffusion coefficient
+        # (notation of MESA Paper I)
+        sigma = np.zeros(len(m))
+        dxdt = (x2 - x1)/(t2 - t1) + xsink
+        
+        i = len(m) - 1
+        while (i > 1) and (np.abs(x2[i - 1] - x2[i]) < eps):
+            i -= 1
+        if i < 1:
+            self.__mesenger.error('Error: x2 is constant.')
+            return None
+
+        # imh == i - 0.5
+        dxdm_imh = (x2[i] - x2[i - 1]) / (m[i] - m[i - 1])
+        if np.abs(dxdm_imh) > 0.:
+            #sigma[i] = -dxdt[i]*0.5*(m[i + 1] - m[i - 1]) / dxdm_imh
+            sigma[i] = -dxdt[i]*(m[i] - m[i - 1]) / dxdm_imh
+        for i in range(i - 1, -1, -1):
+            # iph == i + 0.5
+            dxdm_iph = (x2[i + 1] - x2[i]) / (m[i + 1] - m[i])
+            dxdm_imh = (x2[i] - x2[i - 1]) / (m[i] - m[i - 1])
+            if np.abs(dxdm_imh) > 0.:
+                sigma[i] = (sigma[i + 1]*dxdm_iph - dxdt[i]* \
+                           0.5*(m[i + 1] - m[i - 1])) / dxdm_imh
+            else:
+                sigma[i] = sigma[i + 1]
+
+        D = sigma/(16.*np.pi**2*r4rho2)
+
+        if show_plots:
+            var_lbl = var
+            if var == 'Xcld':
+                var_lbl = 'X'
+
+            ifig=ifig0; pl.close(ifig); fig=pl.figure(ifig)
+            ax1 = fig.gca()
+            lns = []
+            if logvar:
+                lns += ax1.semilogy((1e27/ast.msun_g)*m, x1, '-', color='b', \
+                            label=var_lbl+r'$_1$')
+                lns += ax1.semilogy((1e27/ast.msun_g)*m, x2, '--', color='r', \
+                            label=var_lbl+r'$_2$')
+            else:
+                lns += ax1.plot((1e27/ast.msun_g)*m, x1, '-', color='b', \
+                        label=var_lbl+r'$_1$')
+                lns += ax1.plot((1e27/ast.msun_g)*m, x2, '--', color='r', \
+                        label=var_lbl+r'$_2$')
+            if varlim is not None:
+                ax1.set_ylim(varlim)
+            else:
+                ax1.set_ylim((0., 1.))
+            ax1.set_xlabel(r'm / M$_\odot$')
+            ax1.set_ylabel(var_lbl)
+
+            ax2 = ax1.twinx()
+            lns += ax2.semilogy((1e27/ast.msun_g)*m, 1e6*sigma, '-', \
+                                    color='k', label=r'$\sigma$ > 0')
+            lns += ax2.semilogy((1e27/ast.msun_g)*m, -1e6*sigma, '--', \
+                                    color='k', label=r'$\sigma$ < 0')
+            if mlim is not None:
+                ax2.set_xlim(mlim)
+            if sigmalim is not None:
+                ax2.set_ylim(sigmalim)
+            ax2.set_ylabel(r'$\sigma$ / g$^2$ s$^{-1}$')
+            lbls = [l.get_label() for l in lns]
+            ax2.legend(lns, lbls, loc=0, ncol=2)
+            ttl = ''
+            if run_id != '':
+                ttl = run_id + ', '
+            ttl += 'dumps '
+            if len(fname1_list) > 1:
+                ttl += '[{:d}, {:d}]'.format(fname1_list[0], fname1_list[-1])
+            else:
+                ttl += '{:d}'.format(fname1_list[0])
+            ttl += ' – '
+            if len(fname2_list) > 1:
+                ttl += '[{:d}, {:d}]'.format(fname2_list[0], fname2_list[-1])
+            else:
+                ttl += '{:d}'.format(fname2_list[0])
+            pl.title(ttl)
+
+            ifig=ifig0+1; pl.close(ifig); fig=pl.figure(ifig)
+            ax1 = fig.gca()
+            lns = []
+            if logvar:
+                lns += ax1.semilogy(r1, x1, '-', color='b', \
+                            label=var_lbl+r'$_1$')
+                lns += ax1.semilogy(r2, x2, '--', color='r', \
+                            label=var_lbl+r'$_2$')
+            else:
+                lns += ax1.plot(r1, x1, '-', color='b', \
+                        label=var_lbl+r'$_1$')
+                lns += ax1.plot(r2, x2, '--', color='r', \
+                        label=var_lbl+r'$_2$')
+            if varlim is not None:
+                ax1.set_ylim(varlim)
+            else:
+                ax1.set_ylim((0., 1.))
+            ax1.set_xlabel('r / Mm')
+            ax1.set_ylabel(var_lbl)
+
+            ax2 = ax1.twinx()
+            if fitrlim is not None:
+                i1 = np.argmin(np.abs(r - fitrlim[0]))
+                i2 = np.argmin(np.abs(r - fitrlim[1]))
+                r_fit = r[i1:i2+1]
+                D_data = D[i1:i2+1]
+                fit_coeffs = np.polyfit(r_fit[D_data > 0], \
+                            np.log(D_data[D_data > 0]), 1)
+                D_fit = np.exp(r_fit*fit_coeffs[0] + fit_coeffs[1])
+                f_CBM = -2./(fit_coeffs[0]*Hp[i1])
+                lbl = r'f$_\mathrm{{CBM}}$ = {:.3f}'.format(f_CBM)
+                lns += ax2.semilogy(r_fit, 1e16*D_fit, '-', color='g', \
+                            lw=4., label=lbl)
+
+            lns += ax2.semilogy(r, 1e16*D, '-', color='k', label='D > 0')
+            lns += ax2.semilogy(r, -1e16*D, '--', color='k', label='D < 0')
+            if rlim is not None:
+                ax2.set_xlim(rlim)
+            if Dlim is not None:
+                ax2.set_ylim(Dlim)
+            ax2.set_ylabel(r'D / cm$^2$ s$^{-1}$')
+
+            lbls = [l.get_label() for l in lns]
+            ax2.legend(lns, lbls, loc=0, ncol=2)
+            pl.title(ttl)
+
+        res = {'t1':t1, 't2':t2, 'm':m, 'r':r, 'r1':r1, 'r2':r2, \
+               'Hp1':Hp1, 'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsink1':xsink1, \
+               'xsink2':xsink2, 'sigma':sigma, 'D':D}
+        return res
 
 class yprofile(DataPlot, PPMtools):
     """ 
