@@ -8268,6 +8268,10 @@ class RprofSet(PPMtools):
                   closest_t/60., fname/60.)
             self.__messenger.message(msg)
             rp = self.get_dump(closest_dump)
+        else:
+            self.__messenger.error("'{:s}' is not a valid value of "
+                                   "num_type.".format(num_type))
+            return None
         
         if rp is not None:
             return rp.get(var, resolution=resolution)
