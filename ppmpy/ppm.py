@@ -246,13 +246,20 @@ def cdiff(x):
     
     return dx
 
-def interpolate(x, y, x_new):
+def interpolate(x, y, x_new, kind='linear'):
     inverse_order = (x[-1] < x[0])
     xx = x[::-1] if inverse_order else x
     yy = y[::-1] if inverse_order else y
 
-    cs = scipy.interpolate.CubicSpline(xx, yy, extrapolate=False)
-    y_new = cs(x_new)
+    if kind == 'linear':
+        int_func = scipy.interpolate.interp1d(xx, yy, fill_value='extrapolate')
+        y_new = int_func(x_new)
+    elif kind == 'cubic':
+        cs = scipy.interpolate.CubicSpline(xx, yy, extrapolate=False)
+        y_new = cs(x_new)
+    else:
+        print("Error: Unknown interpolation kind '{:s}'.".format(kind))
+        return None
     
     return y_new
 
