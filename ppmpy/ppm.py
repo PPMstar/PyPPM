@@ -308,7 +308,6 @@ class PPMtools:
         # Return a copy.
         return list(self.__computable_quantities)
 
-
     def compute(self, quantity, fname, num_type='ndump', extra_args={}):
         if quantity in self.__computable_quantities:
             m = self.__compute_methods[quantity]
@@ -600,8 +599,8 @@ class PPMtools:
             ax1.set_xlabel(r'm / M$_\odot$')
             ax1.set_ylabel(r'$\sigma$ / g$^2$ s$^{-1}$')
 
-            ax2 = ax1.twinx()
             if plot_var:
+                ax2 = ax1.twinx()
                 if logvar:
                     lns += ax2.semilogy((1e27/ast.msun_g)*m, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
@@ -637,7 +636,7 @@ class PPMtools:
             pl.title(ttl)
             lbls = [l.get_label() for l in lns]
             ncol = 2 if plot_var else 1
-            ax2.legend(lns, lbls, loc=0, ncol=ncol)
+            pl.legend(lns, lbls, loc=0, ncol=ncol)
 
             # Eulerian plot.
             ifig=ifig0+1; pl.close(ifig); fig=pl.figure(ifig)
@@ -665,8 +664,8 @@ class PPMtools:
             ax1.set_xlabel('r / Mm')
             ax1.set_ylabel(r'D / cm$^2$ s$^{-1}$')
 
-            ax2 = ax1.twinx()
             if plot_var:
+                ax2 = ax1.twinx()
                 if logvar:
                     lns += ax2.semilogy(r1, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
@@ -689,12 +688,111 @@ class PPMtools:
             pl.title(ttl)
             lbls = [l.get_label() for l in lns]
             ncol = 2 if plot_var else 1
-            ax2.legend(lns, lbls, loc=0, ncol=ncol)
+            pl.legend(lns, lbls, loc=0, ncol=ncol)
 
         res = {'t1':t1, 't2':t2, 'm':m, 'r':r, 'r1':r1, 'r2':r2, \
                'Hp1':Hp1, 'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc1':xsrc1, \
                'xsrc2':xsrc2, 'sigma':sigma, 'D':D}
         return res
+
+    def boundary_radius(self, fname, r_min, r_max, num_type='ndump', \
+                        var='ut', criterion='min_grad', var_value=None, \
+                        return_var_scale_height=False, eps=1e-9):
+        fname_list = any2list(fname)
+        rb = np.zeros(len(fname_list))
+        if return_var_scale_height:
+            Hv = np.zeros(len(fname_list))
+
+        # The grid is assumed to be static, so we get the radial
+        # scale only once at fname_list[0].
+        if self.__isyprofile:
+            # Reverse the array so that it starts in the centre. 
+            r = self.get('Y', fname_list[0], resolution='l')[::-1]
+
+        if self.__isRprofSet:
+            r = self.get('R', fname_list[0], resolution='l')
+
+        idx_r_min = np.argmin(np.abs(r - r_min))
+        idx_r_max = np.argmin(np.abs(r - r_max))
+        # Make sure that the ranges below include idx_r_max.
+        if idx_r_max < len(r) - 1:
+            idx_r_max += 1
+
+        for i, fnm in enumerate(fname_list):
+            if var == 'ut':
+                if self.__isyprofile:
+                    v = self.get('EkXZ', fname=fnm, num_type=num_type, \
+                                 resolution='l')**0.5
+                
+                if self.__isRprofSet:
+                    v = self.get('|Ut|', fname=fnm, num_type=num_type, \
+                                 resolution='l')
+            else:
+                v = self.get(var, fnm, num_type=num_type, resolution='l')
+
+            dvdr = cdiff(v)/cdiff(r)
+            if criterion == 'min_grad' or criterion == 'max_grad':
+                # The following code always looks for a local minimum in dv.
+                # A local maximum is found by looking for a local minimum in
+                # -dvdr.
+                dvdr2 = dvdr
+                if criterion == 'max_grad':
+                    dvdr2 = -dvdr2
+
+                # 0th-order estimate.
+                idx0 = idx_r_min + np.argmin(dvdr2[idx_r_min:idx_r_max])
+                r0 = r[idx0]
+
+                # Try to pinpoint the radius of the local minimum by fitting
+                # a parabola around r0.
+                coefs = np.polyfit(r[idx0-1:idx0+2], dvdr2[idx0-1:idx0+2], 2)
+                if np.abs(coefs[0]) > eps:
+                    r00 = -coefs[1]/(2.*coefs[0])
+
+                    # Only use the refined radius if it is within the three
+                    # cells.
+                    if r00 > r[idx0-1] and r00 < r[idx0+1]:
+                        r0 = r00
+            elif criterion == 'value':
+                # 0th-order estimate.
+                idx0 = idx_r_min + np.argmin(np.abs(v[idx_r_min:idx_r_max] - var_value))
+                r0 = r[idx0]
+
+                if np.abs(v[idx0] - var_value) > eps:
+                    # 1st-order refinement.
+                    if idx0 > idx_r_min and idx0 < idx_r_max:
+                        if (v[idx0-1] < var_value and v[idx0] > var_value) or \
+                           (v[idx0-1] > var_value and v[idx0] < var_value):
+                            slope = v[idx0] - v[idx0-1]
+                            t = (var_value - v[idx0-1])/slope
+                            r0 = (1. - t)*r[idx0-1] + t*r[idx0]
+                        elif (v[idx0] < var_value and v[idx0+1] > var_value) or \
+                            (v[idx0] > var_value and v[idx0+1] < var_value):
+                            slope = v[idx0+1] - v[idx0]
+                            t = (var_value - v[idx0])/slope
+                            r0 = (1. - t)*r[idx0] + t*r[idx0+1]
+                        else:
+                            r0 = r_max
+                        
+            rb[i] = r0
+        
+            if return_var_scale_height:
+                Hv_prof = -v/dvdr
+                
+                idx0 = np.argmin(np.abs(r - r0))
+                if r[idx0] > r0:
+                    t = (r0 - r[idx0-1])/(r[idx0] - r[idx0-1])
+                    Hv[i] = (1. - t)*Hv_prof[idx0 - 1] + t*Hv_prof[idx0]
+                elif r[idx0] < r0:
+                    t = (r0 - r[idx0])/(r[idx0+1] - r[idx0])
+                    Hv[i] = (1. - t)*Hv_prof[idx0] + t*Hv_prof[idx0+1]
+                else:
+                    Hv[i] = Hv_prof[idx0]
+                    
+        if return_var_scale_height:
+            return rb, Hv
+        else:
+            return rb
 
 class yprofile(DataPlot, PPMtools):
     """ 
@@ -4916,7 +5014,7 @@ class yprofile(DataPlot, PPMtools):
             if var == 'vxz':
                 v = self.get('EkXZ', fname = cycles[i], resolution='l')**0.5
             else:
-               v = self.get(var, cycles[i], resolution='l')
+                v = self.get(var, cycles[i], resolution='l')
 
             if criterion == 'min_grad' or criterion == 'max_grad':
                 # The following code always looks for a local minimum in dv.
