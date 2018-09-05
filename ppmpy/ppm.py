@@ -8342,7 +8342,7 @@ class RprofSet(PPMtools):
     of PPMstar 2.0.
     '''
     
-    def __init__(self, dir_name, verbose=3):
+    def __init__(self, dir_name, verbose=3, cache_rprofs=True):
         '''
         Init method.
         
@@ -8365,6 +8365,13 @@ class RprofSet(PPMtools):
         self.__dumps = []
         if not self.__find_dumps(dir_name):
             return
+        
+        # To speed up repeated requests for data from the same dump, we
+        # will cache every Rprof that has already been read from disk.
+        # The user can still turn this off in case that they analyse a
+        # large number of long runs on a machine with a small RAM.
+        self.__cache_rprofs = cache_rprofs
+        self.__rprof_cache = {}
 
         history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
                                                          self.__run_id)
@@ -8507,7 +8514,16 @@ class RprofSet(PPMtools):
         file_path = '{:s}{:s}-{:04d}.rprof'.format(self.__dir_name, \
                                                    self.__run_id, dump)
         
-        return Rprof(file_path)
+        if self.__cache_rprofs:
+            if dump in self.__rprof_cache:
+                rp = self.__rprof_cache[dump]
+            else:
+                rp = Rprof(file_path)
+                self.__rprof_cache[dump] = rp
+        else:
+            rp = Rprof(file_path)
+        
+        return rp
     
     def get(self, var, fname, num_type='NDump', resolution='l'):
         '''
