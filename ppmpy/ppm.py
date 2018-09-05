@@ -722,7 +722,7 @@ class PPMtools:
             if var == 'ut':
                 if self.__isyprofile:
                     v = self.get('EkXZ', fname=fnm, num_type=num_type, \
-                                 resolution='l')**0.5
+                                 resolution='l')[::-1]**0.5
                 
                 if self.__isRprofSet:
                     v = self.get('|Ut|', fname=fnm, num_type=num_type, \
@@ -794,7 +794,7 @@ class PPMtools:
         else:
             return rb
 
-    def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
+    def entrainment_rate(self, cycles, r_min, r_max, var='ut', criterion='min_grad', \
                          var_value=None, offset=0., show_plots=True, ifig0=1, \
                          mdot_curve_label=None, fig_file_name=None, \
                          return_time_series=False):
@@ -821,7 +821,11 @@ class PPMtools:
         time = np.zeros(len(cycles))
         mir = np.zeros(len(cycles))
         for i, cyc in enumerate(cycles):
-            time[i] = self.get('t', fname=cyc, resolution='l')
+            if self.__isyprofile:
+                time[i] = self.get('t', fname=cyc, resolution='l')[-1]
+            
+            if self.__isRprofSet:
+                time[i] = self.get('t', fname=cyc, resolution='l')
 
             if self.__isyprofile:
                 # Reverse the arrays so that they start in the centre. 
@@ -946,7 +950,6 @@ class PPMtools:
             print('Resolution: {:d}^3'.format(2*len(r)))
             print('mir_fc = ', mir_fc)
             print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
-            pl.ylim((0., 2.8))
         
         if return_time_series:
             return time, mir
@@ -964,7 +967,7 @@ class yprofile(DataPlot, PPMtools):
         
     """
 
-    def __init__(self, sldir='.', filename_offset=0, silent = True):
+    def __init__(self, sldir='.', filename_offset=0, silent=False):
         """ 
         init method
 
@@ -5141,7 +5144,7 @@ class yprofile(DataPlot, PPMtools):
         else:
             return mdot
 
-    def boundary_radius(self, cycles, r_min, r_max, var='vxz', \
+    def boundary_radius_old(self, cycles, r_min, r_max, var='vxz', \
                         criterion='min_grad', var_value=None):
         '''
         Calculates the boundary of the yprofile.
