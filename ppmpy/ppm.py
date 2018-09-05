@@ -695,22 +695,72 @@ class PPMtools:
                'xsrc2':xsrc2, 'sigma':sigma, 'D':D}
         return res
 
-    def boundary_radius(self, fname, r_min, r_max, num_type='ndump', \
-                        var='ut', criterion='min_grad', var_value=None, \
+    def boundary_radius(self, cycles, r_min, r_max, var='ut', \
+                        criterion='min_grad', var_value=None, \
                         return_var_scale_height=False, eps=1e-9):
-        fname_list = any2list(fname)
-        rb = np.zeros(len(fname_list))
+        '''
+        Method that finds the radius of a convective boundary.
+        
+        If the search is based on gradients, second-order centred finite
+        differences are used to compute the gradient. The radius where
+        the gradient reaches a local extreme (minimum or maximum depending
+        on the value of criterion) is found. This radius is further
+        refined by fitting a parabola to the three points around the
+        local extreme and computing the radius at that the parabola
+        reaches its extreme.
+        
+        If a certain value of var is searched for the method finds two
+        cells between which var crosses the requested value and then it
+        computes the radius of the actual crossing by linear interpolation.
+        
+        Parameters
+        ----------
+        cycles : list
+            Cycle numbers to be used in the analysis.
+        r_min : float
+            Minimum radius to for the boundary search.
+        r_max : float
+            Maximum radius to for the boundary search.
+        var : string
+            Name of the variable to be used in the boundary search.
+            This can be any variable contained in the data file or
+            a special variable 'ut', which is the tangential velocity
+            (computed in slightly different ways depending on the
+            source of data).
+        criterion : string
+            Boundary definition criterion with the following options:
+            'min_grad' : Search for a local minimum in d(var)/dr.
+            'max_grad' : Search for a local maximum in d(var)/dr.
+            'value' : Search for the radius where var == var_value.
+        var_value : float
+            Value of var to be searched for if criterion == 'value'.
+        return_var_scale_height : bool
+            Allows the user to have the scale height of var evaluated
+            at the boundary radius to be returned as well.
+        eps : float
+            Smallest value considered non-zero in the search alorighm.
+            
+        Returns
+        -------
+        rb : 1D numpy array
+            The boundary radius is returned if return_var_scale_height == False.
+        rb, Hv: 1D numpy arrays
+            The boundary radius rb and the scale height Hv of var evaluated
+            at rb are returned if return_var_scale_height == True.
+        '''
+        cycle_list = any2list(cycles)
+        rb = np.zeros(len(cycle_list))
         if return_var_scale_height:
-            Hv = np.zeros(len(fname_list))
+            Hv = np.zeros(len(cycle_list))
 
         # The grid is assumed to be static, so we get the radial
-        # scale only once at fname_list[0].
+        # scale only once at cycle_list[0].
         if self.__isyprofile:
             # Reverse the array so that it starts in the centre. 
-            r = self.get('Y', fname_list[0], resolution='l')[::-1]
+            r = self.get('Y', cycle_list[0], resolution='l')[::-1]
 
         if self.__isRprofSet:
-            r = self.get('R', fname_list[0], resolution='l')
+            r = self.get('R', cycle_list[0], resolution='l')
 
         idx_r_min = np.argmin(np.abs(r - r_min))
         idx_r_max = np.argmin(np.abs(r - r_max))
@@ -718,17 +768,15 @@ class PPMtools:
         if idx_r_max < len(r) - 1:
             idx_r_max += 1
 
-        for i, fnm in enumerate(fname_list):
+        for i, cyc in enumerate(cycle_list):
             if var == 'ut':
                 if self.__isyprofile:
-                    v = self.get('EkXZ', fname=fnm, num_type=num_type, \
-                                 resolution='l')[::-1]**0.5
+                    v = self.get('EkXZ', fname=cyc, resolution='l')[::-1]**0.5
                 
                 if self.__isRprofSet:
-                    v = self.get('|Ut|', fname=fnm, num_type=num_type, \
-                                 resolution='l')
+                    v = self.get('|Ut|', fname=cyc, resolution='l')
             else:
-                v = self.get(var, fnm, num_type=num_type, resolution='l')
+                v = self.get(var, cyc, resolution='l')
 
             dvdr = cdiff(v)/cdiff(r)
             if criterion == 'min_grad' or criterion == 'max_grad':
@@ -796,8 +844,50 @@ class PPMtools:
 
     def entrainment_rate(self, cycles, r_min, r_max, var='ut', criterion='min_grad', \
                          var_value=None, offset=0., show_plots=True, ifig0=1, \
-                         mdot_curve_label=None, fig_file_name=None, \
-                         return_time_series=False):
+                         fig_file_name=None, return_time_series=False):
+        '''
+        Method for calculating entrainment rates.
+        
+        Parameters
+        ----------
+        cycles : list
+            Cycle numbers to be used in the analysis.
+        r_min : float
+            Minimum radius to for the boundary search.
+        r_max : float
+            Maximum radius to for the boundary search.
+        var : string
+            Name of the variable to be used in the boundary search.
+            See PPMtools.boundary_radius().
+        criterion : string
+            Boundary definition criterion.
+            See PPMtools.boundary_radius() for allowed values.
+        var_value : float
+            Value of var to be searched for if criterion == 'value'.
+            See PPMtools.boundary_radius() for allowed values.
+        offset : float
+            Offset between the boundary radius and the upper integration
+            limit for mass integration. The absolute value of the scale 
+            height of var evaluated at the boundary is used as a unit for
+            the offset. Negative values shift the upper integration limit
+            inwards and positive values outwards.
+        show_plots : bool
+            Should any plots be shown?
+        ifig0 : int
+            Figure index for the first plot shown.
+        fig_file_name : string
+            Name of the file, into which the entrainment rate plot will
+            be saved.
+        return_time_series : bool
+            Switch to control what the method returns, see below.
+            
+        Returns
+        -------
+        mdot : float
+            The entrainment rate is returned if return_time_series == False.
+        time, mir: 1D numpy arrays
+            The entrained mass inside the integration radius as a function of time.
+        '''
         rb, Hv = self.boundary_radius(cycles, r_min, r_max, var=var, criterion=criterion, \
                                       var_value=var_value, return_var_scale_height=True)
         rt = rb + offset*np.abs(Hv)
@@ -925,7 +1015,7 @@ class PPMtools:
             oom = int(np.floor(np.log10(max_val)))
             
             pl.close(ifig0+1); fig2=pl.figure(ifig0+1)
-            pl.plot(time/60., mir/10**oom, color=cb(5), label=mdot_curve_label)
+            pl.plot(time/60., mir/10**oom, color=cb(5))
             mdot_str = '{:e}'.format(mdot)
             parts = mdot_str.split('e')
             mantissa = float(parts[0])
@@ -5100,7 +5190,7 @@ class yprofile(DataPlot, PPMtools):
             oom = int(np.floor(np.log10(max_val)))
             
             pl.close(ifig0 + 1); fig2 = pl.figure(ifig0 + 1)
-            pl.plot(time/60., m_ir/10**oom, color = cb(5), label=mdot_curve_label)
+            pl.plot(time/60., m_ir/10**oom, color = cb(5))
             mdot_str = '{:e}'.format(mdot)
             parts = mdot_str.split('e')
             mantissa = float(parts[0])
