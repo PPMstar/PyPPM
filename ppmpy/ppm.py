@@ -794,6 +794,165 @@ class PPMtools:
         else:
             return rb
 
+    def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
+                         var_value=None, offset=0., show_plots=True, ifig0=1, \
+                         mdot_curve_label=None, fig_file_name=None, \
+                         return_time_series=False):
+        rb, Hv = self.boundary_radius(cycles, r_min, r_max, var=var, criterion=criterion, \
+                                      var_value=var_value, return_var_scale_height=True)
+        rt = rb + offset*np.abs(Hv)
+        
+        # The grid is assumed to be static, so we get the radial
+        # scale only once at cycles[0].
+        if self.__isyprofile:
+            # Reverse the array so that it starts in the centre. 
+            r = self.get('Y', cycles[0], resolution='l')[::-1]
+
+        if self.__isRprofSet:
+            r = self.get('R', cycles[0], resolution='l')
+
+        r_cell_top = 0.5*(r + np.roll(r, -1))
+        r_cell_top[-1] = r_cell_top[-2] + (r_cell_top[-2] - r_cell_top[-3])
+        r3_cell_top = r_cell_top**3
+        dr3 = r3_cell_top - np.roll(r3_cell_top, +1)
+        dr3[0] = dr3[1] - (dr3[2] - dr3[1])
+        dV = (4./3.)*np.pi*dr3
+        
+        time = np.zeros(len(cycles))
+        mir = np.zeros(len(cycles))
+        for i, cyc in enumerate(cycles):
+            time[i] = self.get('t', fname=cyc, resolution='l')
+
+            if self.__isyprofile:
+                # Reverse the arrays so that they start in the centre. 
+                Xcld = self.compute('Xcld', cyc)[::-1]
+                rho = self.get('Rho', cyc, resolution='l')[::-1]
+
+            if self.__isRprofSet:
+                Xcld = self.compute('Xcld', cyc)
+                rho = self.get('Rho0', cyc, resolution='l') + \
+                      self.get('Rho1', cyc, resolution='l')
+            
+            # We assume that Xlcd and rho are cell averages, so we can
+            # integrate all but the last cell using the rectangle rule.
+            # We do piecewise linear reconstruction in the last cell and 
+            # integrate only over the portion of the cell where r < rt[i].
+            # We should be as accurate as possible here, because Xcld is 
+            # usually much larger in this cell than in the bulk of the 
+            # convection zone.
+            idx_top = np.argmin(r_cell_top < rt[i])
+            dm = Xcld*rho*dV
+            # mir == mass inside radius (rt)
+            mir[i] = np.sum(dm[0:idx_top])
+            
+            # Linear reconstruction. The integrand f = Xcld*rho is
+            # assumed to take the form
+            #
+            #   f(r) = f0 + s*r
+            #
+            # within a cell. The slope s is computed using cell averages
+            # in the cell's two next-door neighbours and the integral of 
+            # f(r)*dV over the cell's volume V_j is enforced to be 
+            # f_j*V_j, where j is the index of the cell.
+            #
+            j = idx_top
+            
+            # jmo = j - 1
+            # jpo = j + 1
+            r_jmo = r[j-1]
+            r_j   = r[j]
+            r_jpo = r[j+1]
+            f_jmo = Xcld[j-1]*rho[j-1]
+            f_j   = Xcld[j  ]*rho[j  ]
+            f_jpo = Xcld[j+1]*rho[j+1]
+            
+            # jmh = j - 0.5
+            # jph = j + 0.5
+            r_jmh = 0.5*(r_jmo + r_j)
+            r_jph = 0.5*(r_j + r_jpo)
+            f_jmh = 0.5*(f_jmo + f_j)
+            f_jph = 0.5*(f_j + f_jpo)
+            
+            s = (f_jph - f_jmh)/(r_jph - r_jmh)
+            V_j = (4./3.)*np.pi*(r_jph**3 - r_jmh**3)
+            f0 = f_j - np.pi*(r_jph**4 - r_jmh**4)/V_j*s
+            mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jmh**3)*f0 + \
+                      np.pi*(rt[i]**4 - r_jmh**4)*s
+            
+        timelong = time
+        delta = 0.05*(np.max(time) - np.min(time))
+        timelong = np.insert(timelong,0, timelong[0] - delta)
+        timelong = np.append(timelong, timelong[-1] + delta)
+        
+        # fc = fit coefficients
+        rb_fc = np.polyfit(time, rb, 1)
+        rb_fit = rb_fc[0]*timelong + rb_fc[1]
+        rt_fc = np.polyfit(time, rt, 1)
+        rt_fit = rt_fc[0]*timelong + rt_fc[1]
+        
+        # fc = fit coefficients
+        mir *= 1e27/ast.msun_g
+        mir_fc = np.polyfit(time, mir, 1)
+        mir_fit = mir_fc[0]*timelong + mir_fc[1]
+        mdot = mir_fc[0]
+
+        if show_plots:
+            cb = utils.colourblind
+            pl.close(ifig0); fig1=pl.figure(ifig0)
+            pl.plot(time/60., rt, color=cb(5), ls='-', label=r'r$_\mathrm{top}$')
+            pl.plot(time/60., rb, color=cb(8), ls='--', label=r'r$_\mathrm{b}$')
+            pl.plot(timelong/60., rt_fit, color=cb(4), ls='-', lw=0.5)
+            pl.plot(timelong/60., rb_fit, color=cb(4), ls='-', lw=0.5)
+            pl.xlabel('t / min')
+            pl.ylabel('r / Mm')
+            xfmt = ScalarFormatter(useMathText=True)
+            pl.gca().xaxis.set_major_formatter(xfmt)
+            pl.legend(loc = 0)
+            fig1.tight_layout()
+
+            print('rb is the radius of the convective boundary.')
+            print('drb/dt = {:.2e} km/s\n'.format(1e3*rb_fc[0]))
+            print('rt is the upper limit for mass integration.')
+            print('drt/dt = {:.2e} km/s'.format(1e3*rt_fc[0]))
+            
+            max_val = np.max(mir)
+            max_val = np.max((max_val, np.max(mir_fit)))
+            max_val *= 1.1 # allow for some margin at the top of the plot
+            oom = int(np.floor(np.log10(max_val)))
+            
+            pl.close(ifig0+1); fig2=pl.figure(ifig0+1)
+            pl.plot(time/60., mir/10**oom, color=cb(5), label=mdot_curve_label)
+            mdot_str = '{:e}'.format(mdot)
+            parts = mdot_str.split('e')
+            mantissa = float(parts[0])
+            exponent = int(parts[1])
+            lbl = (r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} \times 10^{{{:d}}}$ ' + \
+                   'M$_\odot$ s$^{{-1}}$').format(mantissa, exponent)
+            pl.plot(timelong/60., mir_fit/10**oom, color=cb(4), ls='-', lw=0.5, label=lbl)
+            pl.xlabel('t / min')
+            sub = 'e'
+            ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
+            if oom == 0.:
+                ylbl = r'M$_{:s}$ / M$_\odot$'.format(sub)
+                
+            pl.ylabel(ylbl)
+            yfmt = FormatStrFormatter('%.1f')
+            fig2.gca().yaxis.set_major_formatter(yfmt)
+            fig2.tight_layout()
+            pl.legend(loc=2)
+            if fig_file_name is not None:
+                fig2.savefig(fig_file_name)
+        
+            print('Resolution: {:d}^3'.format(2*len(r)))
+            print('mir_fc = ', mir_fc)
+            print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
+            pl.ylim((0., 2.8))
+        
+        if return_time_series:
+            return time, mir
+        else:
+            return mdot
+
 class yprofile(DataPlot, PPMtools):
     """ 
     Data structure for holding data in the  YProfile.bobaaa files.
@@ -4790,7 +4949,7 @@ class yprofile(DataPlot, PPMtools):
         if return_burnt:
             return m_HHe_burnt
     '''        
-    def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
+    def entrainment_rate_old(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False, 
                          integrate_upwards=False, show_output=True, ifig0=1, \
                          silent=True, mdot_curve_label=None, file_name=None,
@@ -8443,7 +8602,7 @@ class RprofSet(PPMtools):
         pl.legend(loc=2)
         pl.tight_layout()
 
-    def entrainment_rate(self, cycles, r_min, r_max, airmu, cldmu, var='vxz', criterion='min_grad', \
+    def entrainment_rate_old(self, cycles, r_min, r_max, airmu, cldmu, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False, 
                          integrate_upwards=False, show_output=True, ifig0=1, \
                          silent=True, mdot_curve_label=None, file_name=None,
