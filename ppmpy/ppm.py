@@ -292,6 +292,7 @@ class PPMtools:
                                   'm':self.compute_m, \
                                   'r4rho2':self.compute_r4rho2, \
                                   'T9':self.compute_T9, \
+                                  'T9corr':self.compute_T9corr, \
                                   'Xcld':self.compute_Xcld}
         self.__computable_quantities = self.__compute_methods.keys()
 
@@ -400,7 +401,27 @@ class PPMtools:
         T9 = (mu/Rgasconst)*(p/rho)
         
         return T9
-
+    
+    def compute_T9corr(self, fname, num_type='ndump', kind=0, params=None, \
+                       airmu=None, cldmu=None):
+        T9 = self.compute_T9(fname, num_type=num_type, airmu=airmu, \
+                             cldmu=cldmu)
+        
+        T9corr = None
+        if kind == 0:
+            T9corr = T9
+        elif kind == 1:
+            if params is None or 'a' not in params or 'b' not in params:
+                self.__messenger.error("Parameters 'a' and 'b' are required "
+                                       "with kind = 1 (T9corr = a*T9**b).")
+            else:
+                T9corr = params['a']*T9**params['b']
+        else:
+            self.__messenger.error("T9 correction of kind = {:d} does "
+                                   "not exist.".format(kind))
+        
+        return T9corr
+    
     def compute_Xcld(self, fname, num_type='ndump'):
         # Different variables are available depending on data souce, so Xcld
         # is computed in different ways. Both results will be biased, although
