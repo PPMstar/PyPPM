@@ -291,6 +291,7 @@ class PPMtools:
         self.__compute_methods = {'Hp':self.compute_Hp, \
                                   'm':self.compute_m, \
                                   'r4rho2':self.compute_r4rho2, \
+                                  'T9':self.compute_T9, \
                                   'Xcld':self.compute_Xcld}
         self.__computable_quantities = self.__compute_methods.keys()
 
@@ -358,6 +359,47 @@ class PPMtools:
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
 
         return r**4*rho**2
+    
+    def compute_T9(self, fname, num_type='ndump', airmu=None, cldmu=None):
+        if self.__isyprofile:
+            if (airmu is None or cldmu is None):
+                self.__messenger.error('airmu and cldmu parameters are '
+                                       'required to compute T9 for a '
+                                       'yprofile.')
+                
+            fv = self.get('FV H+He', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+        
+        muair = airmu
+        mucld = cldmu
+        
+        if self.__isRprofSet:
+            # We allow the user to replace the mu values read from the .rprof
+            # files should those ever become wrong/unavailable.
+            if muair is None:
+                muair = self.get('airmu', fname, num_type=num_type)
+            
+            if mucld is None:
+                mucld = self.get('cldmu', fname, num_type=num_type)
+        
+            fv = self.get('FV', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+        
+        # mu of a mixture of two ideal gases coexisting in thermal and
+        # pressure equlibrium.
+        mu = (1. - fv)*muair + fv*mucld
+        
+        # Gas constant as defined in PPMstar.
+        Rgasconst = 8.314462
+        
+        # p = rho*Rgasconst*T9/mu
+        T9 = (mu/Rgasconst)*(p/rho)
+        
+        return T9
 
     def compute_Xcld(self, fname, num_type='ndump'):
         # Different variables are available depending on data souce, so Xcld
