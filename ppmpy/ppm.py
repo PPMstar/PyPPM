@@ -292,6 +292,7 @@ class PPMtools:
                                   'Hp':self.compute_Hp, \
                                   'm':self.compute_m, \
                                   'r4rho2':self.compute_r4rho2, \
+                                  'rhodot_C12pg':self.compute_rhodot_C12pg, \
                                   'T9':self.compute_T9, \
                                   'T9corr':self.compute_T9corr, \
                                   'Xcld':self.compute_Xcld}
@@ -475,6 +476,50 @@ class PPMtools:
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
 
         return r**4*rho**2
+    
+    def compute_rhodot_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
+                             atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
+                             T9corr_params={}):
+        # We allow the user to replace the following values read from the .rprof
+        # files should those ever become wrong/unavailable.
+        if fkcld is None:
+            fkcld = self.get('fkcld', fname, num_type=num_type)
+        
+        if atomicnocld is None:
+            atomicnocld = self.get('atomicnocld', fname, num_type=num_type)
+
+        # It does not matter what Q value we use, but we have to make sure that
+        # compute_enuc_C12pg() uses the same Q as we use in this method.
+        Q = 1.944
+        corr_fact = 1.
+        enuc = self.compute_enuc_C12pg(fname, num_type=num_type, fkair=fkair, \
+                                       fkcld=fkcld, atomicnoair=atomicnoair, \
+                                       atomicnocld=atomicnocld, airmu=airmu, \
+                                       cldmu=cldmu, T9corr_params=T9corr_params, \
+                                       Q=Q)
+        
+        # MeV in code units.
+        MeV = 1.60218e-6/1e43
+        
+        # Reaction rate per unit volume.
+        ndot = enuc/(Q*MeV)
+        
+        # Remember: atomicno is actually the mass number.
+        # fkcld is the number fraction of H nucleii in the 'cloud' fluid.
+        # X_H is the mass fraction of H in the 'cloud' fluid.
+        atomicnoH = 1.
+        X_H = fkcld*atomicnoH/atomicnocld
+        
+        # Atomic mass unit in PPMstar units.
+        amu = 1.660539040e-24/1e27
+        
+        # The nominator is the mass burning rate of H per unit volume.
+        # PPMstar cannot remove H from the 'cloud' fluid. When some mass M_H
+        # of H is burnt, PPMstar actually removes M_H/X_H units of mass of
+        # the 'cloud' fluid.
+        rhodot = atomicnoH*amu*ndot/X_H
+        
+        return rhodot
     
     def compute_T9(self, fname, num_type='ndump', airmu=None, cldmu=None):
         if self.__isyprofile:
