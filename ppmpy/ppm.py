@@ -288,7 +288,8 @@ class PPMtools:
         self.__isRprofSet= isinstance(self, RprofSet)
 
         # This sets which method computes which quantity.
-        self.__compute_methods = {'Hp':self.compute_Hp, \
+        self.__compute_methods = {'enuc_C12pg':self.compute_enuc_C12pg, \
+                                  'Hp':self.compute_Hp, \
                                   'm':self.compute_m, \
                                   'r4rho2':self.compute_r4rho2, \
                                   'T9':self.compute_T9, \
@@ -313,10 +314,124 @@ class PPMtools:
     def compute(self, quantity, fname, num_type='ndump', extra_args={}):
         if quantity in self.__computable_quantities:
             m = self.__compute_methods[quantity]
-            return m(fname, num_type, **extra_args)
+            return m(fname, num_type=num_type, **extra_args)
         else:
             self.__messenger.error("Unknown quantity '{:s}'.".format(quantity))
 
+    def compute_enuc_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
+                           atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
+                           T9corr_params={}, Q=1.944, corr_fact=1.):
+        if self.__isyprofile:
+            fv = self.get('FV H+He', fname=fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname=fname, num_type=num_type, resolution='l')
+            rhocld = self.get('Rho H+He', fname=fname, num_type=num_type, \
+                              resolution='l')
+            rhoair = self.get('RHOconv', fname=fname, num_type = num_type, \
+                              resolution='l')
+            
+            if fkair is None or fkcld is None or atomicnoair is None or \
+               atomicnocld is None:
+                self.__messenger.error('Yprofiles do not contain the values of fkair, '
+                                       'fkcld, atomicnoair, and atomicnocld. You have '
+                                       'to provide via optional parameters.')
+                return None
+        
+        if self.__isRprofSet:
+            fv = self.get('FV', fname=fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho0', fname=fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname=fname, num_type=num_type, resolution='l')
+            
+            # We allow the user to replace the following values read from the .rprof
+            # files should those ever become wrong/unavailable.
+            if fkair is None:
+                fkair = self.get('fkair', fname, num_type=num_type)
+            
+            if fkcld is None:
+                fkcld = self.get('fkcld', fname, num_type=num_type)
+            
+            if atomicnoair is None:
+                atomicnoair = self.get('atomicnoair', fname, num_type=num_type)
+            
+            if atomicnocld is None:
+                atomicnocld = self.get('atomicnocld', fname, num_type=num_type)
+
+            if airmu is None:
+                airmu = self.get('airmu', fname, num_type=num_type)
+
+            if cldmu is None:
+                cldmu = self.get('cldmu', fname, num_type=num_type)
+            
+            # Individual densities of the two ideal gases assuming thermal and
+            # pressure equlibrium.
+            rhocld = rho/(fv + (1. - fv)*airmu/cldmu)
+            rhoair = rho/(fv*cldmu/airmu + (1. - fv))
+
+        # compute_T9corr() returns the uncorrected temperature if no correction
+        # parameters are supplied.
+        T9 = self.compute_T9corr(fname=fname, num_type=num_type, airmu=airmu, \
+                                 cldmu=cldmu, **T9corr_params)
+        TP13 = T9**(1./3.)
+        TP23 = TP13*TP13
+        TP12 = np.sqrt(T9)
+        TP14 = np.sqrt(TP12)
+        TP32 = T9*TP12
+        TM13 = 1./TP13
+        TM23 = 1./TP23
+        TM32 = 1./TP32
+        
+        T9inv = 1. / T9
+        thyng = 2.173913043478260869565 * T9
+        vc12pg = 20000000.*TM23 * np.exp(-13.692*TM13 - thyng*thyng)
+        vc12pg = vc12pg * (1. + T9*(9.89-T9*(59.8 - 266.*T9)))
+        thing2 = vc12pg + TM32*(1.0e5 * np.exp(-4.913*T9inv) + \
+                                4.24e5 * np.exp(-21.62*T9inv))
+        
+        thing2[np.where(T9 < .0059)] = 0.
+        thing2[np.where(T9 > 0.75)] = 200.
+        
+        vc12pg = thing2 * rho * 1000.
+        
+        v = 1./ rho
+        atomicnocldinv = 1./atomicnocld
+        atomicnoairinv = 1./atomicnoair
+        
+        Y1 =  rhocld * fv * v * atomicnocldinv
+        Y2 =  rhoair * (1. - fv) * v * atomicnoairinv
+        
+        CN = 96.480733
+        # RA (6 Sep 2018): I have to comment out the following part of the code,
+        # because the right instantaneous value of dt is currently unavailable.
+        # 
+        #reallysmall=1e-14
+        #if use_dt:
+        #    # We want the average rate during the current time step.
+        #    # If the burning is too fast all the stuff available burns
+        #    # in a fraction of the time step. We do not allow to burn 
+        #    # more than what is available, so the average burn rate is
+        #    # lower than then instantaneous one.
+        #    thing3 = fkair * Y1 * Y2 * vc12pg * dt
+        #    thing3[where(Y1 < reallysmall)] = 0.
+        #    thing2 = np.min(np.array((thing3, Y1)), axis = 0)
+        #    
+        #    #for i in range(len(Y1)):
+        #    #    print '{:d}   {:.1e}   {:.1e}   {:.1e}'.format(i, Y1[i], thing3[i], Y1[i]/thing3[i])
+        #    
+        #    DY = fkcld * thing2
+        #    enuc = DY * rho * CN * Q / dt
+        #else:
+        
+        # We want the instantaneous burning rate. This does not
+        # depend on how much stuff is available.
+        thing3 = fkair * Y1 * Y2 * vc12pg
+
+        DY = fkcld * thing3
+        enuc = DY * rho * CN * Q
+        
+        # This factor can account for the heating bug if present.
+        enuc *= corr_fact
+        
+        return enuc
+    
     def compute_Hp(self, fname, num_type='ndump'):
         if self.__isyprofile:
             r = self.get('Y', fname, num_type=num_type, resolution='l')
