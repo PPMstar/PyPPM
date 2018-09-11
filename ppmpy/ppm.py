@@ -1066,7 +1066,8 @@ class PPMtools:
             return rb
 
     def entrainment_rate(self, cycles, r_min, r_max, var='ut', criterion='min_grad', \
-                         var_value=None, offset=0., show_plots=True, ifig0=1, \
+                         var_value=None, offset=0., burn_func=None, burn_args={}, \
+                         fit_interval=None, show_plots=True, ifig0=1, \
                          fig_file_name=None, return_time_series=False):
         '''
         Method for calculating entrainment rates.
@@ -1094,6 +1095,19 @@ class PPMtools:
             height of var evaluated at the boundary is used as a unit for
             the offset. Negative values shift the upper integration limit
             inwards and positive values outwards.
+        burn_func : function
+            burn_func(cycle, **burn_args) has to return the radial profile
+            of the mass burning rate of the entrained fluid per unit volume
+            for the cycle number passed as the first argument. For a data 
+            object obj, it can be e.g. obj.compute_rhodot_C12pg. The user
+            can define a custom function and pass a reference to obj via
+            burn_args.
+        fit_interval : list
+            List with the start and end time for the entrainment rate fit
+            in seconds.
+        burn_args : dictionary
+            All arguments, with the exception of the cycle number, that
+            burn_func() needs.
         show_plots : bool
             Should any plots be shown?
         ifig0 : int
@@ -1108,12 +1122,15 @@ class PPMtools:
         -------
         mdot : float
             The entrainment rate is returned if return_time_series == False.
-        time, mir: 1D numpy arrays
-            The entrained mass inside the integration radius as a function of time.
+        time, mir, mb: 1D numpy arrays
+            The entrained mass present and burnt inside the integration radius
+            as a function of time. mb is an array of zeroes if burn_func is None.
         '''
+        print('Computing boundary radius...')
         rb, Hv = self.boundary_radius(cycles, r_min, r_max, var=var, criterion=criterion, \
                                       var_value=var_value, return_var_scale_height=True)
         rt = rb + offset*np.abs(Hv)
+        print('Done.')
         
         # The grid is assumed to be static, so we get the radial
         # scale only once at cycles[0].
@@ -1131,14 +1148,18 @@ class PPMtools:
         dr3[0] = dr3[1] - (dr3[2] - dr3[1])
         dV = (4./3.)*np.pi*dr3
         
-        time = np.zeros(len(cycles))
+        t = np.zeros(len(cycles))
+        burn_rate = np.zeros(len(cycles))
+        # mir == mass inside radius (rt)
         mir = np.zeros(len(cycles))
+        wct0 = time.time()
+        print('Integrating entrained mass...')
         for i, cyc in enumerate(cycles):
             if self.__isyprofile:
-                time[i] = self.get('t', fname=cyc, resolution='l')[-1]
+                t[i] = self.get('t', fname=cyc, resolution='l')[-1]
             
             if self.__isRprofSet:
-                time[i] = self.get('t', fname=cyc, resolution='l')
+                t[i] = self.get('t', fname=cyc, resolution='l')
 
             if self.__isyprofile:
                 # Reverse the arrays so that they start in the centre. 
@@ -1149,6 +1170,12 @@ class PPMtools:
                 Xcld = self.compute('Xcld', cyc)
                 rho = self.get('Rho0', cyc, resolution='l') + \
                       self.get('Rho1', cyc, resolution='l')
+            
+            if burn_func is not None:
+                rhodot = burn_func(cyc, **burn_args)
+                if self.__isyprofile:
+                    # Reverse the array so that it starts in the centre. 
+                    rhodot = rhodot[::-1]
             
             # We assume that Xlcd and rho are cell averages, so we can
             # integrate all but the last cell using the rectangle rule.
@@ -1195,31 +1222,52 @@ class PPMtools:
             f0 = f_j - np.pi*(r_jph**4 - r_jmh**4)/V_j*s
             mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jmh**3)*f0 + \
                       np.pi*(rt[i]**4 - r_jmh**4)*s
-            
-        timelong = time
-        delta = 0.05*(np.max(time) - np.min(time))
-        timelong = np.insert(timelong,0, timelong[0] - delta)
-        timelong = np.append(timelong, timelong[-1] + delta)
+                
+            if burn_func is not None:
+                burn_rate[i] = np.sum(rhodot[0:idx_top]*dV[0:idx_top])
+                
+            wct1 = time.time()
+            if wct1 - wct0 > 5.:
+                print('{:d}/{:d} cycles processed.'.format(\
+                      i+1, len(cycles)), end='\r')
+                wct0 = wct1
+                
+        print('{:d}/{:d} cycles processed.'.format(i+1, len(cycles)))
+        print('Done.')
         
-        # fc = fit coefficients
-        rb_fc = np.polyfit(time, rb, 1)
-        rb_fit = rb_fc[0]*timelong + rb_fc[1]
-        rt_fc = np.polyfit(time, rt, 1)
-        rt_fit = rt_fc[0]*timelong + rt_fc[1]
-        
-        # fc = fit coefficients
         mir *= 1e27/ast.msun_g
-        mir_fc = np.polyfit(time, mir, 1)
-        mir_fit = mir_fc[0]*timelong + mir_fc[1]
-        mdot = mir_fc[0]
+        # mb = mass burnt
+        mb = integrate.cumtrapz(burn_rate, x=t, initial=0.)
+        mb *= 1e27/ast.msun_g
+        mtot = mir + mb
+            
+        fit_idx0 = 0
+        fit_idx1 = len(t)
+        if fit_interval is not None:
+            fit_idx0 = np.argmin(np.abs(t - fit_interval[0]))
+            fit_idx1 = np.argmin(np.abs(t - fit_interval[1])) + 1
+            if fit_idx1 > len(t):
+                fit_idx1 = len(t)
+        fit_range = range(fit_idx0, fit_idx1)
+        
+        # fc = fit coefficients
+        rb_fc = np.polyfit(t[fit_range], rb[fit_range], 1)
+        rb_fit = rb_fc[0]*t[fit_range] + rb_fc[1]
+        rt_fc = np.polyfit(t[fit_range], rt[fit_range], 1)
+        rt_fit = rt_fc[0]*t[fit_range] + rt_fc[1]
+        
+        # fc = fit coefficients
+        mtot_fc = np.polyfit(t[fit_range], mtot[fit_range], 1)
+        mtot_fit = mtot_fc[0]*t[fit_range] + mtot_fc[1]
+        mdot = mtot_fc[0]
 
         if show_plots:
             cb = utils.colourblind
             pl.close(ifig0); fig1=pl.figure(ifig0)
-            pl.plot(time/60., rt, color=cb(5), ls='-', label=r'r$_\mathrm{top}$')
-            pl.plot(time/60., rb, color=cb(8), ls='--', label=r'r$_\mathrm{b}$')
-            pl.plot(timelong/60., rt_fit, color=cb(4), ls='-', lw=0.5)
-            pl.plot(timelong/60., rb_fit, color=cb(4), ls='-', lw=0.5)
+            pl.plot(t/60., rt, color=cb(5), ls='-', label=r'r$_\mathrm{top}$')
+            pl.plot(t/60., rb, color=cb(8), ls='--', label=r'r$_\mathrm{b}$')
+            pl.plot(t[fit_range]/60., rt_fit, color=cb(4), ls='-', lw=0.5)
+            pl.plot(t[fit_range]/60., rb_fit, color=cb(4), ls='-', lw=0.5)
             pl.xlabel('t / min')
             pl.ylabel('r / Mm')
             xfmt = ScalarFormatter(useMathText=True)
@@ -1232,20 +1280,32 @@ class PPMtools:
             print('rt is the upper limit for mass integration.')
             print('drt/dt = {:.2e} km/s'.format(1e3*rt_fc[0]))
             
-            max_val = np.max(mir)
-            max_val = np.max((max_val, np.max(mir_fit)))
+            min_val = np.min(mtot)
+            max_val = np.max(mtot)
+            max_val = np.max((max_val, np.max(mtot_fit)))
             max_val *= 1.1 # allow for some margin at the top of the plot
             oom = int(np.floor(np.log10(max_val)))
             
             pl.close(ifig0+1); fig2=pl.figure(ifig0+1)
-            pl.plot(time/60., mir/10**oom, color=cb(5))
             mdot_str = '{:e}'.format(mdot)
             parts = mdot_str.split('e')
             mantissa = float(parts[0])
             exponent = int(parts[1])
-            lbl = (r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} \times 10^{{{:d}}}$ ' + \
-                   'M$_\odot$ s$^{{-1}}$').format(mantissa, exponent)
-            pl.plot(timelong/60., mir_fit/10**oom, color=cb(4), ls='-', lw=0.5, label=lbl)
+            lbl = (r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} '
+                   r'\times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$').\
+                   format(mantissa, exponent)
+            pl.plot(t[fit_range]/60., mtot_fit/10**oom, color=cb(4), \
+                    ls='-', lw=0.5, label=lbl, zorder=100)
+            
+            lbl = ''
+            if burn_func is not None:
+                pl.plot(t/60., mir/10**oom, ':', color=cb(3), label='present')
+                pl.plot(t/60., mb/10**oom, '--', color=cb(6), label='burnt')
+                lbl = 'total'
+            pl.plot(t/60., mtot/10**oom, color=cb(5), label=lbl)
+            
+            
+            pl.ylim((min_val/10**oom, max_val/10**oom))
             pl.xlabel('t / min')
             sub = 'e'
             ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
@@ -1261,11 +1321,11 @@ class PPMtools:
                 fig2.savefig(fig_file_name)
         
             print('Resolution: {:d}^3'.format(2*len(r)))
-            print('mir_fc = ', mir_fc)
+            print('mtot_fc = ', mtot_fc)
             print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
         
         if return_time_series:
-            return time, mir
+            return t, mir, mb
         else:
             return mdot
 
