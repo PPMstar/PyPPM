@@ -1048,7 +1048,7 @@ class PPMtools:
             rb[i] = r0
         
             if return_var_scale_height:
-                Hv_prof = -v/dvdr
+                Hv_prof = np.abs(v)/(np.abs(dvdr) + 1e-100)
                 
                 idx0 = np.argmin(np.abs(r - r0))
                 if r[idx0] > r0:
