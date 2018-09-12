@@ -1266,8 +1266,8 @@ class PPMtools:
             pl.close(ifig0); fig1=pl.figure(ifig0)
             pl.plot(t/60., rt, color=cb(5), ls='-', label=r'r$_\mathrm{top}$')
             pl.plot(t/60., rb, color=cb(8), ls='--', label=r'r$_\mathrm{b}$')
-            pl.plot(t[fit_range]/60., rt_fit, color=cb(4), ls='-', lw=0.5)
-            pl.plot(t[fit_range]/60., rb_fit, color=cb(4), ls='-', lw=0.5)
+            pl.plot(t[fit_range]/60., rt_fit, color=cb(4), ls='-')
+            pl.plot(t[fit_range]/60., rb_fit, color=cb(4), ls='-')
             pl.xlabel('t / min')
             pl.ylabel('r / Mm')
             xfmt = ScalarFormatter(useMathText=True)
@@ -1295,7 +1295,7 @@ class PPMtools:
                    r'\times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$').\
                    format(mantissa, exponent)
             pl.plot(t[fit_range]/60., mtot_fit/10**oom, color=cb(4), \
-                    ls='-', lw=0.5, label=lbl, zorder=100)
+                    ls='-', label=lbl, zorder=100)
             
             lbl = ''
             if burn_func is not None:
