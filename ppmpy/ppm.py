@@ -724,63 +724,62 @@ class PPMtools:
             this_t = self.get('t', fn)
             t2 += this_t[-1] if self.__isyprofile else this_t
         t2 /= float(len(fname2_list))
-
-        # We store all data from the surface to the core. Flip all input arrays
-        # to simplify the following calculations.
-        mt = mt[::-1]
-        r1 = r1[::-1]
-        r2 = r2[::-1]
-        x1 = x1[::-1]
-        x2 = x2[::-1]
-        Hp1 = Hp1[::-1]
-        Hp2 = Hp2[::-1]
-        r4rho2_1 = r4rho2_1[::-1]
-        r4rho2_2 = r4rho2_2[::-1]
-        xsrc1 = xsrc1[::-1]
-        xsrc2 = xsrc2[::-1]
-
-        # We take a simple average whenever a single profile representative of the whole
-        # solution interval is needed.
+        
+        # We take a simple average whenever a single profile representative of
+        # the whole solution interval is needed.
         r = 0.5*(r1 + r2)
         Hp = 0.5*(Hp1 + Hp2)
         xsrc = 0.5*(xsrc1 + xsrc2)
         r4rho2 = 0.5*(r4rho2_1 + r4rho2_2)
-
-        # sigma is the Lagrangian diffusion coefficient
-        # (notation of MESA Paper I)
-        sigma = np.zeros(len(mt))
-        dxdt = (x2 - x1)/(t2 - t1) + xsrc
         
-        # Find the outermost point with a significant gradient in x2. This gradient, along
-        # with the diffusion coefficient, determines the diffusive flux.
-        i = len(mt) - 1
-        while (i > 1) and (np.abs(x2[i] - x2[i - 1]) < eps):
-            i -= 1
-        if i < 1:
-            self.__mesenger.error('Error: x2 is constant.')
-            return None
+        # Technically speaking, the mass corrdinate mt[i] corresponds to
+        # i-1/2, i.e. to the lower (outer) cell wall. We will make use of this
+        # in calculating the cell mass dmt[i]. However, x1[i] and x2[i] are 
+        # cell averages, which correspond to cell-centred values to the 2nd
+        # order of accuracy. This minute difference has probably little effect,
+        # but let's get it right.
+        dmt = np.roll(mt, -1) - mt
+        dmt[-1] = dmt[-2] + (dmt[-2] - dmt[-3])
+        mt = 0.5*(mt + np.roll(mt, -1))
+        mt[-1] = mt[-2] + (mt[-2] - mt[-3])
+        
+        # We are going to compute the Lagrangian diffusion coefficient sigma
+        # from the diffusion equation
+        #
+        # dx/dt = d(sigma*dx/dm)/dm + xsrc = d(flux)/dm + xsrc,
+        #
+        # where `flux` is the diffusive flux and `xsrc` is a source term (to
+        # represent e.g. nuclear burning). We integrate the equation
+        # analytically from the outer crystal sphere, where we flux = 0, to
+        # a mass coordinate mt, which gives us an explicit expression for sigma: 
+        #
+        # sigma = (1./dxdm)*int_0^mt(dx/dt - xsrc)*dmt,
+        #
+        # where int_0^mt is a definite integral from 0 to mt.
+        
+        dxdt = (x2 - x1)/(t2 - t1)
+        
+        # Diffusive flux at the top (inner) wall of the i-th cell.
+        # iph = i + 0.5
+        flux_iph = np.cumsum((dxdt - xsrc)*dmt)
+        
+        # flux_iph = sigma_iph*dx2dm_iph, where we take the gradient of x2,
+        # because we want to solve an implicit diffusion equation. 
+        dx2dm_iph = (np.roll(x2, -1) - x2)/(np.roll(mt, -1) - mt)
+        dx2dm_iph[-1] = dx2dm_iph[-2] + (dx2dm_iph[-2] - dx2dm_iph[-3])
 
-        # imh == i - 0.5
-        dxdmt_imh = (x2[i] - x2[i - 1]) / (mt[i] - mt[i - 1])
-        # We use mt[i] - mt[i - 1] instead of 0.5*(mt[i + 1] - mt[i - 1]) at this outermost
-        # point to make sure that the expression is always defined.
-        # np.abs(dxdmt_imh) > 0. thanks to the loop above.
-        sigma[i] = -dxdt[i]*(mt[i] - mt[i - 1]) / dxdmt_imh
-        for i in range(i - 1, -1, -1):
-            # iph == i + 0.5
-            dxdmt_iph = (x2[i + 1] - x2[i]) / (mt[i + 1] - mt[i])
-            dxdmt_imh = (x2[i] - x2[i - 1]) / (mt[i] - mt[i - 1])
-            # Test against a strict zero for now. We can still improve this expression if
-            # we find a pathological case in which this causes problems.
-            if np.abs(dxdmt_imh) > 0.:
-                sigma[i] = (sigma[i + 1]*dxdmt_iph - dxdt[i]*\
-                           0.5*(mt[i + 1] - mt[i - 1])) / dxdmt_imh
-            else:
-                # We cannot compute sigma[i], so we use the previous value.
-                sigma[i] = sigma[i + 1]
-
-        # Convert the Lagrangian diffusion coefficient sigma to an Eulerian diffusion
-        # coefficient D. The way we define r4rho2 may matter here.
+        # dx2dm_iph will be zero in some places and we will not be able to
+        # compute sigma_iph in those places. Let's avoid useless warnings.
+        with np.errstate(divide='ignore'):
+            sigma_iph = flux_iph/dx2dm_iph
+        
+        # We should compute the cell-centred value of sigma, but let's not do 
+        # that, because it would increase the number of NaNs in the array if
+        # there are any.
+        sigma = sigma_iph
+        
+        # Convert the Lagrangian diffusion coefficient sigma to an Eulerian
+        # diffusion coefficient D. The way we define r4rho2 may matter here.
         D = sigma/(16.*np.pi**2*r4rho2)
 
         if show_plots:
@@ -847,14 +846,14 @@ class PPMtools:
             ax1 = fig.gca()
             lns = []
             if fit_rlim is not None:
-                i1 = np.argmin(np.abs(r - fit_rlim[0]))
-                i2 = np.argmin(np.abs(r - fit_rlim[1]))
-                r_fit = r[i1:i2+1]
-                D_data = D[i1:i2+1]
+                i0 = np.argmin(np.abs(r - fit_rlim[0]))
+                i1 = np.argmin(np.abs(r - fit_rlim[1]))
+                r_fit = r[i1:i0+1]
+                D_data = D[i1:i0+1]
                 fit_coeffs = np.polyfit(r_fit[D_data > 0], \
                             np.log(D_data[D_data > 0]), 1)
                 D_fit = np.exp(r_fit*fit_coeffs[0] + fit_coeffs[1])
-                f_CBM = -2./(fit_coeffs[0]*Hp[i1])
+                f_CBM = -2./(fit_coeffs[0]*Hp[i0])
                 lbl = r'f$_\mathrm{{CBM}}$ = {:.3f}'.format(f_CBM)
                 lns += ax1.semilogy(r_fit, 1e16*D_fit, '-', color='g', \
                             lw=4., label=lbl)
