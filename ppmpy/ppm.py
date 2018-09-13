@@ -291,6 +291,7 @@ class PPMtools:
         self.__compute_methods = {'enuc_C12pg':self.compute_enuc_C12pg, \
                                   'Hp':self.compute_Hp, \
                                   'm':self.compute_m, \
+                                  'mt':self.compute_mt, \
                                   'r4rho2':self.compute_r4rho2, \
                                   'rhodot_C12pg':self.compute_rhodot_C12pg, \
                                   'T9':self.compute_T9, \
@@ -465,6 +466,17 @@ class PPMtools:
 
         return m
 
+    def compute_mt(self, fname, num_type='ndump'):
+        m = self.compute_m(fname, num_type=num_type)
+        
+        if self.__isyprofile:
+            mt = m[0] - m
+            
+        if self.__isRprofSet:
+            mt = m[-1] - m
+
+        return mt
+    
     def compute_r4rho2(self, fname, num_type='ndump'):
         if self.__isyprofile:
             r = self.get('Y', fname, num_type=num_type, resolution='l')
@@ -603,22 +615,10 @@ class PPMtools:
         return Xcld
 
     def average_profiles(self, fname, var, num_type='ndump', lagrangian=False, \
-                         mass_correction=0, mass_correction_rlim=None, \
-                         extra_args={}):
+                         data_rlim=None, extra_args={}):
         fname_list = any2list(fname)
         var_list = any2list(var)
         avg_profs = {}
-
-        if mass_correction > 0:
-            if mass_correction_rlim is None:
-                self.__messenger.error('mass_correction_rlim must not be None with '
-                                       'mass_correction > 0.')
-                return None
-
-            if lagrangian == False:
-                self.__messenger.error('mass_correction > 0 can only be used '
-                                       'with lagrangian = True')
-                return None
 
         # The grid is assumed to be static, so we get the radial
         # scale only once at fname_list[0].
@@ -634,11 +634,11 @@ class PPMtools:
             gettable_variables = rp.get_anyr_variables()
 
         computable_quantities = self.__computable_quantities
-
+        
         data_slice = range(0, len(r))
-        if lagrangian and mass_correction_rlim is not None:
-            idx1 = np.argmin(np.abs(r - mass_correction_rlim[0]))
-            idx2 = np.argmin(np.abs(r - mass_correction_rlim[1]))
+        if data_rlim is not None:
+            idx1 = np.argmin(np.abs(r - data_rlim[0]))
+            idx2 = np.argmin(np.abs(r - data_rlim[1]))
 
             if self.__isyprofile:
                 data_slice = range(idx2+1, idx1)
@@ -648,17 +648,21 @@ class PPMtools:
         
         if lagrangian:
             # Get the initial mass scale. Everything will be interpolated onto 
-            # this scale.
-            m0 = self.compute('m', 0, num_type='t')
-            if mass_correction_rlim is not None:
-                m0 = m0[data_slice]
-            avg_profs['m'] = m0
+            # this scale. We use mt, i.e. mass integrated from the top, because
+            # the density stratification is extreme in some cases. There are
+            # also some cases (PPMstar 1.0 run), in which some mass leaks in
+            # through the inner crystal sphere and the total mass is not
+            # conserved. There is no such issue with the outer crystal sphere.
+            mt0 = self.compute('mt', 0, num_type='t')
+            if data_rlim is not None:
+                mt0 = mt0[data_slice]
+            avg_profs['mt'] = mt0
         
         for v in var_list:
             avg_profs[v] = np.zeros(data_slice[-1] - data_slice[0] + 1)
             avg_profs[radius_variable] = np.zeros(data_slice[-1] - \
                                                   data_slice[0] + 1)
-             
+            
             for i, fnm in enumerate(fname_list):
                 if v in gettable_variables:
                     data = self.get(v, fnm, num_type=num_type, resolution='l')
@@ -673,20 +677,9 @@ class PPMtools:
                 rr = r
                 if lagrangian:
                     # Interpolate everything on the initial mass scale.
-                    m = self.compute('m', fnm, num_type=num_type)
-
-                    if mass_correction == 1:
-                        if self.__isyprofile:
-                            delta_m = (m[data_slice[0]] - m[data_slice[-1]]) - \
-                                      (m0[0] - m0[-1])
-
-                        if self.__isRprofSet:
-                            delta_m = (m[data_slice[-1]] - m[data_slice[0]]) - \
-                                      (m0[-1] - m0[0])
-                        m = m - delta_m
-
-                    data = interpolate(m, data, m0)
-                    rr = interpolate(m, rr, m0)
+                    mt = self.compute('mt', fnm, num_type=num_type)
+                    data = interpolate(mt, data, mt0)
+                    rr = interpolate(mt, rr, mt0)
                 
                 avg_profs[v] += data
                 avg_profs[radius_variable] += rr
@@ -697,18 +690,17 @@ class PPMtools:
         return avg_profs
     
     def DsolveLgr(self, fname1, fname2, num_type='ndump', var='Xcld', eps=1e-6, \
-                  mass_correction=0, mass_correction_rlim=None, show_plots=True, \
-                  ifig0=1, run_id='', mlim=None, rlim=None, plot_var=True, \
-                  logvar=False, varlim=None, sigmalim=None, Dlim=None, fit_rlim=None):
+                  data_rlim=None, show_plots=True, ifig0=1, run_id='', mtlim=None, \
+                  rlim=None, plot_var=True, logvar=False, varlim=None, sigmalim=None, \
+                  Dlim=None, fit_rlim=None):
         fname1_list = any2list(fname1)
         fname2_list = any2list(fname2)
     
         # Get average profiles and the average time corresponding to dumps or
         # time values specified by fname1.
         res1 = self.average_profiles(fname1_list, [var, 'Hp', 'r4rho2'], \
-               lagrangian=True, mass_correction=mass_correction, \
-               mass_correction_rlim=mass_correction_rlim)
-        m = res1['m']
+               lagrangian=True, data_rlim=data_rlim)
+        mt = res1['mt']
         if self.__isyprofile:
             r1 = res1['Y']
         if self.__isRprofSet:
@@ -716,7 +708,7 @@ class PPMtools:
         x1 = res1[var]
         Hp1 = res1['Hp']
         r4rho2_1 = res1['r4rho2']
-        xsrc1 = np.zeros(len(m))
+        xsrc1 = np.zeros(len(mt))
         t1 = 0.
         for fn in fname1_list:
             this_t = self.get('t', fn)
@@ -726,9 +718,8 @@ class PPMtools:
         # Get average profiles and the average time corresponding to dumps or
         # time values specified by fname2.
         res2 = self.average_profiles(fname2_list, [var, 'Hp', 'r4rho2'], \
-               lagrangian=True, mass_correction=mass_correction, \
-               mass_correction_rlim=mass_correction_rlim)
-        m = res2['m']
+               lagrangian=True, data_rlim=data_rlim)
+        mt = res2['mt']
         if self.__isyprofile:
             r2 = res2['Y']
         if self.__isRprofSet:
@@ -736,7 +727,7 @@ class PPMtools:
         x2 = res2[var]
         Hp2 = res2['Hp']
         r4rho2_2 = res2['r4rho2']
-        xsrc2 = np.zeros(len(m))
+        xsrc2 = np.zeros(len(mt))
         t2 = 0.
         for fn in fname2_list:
             this_t = self.get('t', fn)
@@ -746,7 +737,7 @@ class PPMtools:
         if self.__isyprofile:
             # Yprofiles store data from the surface to the core. Flip all input arrays
             # to simplify the following calculations.
-            m = m[::-1]
+            mt = mt[::-1]
             r1 = r1[::-1]
             r2 = r2[::-1]
             x1 = x1[::-1]
@@ -767,12 +758,12 @@ class PPMtools:
 
         # sigma is the Lagrangian diffusion coefficient
         # (notation of MESA Paper I)
-        sigma = np.zeros(len(m))
+        sigma = np.zeros(len(mt))
         dxdt = (x2 - x1)/(t2 - t1) + xsrc
         
         # Find the outermost point with a significant gradient in x2. This gradient, along
         # with the diffusion coefficient, determines the diffusive flux.
-        i = len(m) - 1
+        i = len(mt) - 1
         while (i > 1) and (np.abs(x2[i] - x2[i - 1]) < eps):
             i -= 1
         if i < 1:
@@ -780,20 +771,20 @@ class PPMtools:
             return None
 
         # imh == i - 0.5
-        dxdm_imh = (x2[i] - x2[i - 1]) / (m[i] - m[i - 1])
-        # We use m[i] - m[i - 1] instead of 0.5*(m[i + 1] - m[i - 1]) at this outermost
+        dxdmt_imh = (x2[i] - x2[i - 1]) / (mt[i] - mt[i - 1])
+        # We use mt[i] - mt[i - 1] instead of 0.5*(mt[i + 1] - mt[i - 1]) at this outermost
         # point to make sure that the expression is always defined.
-        # np.abs(dxdm_imh) > 0. thanks to the loop above.
-        sigma[i] = -dxdt[i]*(m[i] - m[i - 1]) / dxdm_imh
+        # np.abs(dxdmt_imh) > 0. thanks to the loop above.
+        sigma[i] = -dxdt[i]*(mt[i] - mt[i - 1]) / dxdmt_imh
         for i in range(i - 1, -1, -1):
             # iph == i + 0.5
-            dxdm_iph = (x2[i + 1] - x2[i]) / (m[i + 1] - m[i])
-            dxdm_imh = (x2[i] - x2[i - 1]) / (m[i] - m[i - 1])
+            dxdmt_iph = (x2[i + 1] - x2[i]) / (mt[i + 1] - mt[i])
+            dxdmt_imh = (x2[i] - x2[i - 1]) / (mt[i] - mt[i - 1])
             # Test against a strict zero for now. We can still improve this expression if
             # we find a pathological case in which this causes problems.
-            if np.abs(dxdm_imh) > 0.:
-                sigma[i] = (sigma[i + 1]*dxdm_iph - dxdt[i]*\
-                           0.5*(m[i + 1] - m[i - 1])) / dxdm_imh
+            if np.abs(dxdmt_imh) > 0.:
+                sigma[i] = (sigma[i + 1]*dxdmt_iph - dxdt[i]*\
+                           0.5*(mt[i + 1] - mt[i - 1])) / dxdmt_imh
             else:
                 # We cannot compute sigma[i], so we use the previous value.
                 sigma[i] = sigma[i + 1]
@@ -811,36 +802,36 @@ class PPMtools:
             ifig=ifig0; pl.close(ifig); fig=pl.figure(ifig)
             ax1 = fig.gca()
             lns = []
-            lns += ax1.semilogy((1e27/ast.msun_g)*m, 1e6*sigma, '-', \
+            lns += ax1.semilogy((1e27/ast.msun_g)*mt, 1e6*sigma, '-', \
                                     color='k', label=r'$\sigma$ > 0')
-            lns += ax1.semilogy((1e27/ast.msun_g)*m, -1e6*sigma, '--', \
+            lns += ax1.semilogy((1e27/ast.msun_g)*mt, -1e6*sigma, '--', \
                                     color='k', label=r'$\sigma$ < 0')
-            if mlim is not None:
-                ax1.set_xlim(mlim)
+            if mtlim is not None:
+                ax1.set_xlim(mtlim)
             if sigmalim is not None:
                 ax1.set_ylim(sigmalim)
-            ax1.set_xlabel(r'm / M$_\odot$')
+            ax1.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
             ax1.set_ylabel(r'$\sigma$ / g$^2$ s$^{-1}$')
 
             if plot_var:
                 ax2 = ax1.twinx()
                 if logvar:
-                    lns += ax2.semilogy((1e27/ast.msun_g)*m, x1, '-', color='b', \
+                    lns += ax2.semilogy((1e27/ast.msun_g)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
-                    lns += ax2.semilogy((1e27/ast.msun_g)*m, x2, '--', color='r', \
+                    lns += ax2.semilogy((1e27/ast.msun_g)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
                 else:
-                    lns += ax2.plot((1e27/ast.msun_g)*m, x1, '-', color='b', \
+                    lns += ax2.plot((1e27/ast.msun_g)*mt, x1, '-', color='b', \
                             label=var_lbl+r'$_1$')
-                    lns += ax2.plot((1e27/ast.msun_g)*m, x2, '--', color='r', \
+                    lns += ax2.plot((1e27/ast.msun_g)*mt, x2, '--', color='r', \
                             label=var_lbl+r'$_2$')
-                if mlim is not None:
-                    ax2.set_xlim(mlim)
+                if mtlim is not None:
+                    ax2.set_xlim(mtlim)
                 if varlim is not None:
                     ax2.set_ylim(varlim)
                 else:
                     ax2.set_ylim((0., 1.))
-                ax2.set_xlabel(r'm / M$_\odot$')
+                ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
                 ax2.set_ylabel(var_lbl)
             
             ttl = ''
@@ -913,7 +904,7 @@ class PPMtools:
             ncol = 2 if plot_var else 1
             pl.legend(lns, lbls, loc=0, ncol=ncol)
 
-        res = {'t1':t1, 't2':t2, 'm':m, 'r':r, 'r1':r1, 'r2':r2, \
+        res = {'t1':t1, 't2':t2, 'mt':mt, 'r':r, 'r1':r1, 'r2':r2, \
                'Hp1':Hp1, 'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc1':xsrc1, \
                'xsrc2':xsrc2, 'sigma':sigma, 'D':D}
         return res
