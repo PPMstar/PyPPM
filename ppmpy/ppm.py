@@ -444,7 +444,7 @@ class PPMtools:
             p = self.get('P0', fname, num_type=num_type, resolution='l') + \
                 self.get('P1', fname, num_type=num_type, resolution='l')
 
-        Hp = -cdiff(r)/cdiff(np.log(p))
+        Hp = np.abs(cdiff(r))/(np.abs(cdiff(np.log(p))) + 1e-100)
         return Hp
 
     def compute_m(self, fname, num_type='ndump'):
@@ -457,23 +457,17 @@ class PPMtools:
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
 
-        dm = 4.*np.pi*r**2*cdiff(r)*rho
+        dm = -4.*np.pi*r**2*cdiff(r)*rho
         m = np.cumsum(dm)
 
-        # yprofile stores everything from the surface to the core.
-        if self.__isyprofile:
-            m = m - m[-1]
+        # We store everything from the surface to the core.
+        m = m[-1] - m
 
         return m
 
     def compute_mt(self, fname, num_type='ndump'):
         m = self.compute_m(fname, num_type=num_type)
-        
-        if self.__isyprofile:
-            mt = m[0] - m
-            
-        if self.__isRprofSet:
-            mt = m[-1] - m
+        mt = m[0] - m
 
         return mt
     
@@ -637,14 +631,11 @@ class PPMtools:
         
         data_slice = range(0, len(r))
         if data_rlim is not None:
-            idx1 = np.argmin(np.abs(r - data_rlim[0]))
-            idx2 = np.argmin(np.abs(r - data_rlim[1]))
-
-            if self.__isyprofile:
-                data_slice = range(idx2+1, idx1)
+            idx0 = np.argmin(np.abs(r - data_rlim[0]))
+            idx1 = np.argmin(np.abs(r - data_rlim[1]))
             
-            if self.__isRprofSet:
-                data_slice = range(idx1+1, idx2)
+            # We store everything from the surface to the core.
+            data_slice = range(idx1, idx0+1)
         
         if lagrangian:
             # Get the initial mass scale. Everything will be interpolated onto 
@@ -734,20 +725,19 @@ class PPMtools:
             t2 += this_t[-1] if self.__isyprofile else this_t
         t2 /= float(len(fname2_list))
 
-        if self.__isyprofile:
-            # Yprofiles store data from the surface to the core. Flip all input arrays
-            # to simplify the following calculations.
-            mt = mt[::-1]
-            r1 = r1[::-1]
-            r2 = r2[::-1]
-            x1 = x1[::-1]
-            x2 = x2[::-1]
-            Hp1 = Hp1[::-1]
-            Hp2 = Hp2[::-1]
-            r4rho2_1 = r4rho2_1[::-1]
-            r4rho2_2 = r4rho2_2[::-1]
-            xsrc1 = xsrc1[::-1]
-            xsrc2 = xsrc2[::-1]
+        # We store all data from the surface to the core. Flip all input arrays
+        # to simplify the following calculations.
+        mt = mt[::-1]
+        r1 = r1[::-1]
+        r2 = r2[::-1]
+        x1 = x1[::-1]
+        x2 = x2[::-1]
+        Hp1 = Hp1[::-1]
+        Hp2 = Hp2[::-1]
+        r4rho2_1 = r4rho2_1[::-1]
+        r4rho2_2 = r4rho2_2[::-1]
+        xsrc1 = xsrc1[::-1]
+        xsrc2 = xsrc2[::-1]
 
         # We take a simple average whenever a single profile representative of the whole
         # solution interval is needed.
@@ -9021,7 +9011,7 @@ class RprofSet(PPMtools):
             int_func = scipy.interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
         
-        r = self.get('R', fname = cycles[0], resolution='l')[::-1]
+        r = self.get('R', fname = cycles[0], resolution='l')
         
         idx_min = np.argmin(np.abs(r - r_max))
         idx_max = np.argmin(np.abs(r - r_min))
@@ -9040,9 +9030,9 @@ class RprofSet(PPMtools):
             time[i] = self.get('t', fname = cycles[i], resolution='l')
             
             if var == 'vxz':
-                q = (self.get('|Ut|', fname = cycles[i], resolution='l')[::-1])[idx_min:(idx_max + 1)]**0.5
+                q = (self.get('|Ut|', fname = cycles[i], resolution='l'))[idx_min:(idx_max + 1)]**0.5
             else:
-                q = (self.get(var, fname = cycles[i], resolution='l')[::-1])[idx_min:(idx_max + 1)]
+                q = (self.get(var, fname = cycles[i], resolution='l'))[idx_min:(idx_max + 1)]
             
             q_int = regrid(r, q, r_int)
             grad = cdiff(q_int)/dr_int
@@ -9075,15 +9065,15 @@ class RprofSet(PPMtools):
         r_top_fit = r_top_fc[0]*timelong + r_top_fc[1]
         
         m_ir = np.zeros(len(cycles))
-        r = self.get('R', fname = cycles[0], resolution='h')[::-1]
+        r = self.get('R', fname = cycles[0], resolution='h')
         r_int = np.linspace(np.min(r), np.max(r), num = 20.*len(r))
         dr_int = cdiff(r_int)
         for i in range(len(cycles)):
-            rho0 = self.get('Rho0', fname = cycles[i], resolution='h')[::-1]
-            rho1 = self.get('Rho1', fname = cycles[i], resolution='h')[::-1]
+            rho0 = self.get('Rho0', fname = cycles[i], resolution='h')
+            rho1 = self.get('Rho1', fname = cycles[i], resolution='h')
             rho = rho0 + rho1
             if not integrate_both_fluids:
-                FV_HHe = self.get('FV', fname = cycles[i], resolution='h')[::-1]
+                FV_HHe = self.get('FV', fname = cycles[i], resolution='h')
                 rhocldtoair = cldmu/airmu
                 rhoair = rho/((1. - FV_HHe) + FV_HHe*rhocldtoair)
                 rhocld = rhocldtoair*rhoair
@@ -9312,15 +9302,15 @@ class Rprof:
                     self.__lr_vars.append(col_names[i])
                     self.__lr_data[col_names[i]] = np.zeros(n)
 
-            for i in range(n):
+            for j in range(n):
                 sline = lines[l].split()
                 idx = int(sline[0])
                 for i in range(1, len(col_names)):
                     val = float(sline[i])
                     if is_hr:
-                        self.__hr_data[col_names[i]][idx-1] = val
+                        self.__hr_data[col_names[i]][n-idx] = val
                     else:
-                        self.__lr_data[col_names[i]][idx-1] = val
+                        self.__lr_data[col_names[i]][n-idx] = val
                 l += 1
         
         if footer_reached:
