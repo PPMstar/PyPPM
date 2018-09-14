@@ -746,7 +746,7 @@ class PPMtools:
         # We are going to compute the Lagrangian diffusion coefficient sigma
         # from the diffusion equation
         #
-        # dx/dt = d(sigma*dx/dm)/dm + xsrc = d(flux)/dm + xsrc,
+        # dx/dt = -d(-sigma*dx/dm)/dm + xsrc = -d(flux)/dm + xsrc,
         #
         # where `flux` is the diffusive flux and `xsrc` is a source term (to
         # represent e.g. nuclear burning). We integrate the equation
@@ -759,9 +759,9 @@ class PPMtools:
         
         dxdt = (x2 - x1)/(t2 - t1)
         
-        # Diffusive flux at the top (inner) wall of the i-th cell.
+        # Downward diffusive flux at the top (inner) wall of the i-th cell.
         # iph = i + 0.5
-        flux_iph = np.cumsum((dxdt - xsrc)*dmt)
+        flux_iph = -np.cumsum((dxdt - xsrc)*dmt)
         
         # flux_iph = sigma_iph*dx2dm_iph, where we take the gradient of x2,
         # because we want to solve an implicit diffusion equation. 
@@ -771,7 +771,7 @@ class PPMtools:
         # dx2dm_iph will be zero in some places and we will not be able to
         # compute sigma_iph in those places. Let's avoid useless warnings.
         with np.errstate(divide='ignore'):
-            sigma_iph = flux_iph/dx2dm_iph
+            sigma_iph = -flux_iph/dx2dm_iph
         
         # We should compute the cell-centred value of sigma, but let's not do 
         # that, because it would increase the number of NaNs in the array if
@@ -781,26 +781,23 @@ class PPMtools:
         # Convert the Lagrangian diffusion coefficient sigma to an Eulerian
         # diffusion coefficient D. The way we define r4rho2 may matter here.
         D = sigma/(16.*np.pi**2*r4rho2)
-
+        
         if show_plots:
             var_lbl = var
             if var == 'Xcld':
                 var_lbl = 'X'
 
-            # Lagrangian plot.
+            # Plot the diffusive flux.
             ifig=ifig0; pl.close(ifig); fig=pl.figure(ifig)
             ax1 = fig.gca()
             lns = []
-            lns += ax1.semilogy((1e27/ast.msun_g)*mt, 1e6*sigma, '-', \
-                                    color='k', label=r'$\sigma$ > 0')
-            lns += ax1.semilogy((1e27/ast.msun_g)*mt, -1e6*sigma, '--', \
-                                    color='k', label=r'$\sigma$ < 0')
+            lns += ax1.plot((1e27/ast.msun_g)*mt, (1e27/ast.msun_g)*flux_iph, '-', \
+                            color='k', label=r'flux')
+            ax1.ticklabel_format(style='sci',scilimits=(0,0),axis='y')
             if mtlim is not None:
                 ax1.set_xlim(mtlim)
-            if sigmalim is not None:
-                ax1.set_ylim(sigmalim)
             ax1.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
-            ax1.set_ylabel(r'$\sigma$ / g$^2$ s$^{-1}$')
+            ax1.set_ylabel(r'Downward diffusive flux / M$_\odot$ s$^{-1}$')
 
             if plot_var:
                 ax2 = ax1.twinx()
@@ -840,9 +837,50 @@ class PPMtools:
             lbls = [l.get_label() for l in lns]
             ncol = 2 if plot_var else 1
             pl.legend(lns, lbls, loc=0, ncol=ncol)
-
-            # Eulerian plot.
+            
+            # Plot the Lagrangian diffusion coefficient.
             ifig=ifig0+1; pl.close(ifig); fig=pl.figure(ifig)
+            ax1 = fig.gca()
+            lns = []
+            lns += ax1.semilogy((1e27/ast.msun_g)*mt, 1e54*sigma, '-', \
+                                    color='k', label=r'$\sigma$ > 0')
+            lns += ax1.semilogy((1e27/ast.msun_g)*mt, -1e54*sigma, '--', \
+                                    color='k', label=r'$\sigma$ < 0')
+            if mtlim is not None:
+                ax1.set_xlim(mtlim)
+            if sigmalim is not None:
+                ax1.set_ylim(sigmalim)
+            ax1.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
+            ax1.set_ylabel(r'$\sigma$ / g$^2$ s$^{-1}$')
+
+            if plot_var:
+                ax2 = ax1.twinx()
+                if logvar:
+                    lns += ax2.semilogy((1e27/ast.msun_g)*mt, x1, '-', color='b', \
+                                label=var_lbl+r'$_1$')
+                    lns += ax2.semilogy((1e27/ast.msun_g)*mt, x2, '--', color='r', \
+                                label=var_lbl+r'$_2$')
+                else:
+                    lns += ax2.plot((1e27/ast.msun_g)*mt, x1, '-', color='b', \
+                            label=var_lbl+r'$_1$')
+                    lns += ax2.plot((1e27/ast.msun_g)*mt, x2, '--', color='r', \
+                            label=var_lbl+r'$_2$')
+                if mtlim is not None:
+                    ax2.set_xlim(mtlim)
+                if varlim is not None:
+                    ax2.set_ylim(varlim)
+                else:
+                    ax2.set_ylim((0., 1.))
+                ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
+                ax2.set_ylabel(var_lbl)
+            
+            pl.title(ttl)
+            lbls = [l.get_label() for l in lns]
+            ncol = 2 if plot_var else 1
+            pl.legend(lns, lbls, loc=0, ncol=ncol)
+
+            # Plot the Eulerian diffusion coefficient.
+            ifig=ifig0+2; pl.close(ifig); fig=pl.figure(ifig)
             ax1 = fig.gca()
             lns = []
             if fit_rlim is not None:
