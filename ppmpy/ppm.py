@@ -296,7 +296,8 @@ class PPMtools:
                                   'rhodot_C12pg':self.compute_rhodot_C12pg, \
                                   'T9':self.compute_T9, \
                                   'T9corr':self.compute_T9corr, \
-                                  'Xcld':self.compute_Xcld}
+                                  'Xcld':self.compute_Xcld, \
+                                  'Xdot_C12pg':self.compute_Xdot_C12pg}
         self.__computable_quantities = self.__compute_methods.keys()
 
     def isyprofile():
@@ -522,8 +523,8 @@ class PPMtools:
         # The nominator is the mass burning rate of H per unit volume.
         # PPMstar cannot remove H from the 'cloud' fluid. When some mass M_H
         # of H is burnt, PPMstar actually removes M_H/X_H units of mass of
-        # the 'cloud' fluid.
-        rhodot = atomicnoH*amu*ndot/X_H
+        # the 'cloud' fluid. The sign is negative, because mass is removed.
+        rhodot = -atomicnoH*amu*ndot/X_H
         
         return rhodot
     
@@ -607,9 +608,28 @@ class PPMtools:
             Xcld = fv/((1. - fv)*(airmu/cldmu) + fv)
 
         return Xcld
+    
+    def compute_Xdot_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
+                           atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
+                           T9corr_params={}):
+        rhodot = self.compute_rhodot_C12pg(fname=fname, num_type=num_type, fkair=fkair, \
+                                           fkcld=fkcld, atomicnoair=atomicnoair, \
+                                           atomicnocld=atomicnocld, airmu=airmu, \
+                                           cldmu=cldmu, T9corr_params=T9corr_params)
+        
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
 
-    def average_profiles(self, fname, var, num_type='ndump', lagrangian=False, \
-                         data_rlim=None, extra_args={}):
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+                
+        Xdot = rhodot/rho
+        
+        return Xdot
+
+    def average_profiles(self, fname, var, num_type='ndump', func=None, \
+                         lagrangian=False, data_rlim=None, extra_args={}):
         fname_list = any2list(fname)
         var_list = any2list(var)
         avg_profs = {}
@@ -655,7 +675,9 @@ class PPMtools:
                                                   data_slice[0] + 1)
             
             for i, fnm in enumerate(fname_list):
-                if v in gettable_variables:
+                if func is not None:
+                    data = func(fnm, num_type=num_type, **extra_args)
+                elif v in gettable_variables:
                     data = self.get(v, fnm, num_type=num_type, resolution='l')
                 elif v in computable_quantities:
                     data = self.compute(v, fnm, num_type=num_type, \
@@ -680,16 +702,15 @@ class PPMtools:
         
         return avg_profs
     
-    def DsolveLgr(self, fname1, fname2, num_type='ndump', var='Xcld', eps=1e-6, \
-                  data_rlim=None, show_plots=True, ifig0=1, run_id='', mtlim=None, \
-                  rlim=None, plot_var=True, logvar=False, varlim=None, sigmalim=None, \
-                  Dlim=None, fit_rlim=None):
-        fname1_list = any2list(fname1)
-        fname2_list = any2list(fname2)
+    def DsolveLgr(self, cycles1, cycles2, var='Xcld', src_func=None, src_args={}, \
+                  data_rlim=None, show_plots=True, ifig0=1, run_id='', logmt=False, \
+                  mtlim=None, rlim=None, plot_var=True, logvar=False, varlim=None, \
+                  sigmalim=None, Dlim=None, fit_rlim=None):
+        cycles1_list = any2list(cycles1)
+        cycles2_list = any2list(cycles2)
     
-        # Get average profiles and the average time corresponding to dumps or
-        # time values specified by fname1.
-        res1 = self.average_profiles(fname1_list, [var, 'Hp', 'r4rho2'], \
+        # Get average profiles and the average time corresponding to cycles1.
+        res1 = self.average_profiles(cycles1_list, [var, 'Hp', 'r4rho2'], \
                lagrangian=True, data_rlim=data_rlim)
         mt = res1['mt']
         if self.__isyprofile:
@@ -699,16 +720,14 @@ class PPMtools:
         x1 = res1[var]
         Hp1 = res1['Hp']
         r4rho2_1 = res1['r4rho2']
-        xsrc1 = np.zeros(len(mt))
         t1 = 0.
-        for fn in fname1_list:
+        for fn in cycles1_list:
             this_t = self.get('t', fn)
             t1 += this_t[-1] if self.__isyprofile else this_t
-        t1 /= float(len(fname1_list))
+        t1 /= float(len(cycles1_list))
 
-        # Get average profiles and the average time corresponding to dumps or
-        # time values specified by fname2.
-        res2 = self.average_profiles(fname2_list, [var, 'Hp', 'r4rho2'], \
+        # Get average profiles and the average time corresponding to cycles2.
+        res2 = self.average_profiles(cycles2_list, [var, 'Hp', 'r4rho2'], \
                lagrangian=True, data_rlim=data_rlim)
         mt = res2['mt']
         if self.__isyprofile:
@@ -718,18 +737,25 @@ class PPMtools:
         x2 = res2[var]
         Hp2 = res2['Hp']
         r4rho2_2 = res2['r4rho2']
-        xsrc2 = np.zeros(len(mt))
         t2 = 0.
-        for fn in fname2_list:
+        for fn in cycles2_list:
             this_t = self.get('t', fn)
             t2 += this_t[-1] if self.__isyprofile else this_t
-        t2 /= float(len(fname2_list))
+        t2 /= float(len(cycles2_list))
+
+        xsrc = np.zeros(len(mt))
+        if src_func is not None:
+            cyc1 = cycles1_list[len(cycles1_list)//2]
+            cyc2 = cycles2_list[len(cycles2_list)//2]
+            res = self.average_profiles(range(cyc1, cyc2+1), 'src_func', \
+                                        func=src_func, extra_args=src_args, \
+                                        lagrangian=True, data_rlim=data_rlim)
+            xsrc = res['src_func']
         
         # We take a simple average whenever a single profile representative of
         # the whole solution interval is needed.
         r = 0.5*(r1 + r2)
         Hp = 0.5*(Hp1 + Hp2)
-        xsrc = 0.5*(xsrc1 + xsrc2)
         r4rho2 = 0.5*(r4rho2_1 + r4rho2_2)
         
         # Technically speaking, the mass corrdinate mt[i] corresponds to
@@ -763,6 +789,11 @@ class PPMtools:
         # iph = i + 0.5
         flux_iph = -np.cumsum((dxdt - xsrc)*dmt)
         
+        pl.figure(101)
+        pl.plot(-5e-5*x2, '-')
+        pl.plot(dxdt, '--')
+        pl.plot(xsrc, ':')
+            
         # flux_iph = sigma_iph*dx2dm_iph, where we take the gradient of x2,
         # because we want to solve an implicit diffusion equation. 
         dx2dm_iph = (np.roll(x2, -1) - x2)/(np.roll(mt, -1) - mt)
@@ -770,7 +801,7 @@ class PPMtools:
 
         # dx2dm_iph will be zero in some places and we will not be able to
         # compute sigma_iph in those places. Let's avoid useless warnings.
-        with np.errstate(divide='ignore'):
+        with np.errstate(divide='ignore', invalid='ignore'):
             sigma_iph = -flux_iph/dx2dm_iph
         
         # We should compute the cell-centred value of sigma, but let's not do 
@@ -791,7 +822,8 @@ class PPMtools:
             ifig=ifig0; pl.close(ifig); fig=pl.figure(ifig)
             ax1 = fig.gca()
             lns = []
-            lns += ax1.plot((1e27/ast.msun_g)*mt, (1e27/ast.msun_g)*flux_iph, '-', \
+            plt_func = ax1.semilogx if logmt else ax1.plot
+            lns += plt_func((1e27/ast.msun_g)*mt, (1e27/ast.msun_g)*flux_iph, '-', \
                             color='k', label=r'flux')
             ax1.ticklabel_format(style='sci',scilimits=(0,0),axis='y')
             if mtlim is not None:
@@ -801,16 +833,20 @@ class PPMtools:
 
             if plot_var:
                 ax2 = ax1.twinx()
-                if logvar:
-                    lns += ax2.semilogy((1e27/ast.msun_g)*mt, x1, '-', color='b', \
+                plt_func = ax2.plot
+                if logmt:
+                    if logvar:
+                        plt_func = ax2.loglog
+                    else:
+                        plt_func = ax2.semilogx
+                elif logvar:
+                        plt_func = ax2.semilogy
+                    
+                lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
-                    lns += ax2.semilogy((1e27/ast.msun_g)*mt, x2, '--', color='r', \
+                lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
-                else:
-                    lns += ax2.plot((1e27/ast.msun_g)*mt, x1, '-', color='b', \
-                            label=var_lbl+r'$_1$')
-                    lns += ax2.plot((1e27/ast.msun_g)*mt, x2, '--', color='r', \
-                            label=var_lbl+r'$_2$')
+                
                 if mtlim is not None:
                     ax2.set_xlim(mtlim)
                 if varlim is not None:
@@ -824,15 +860,15 @@ class PPMtools:
             if run_id != '':
                 ttl = run_id + ', '
             ttl += 'dumps '
-            if len(fname1_list) > 1:
-                ttl += '[{:d}, {:d}]'.format(fname1_list[0], fname1_list[-1])
+            if len(cycles1_list) > 1:
+                ttl += '[{:d}, {:d}]'.format(cycles1_list[0], cycles1_list[-1])
             else:
-                ttl += '{:d}'.format(fname1_list[0])
+                ttl += '{:d}'.format(cycles1_list[0])
             ttl += ' – '
-            if len(fname2_list) > 1:
-                ttl += '[{:d}, {:d}]'.format(fname2_list[0], fname2_list[-1])
+            if len(cycles2_list) > 1:
+                ttl += '[{:d}, {:d}]'.format(cycles2_list[0], cycles2_list[-1])
             else:
-                ttl += '{:d}'.format(fname2_list[0])
+                ttl += '{:d}'.format(cycles2_list[0])
             pl.title(ttl)
             lbls = [l.get_label() for l in lns]
             ncol = 2 if plot_var else 1
@@ -842,10 +878,11 @@ class PPMtools:
             ifig=ifig0+1; pl.close(ifig); fig=pl.figure(ifig)
             ax1 = fig.gca()
             lns = []
-            lns += ax1.semilogy((1e27/ast.msun_g)*mt, 1e54*sigma, '-', \
-                                    color='k', label=r'$\sigma$ > 0')
-            lns += ax1.semilogy((1e27/ast.msun_g)*mt, -1e54*sigma, '--', \
-                                    color='k', label=r'$\sigma$ < 0')
+            plt_func = ax1.loglog if logmt else ax1.semilogy
+            lns += plt_func((1e27/ast.msun_g)*mt, 1e54*sigma, '-', \
+                            color='k', label=r'$\sigma$ > 0')
+            lns += plt_func((1e27/ast.msun_g)*mt, -1e54*sigma, '--', \
+                            color='k', label=r'$\sigma$ < 0')
             if mtlim is not None:
                 ax1.set_xlim(mtlim)
             if sigmalim is not None:
@@ -855,16 +892,19 @@ class PPMtools:
 
             if plot_var:
                 ax2 = ax1.twinx()
-                if logvar:
-                    lns += ax2.semilogy((1e27/ast.msun_g)*mt, x1, '-', color='b', \
+                if logmt:
+                    if logvar:
+                        plt_func = ax2.loglog
+                    else:
+                        plt_func = ax2.semilogx
+                elif logvar:
+                        plt_func = ax2.semilogy
+                
+                lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
-                    lns += ax2.semilogy((1e27/ast.msun_g)*mt, x2, '--', color='r', \
+                lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
-                else:
-                    lns += ax2.plot((1e27/ast.msun_g)*mt, x1, '-', color='b', \
-                            label=var_lbl+r'$_1$')
-                    lns += ax2.plot((1e27/ast.msun_g)*mt, x2, '--', color='r', \
-                            label=var_lbl+r'$_2$')
+                
                 if mtlim is not None:
                     ax2.set_xlim(mtlim)
                 if varlim is not None:
@@ -932,8 +972,8 @@ class PPMtools:
             pl.legend(lns, lbls, loc=0, ncol=ncol)
 
         res = {'t1':t1, 't2':t2, 'mt':mt, 'r':r, 'r1':r1, 'r2':r2, \
-               'Hp1':Hp1, 'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc1':xsrc1, \
-               'xsrc2':xsrc2, 'sigma':sigma, 'D':D}
+               'Hp1':Hp1, 'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, \
+               'sigma':sigma, 'D':D}
         return res
 
     def boundary_radius(self, cycles, r_min, r_max, var='ut', \
@@ -997,22 +1037,20 @@ class PPMtools:
         # The grid is assumed to be static, so we get the radial
         # scale only once at cycle_list[0].
         if self.__isyprofile:
-            # Reverse the array so that it starts in the centre. 
-            r = self.get('Y', cycle_list[0], resolution='l')[::-1]
+            r = self.get('Y', cycle_list[0], resolution='l')
 
         if self.__isRprofSet:
             r = self.get('R', cycle_list[0], resolution='l')
 
         idx_r_min = np.argmin(np.abs(r - r_min))
         idx_r_max = np.argmin(np.abs(r - r_max))
-        # Make sure that the ranges below include idx_r_max.
-        if idx_r_max < len(r) - 1:
-            idx_r_max += 1
+        # Make sure that the range includes idx_r_min.
+        idx_r_min = idx_r_min+1 if idx_r_min < len(r)-2 else len(r)-1
 
         for i, cyc in enumerate(cycle_list):
             if var == 'ut':
                 if self.__isyprofile:
-                    v = self.get('EkXZ', fname=cyc, resolution='l')[::-1]**0.5
+                    v = self.get('EkXZ', fname=cyc, resolution='l')**0.5
                 
                 if self.__isRprofSet:
                     v = self.get('|Ut|', fname=cyc, resolution='l')
@@ -1029,7 +1067,7 @@ class PPMtools:
                     dvdr2 = -dvdr2
 
                 # 0th-order estimate.
-                idx0 = idx_r_min + np.argmin(dvdr2[idx_r_min:idx_r_max])
+                idx0 = idx_r_max + np.argmin(dvdr2[idx_r_max:idx_r_min])
                 r0 = r[idx0]
 
                 # Try to pinpoint the radius of the local minimum by fitting
@@ -1040,16 +1078,16 @@ class PPMtools:
 
                     # Only use the refined radius if it is within the three
                     # cells.
-                    if r00 > r[idx0-1] and r00 < r[idx0+1]:
+                    if r00 < r[idx0-1] and r00 > r[idx0+1]:
                         r0 = r00
             elif criterion == 'value':
                 # 0th-order estimate.
-                idx0 = idx_r_min + np.argmin(np.abs(v[idx_r_min:idx_r_max] - var_value))
+                idx0 = idx_r_max + np.argmin(np.abs(v[idx_r_max:idx_r_min] - var_value))
                 r0 = r[idx0]
 
                 if np.abs(v[idx0] - var_value) > eps:
                     # 1st-order refinement.
-                    if idx0 > idx_r_min and idx0 < idx_r_max:
+                    if idx0 < idx_r_min and idx0 > idx_r_max:
                         if (v[idx0-1] < var_value and v[idx0] > var_value) or \
                            (v[idx0-1] > var_value and v[idx0] < var_value):
                             slope = v[idx0] - v[idx0-1]
@@ -1070,11 +1108,11 @@ class PPMtools:
                 
                 idx0 = np.argmin(np.abs(r - r0))
                 if r[idx0] > r0:
-                    t = (r0 - r[idx0-1])/(r[idx0] - r[idx0-1])
-                    Hv[i] = (1. - t)*Hv_prof[idx0 - 1] + t*Hv_prof[idx0]
-                elif r[idx0] < r0:
                     t = (r0 - r[idx0])/(r[idx0+1] - r[idx0])
                     Hv[i] = (1. - t)*Hv_prof[idx0] + t*Hv_prof[idx0+1]
+                elif r[idx0] < r0:
+                    t = (r0 - r[idx0-1])/(r[idx0] - r[idx0-1])
+                    Hv[i] = (1. - t)*Hv_prof[idx0 - 1] + t*Hv_prof[idx0]
                 else:
                     Hv[i] = Hv_prof[idx0]
                     
@@ -1153,17 +1191,16 @@ class PPMtools:
         # The grid is assumed to be static, so we get the radial
         # scale only once at cycles[0].
         if self.__isyprofile:
-            # Reverse the array so that it starts in the centre. 
-            r = self.get('Y', cycles[0], resolution='l')[::-1]
+            r = self.get('Y', cycles[0], resolution='l')
 
         if self.__isRprofSet:
             r = self.get('R', cycles[0], resolution='l')
 
-        r_cell_top = 0.5*(r + np.roll(r, -1))
-        r_cell_top[-1] = r_cell_top[-2] + (r_cell_top[-2] - r_cell_top[-3])
+        r_cell_top = 0.5*(np.roll(r, +1) + r)
+        r_cell_top[0] = r_cell_top[1] + (r_cell_top[1] - r_cell_top[2])
         r3_cell_top = r_cell_top**3
-        dr3 = r3_cell_top - np.roll(r3_cell_top, +1)
-        dr3[0] = dr3[1] - (dr3[2] - dr3[1])
+        dr3 = r3_cell_top - np.roll(r3_cell_top, -1)
+        dr3[-1] = dr3[-2] + (dr3[-2] - dr3[-3])
         dV = (4./3.)*np.pi*dr3
         
         t = np.zeros(len(cycles))
@@ -1178,22 +1215,18 @@ class PPMtools:
             
             if self.__isRprofSet:
                 t[i] = self.get('t', fname=cyc, resolution='l')
-
+            
+            Xcld = self.compute('Xcld', cyc)
+            
             if self.__isyprofile:
-                # Reverse the arrays so that they start in the centre. 
-                Xcld = self.compute('Xcld', cyc)[::-1]
-                rho = self.get('Rho', cyc, resolution='l')[::-1]
+                rho = self.get('Rho', cyc, resolution='l')
 
             if self.__isRprofSet:
-                Xcld = self.compute('Xcld', cyc)
                 rho = self.get('Rho0', cyc, resolution='l') + \
                       self.get('Rho1', cyc, resolution='l')
             
             if burn_func is not None:
                 rhodot = burn_func(cyc, **burn_args)
-                if self.__isyprofile:
-                    # Reverse the array so that it starts in the centre. 
-                    rhodot = rhodot[::-1]
             
             # We assume that Xlcd and rho are cell averages, so we can
             # integrate all but the last cell using the rectangle rule.
@@ -1202,10 +1235,10 @@ class PPMtools:
             # We should be as accurate as possible here, because Xcld is 
             # usually much larger in this cell than in the bulk of the 
             # convection zone.
-            idx_top = np.argmin(r_cell_top < rt[i])
+            idx_top = np.argmax(r_cell_top < rt[i])
             dm = Xcld*rho*dV
             # mir == mass inside radius (rt)
-            mir[i] = np.sum(dm[0:idx_top])
+            mir[i] = np.sum(dm[idx_top:])
             
             # Linear reconstruction. The integrand f = Xcld*rho is
             # assumed to take the form
@@ -1217,7 +1250,7 @@ class PPMtools:
             # f(r)*dV over the cell's volume V_j is enforced to be 
             # f_j*V_j, where j is the index of the cell.
             #
-            j = idx_top
+            j = idx_top - 1
             
             # jmo = j - 1
             # jpo = j + 1
@@ -1236,13 +1269,14 @@ class PPMtools:
             f_jph = 0.5*(f_j + f_jpo)
             
             s = (f_jph - f_jmh)/(r_jph - r_jmh)
-            V_j = (4./3.)*np.pi*(r_jph**3 - r_jmh**3)
-            f0 = f_j - np.pi*(r_jph**4 - r_jmh**4)/V_j*s
-            mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jmh**3)*f0 + \
-                      np.pi*(rt[i]**4 - r_jmh**4)*s
+            V_j = (4./3.)*np.pi*(r_jmh**3 - r_jph**3)
+            f0 = f_j - np.pi*(r_jmh**4 - r_jph**4)/V_j*s
+            mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jph**3)*f0 + \
+                      np.pi*(rt[i]**4 - r_jph**4)*s
                 
             if burn_func is not None:
-                burn_rate[i] = np.sum(rhodot[0:idx_top]*dV[0:idx_top])
+                # We have to use the minus sign, because rhodot < 0.
+                burn_rate[i] = -np.sum(rhodot[idx_top:]*dV[idx_top:])
                 
             wct1 = time.time()
             if wct1 - wct0 > 5.:
