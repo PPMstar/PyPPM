@@ -789,11 +789,6 @@ class PPMtools:
         # iph = i + 0.5
         flux_iph = -np.cumsum((dxdt - xsrc)*dmt)
         
-        pl.figure(101)
-        pl.plot(-5e-5*x2, '-')
-        pl.plot(dxdt, '--')
-        pl.plot(xsrc, ':')
-            
         # flux_iph = sigma_iph*dx2dm_iph, where we take the gradient of x2,
         # because we want to solve an implicit diffusion equation. 
         dx2dm_iph = (np.roll(x2, -1) - x2)/(np.roll(mt, -1) - mt)
