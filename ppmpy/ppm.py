@@ -300,13 +300,13 @@ class PPMtools:
                                   'Xdot_C12pg':self.compute_Xdot_C12pg}
         self.__computable_quantities = self.__compute_methods.keys()
 
-    def isyprofile():
+    def isyprofile(self):
         return self.__isyprofile
 
-    def isRprofSet():
+    def isRprofSet(self):
         return self.__isRprofSet
 
-    def get_computable_quantities():
+    def get_computable_quantities(self):
         '''
         Returns a list of computable quantities.
         '''
@@ -320,6 +320,8 @@ class PPMtools:
             return m(fname, num_type=num_type, **extra_args)
         else:
             self.__messenger.error("Unknown quantity '{:s}'.".format(quantity))
+            print('The following quantities can be computed:')
+            print(self.get_computable_quantities())
 
     def compute_enuc_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
                            atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
