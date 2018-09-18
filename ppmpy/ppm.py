@@ -705,9 +705,9 @@ class PPMtools:
         return avg_profs
     
     def DsolveLgr(self, cycles1, cycles2, var='Xcld', src_func=None, src_args={}, \
-                  data_rlim=None, show_plots=True, ifig0=1, run_id='', logmt=False, \
-                  mtlim=None, rlim=None, plot_var=True, logvar=False, varlim=None, \
-                  sigmalim=None, Dlim=None, fit_rlim=None):
+                  src_correction=False, data_rlim=None, show_plots=True, ifig0=1, \
+                  run_id='', logmt=False, mtlim=None, rlim=None, plot_var=True, \
+                  logvar=False, varlim=None, sigmalim=None, Dlim=None, fit_rlim=None):
         cycles1_list = any2list(cycles1)
         cycles2_list = any2list(cycles2)
     
@@ -786,6 +786,28 @@ class PPMtools:
         # where int_0^mt is a definite integral from 0 to mt.
         
         dxdt = (x2 - x1)/(t2 - t1)
+        
+        if src_correction:
+            # If the source term is time dependent, we will never get the exact
+            # time averages from a few samples and some mass will be unaccounted
+            # for. We can correct for this by multiplying xsrc by the factor
+            # src_corr_fact, which is computed by assuming that any change in the
+            # sum of dxdt should be due to xsrc. This factor should be close to
+            # unity and we will warn the user if it is not.
+            dxdt_sum = np.sum(dxdt*dmt)
+            xsrc_sum = np.sum(xsrc*dmt)
+            src_corr_fact = dxdt_sum/xsrc_sum
+            xsrc *= src_corr_fact
+            print('Source term correction factor: ', src_corr_fact)
+            if src_corr_fact < 2./3.:
+                self.__messenger.warning('The value of the correction factor '
+                                         'should be positive and close to '
+                                         'unity. Please check your data and '
+                                         'parameters.')
+            if src_corr_fact > 3./2.:
+                self.__messenger.warning('The value of the correction factor '
+                                         'is suspiciously large. Please check '
+                                         'your data and parameters.')
         
         # Downward diffusive flux at the top (inner) wall of the i-th cell.
         # iph = i + 0.5
@@ -889,6 +911,7 @@ class PPMtools:
 
             if plot_var:
                 ax2 = ax1.twinx()
+                plt_func = ax2.plot
                 if logmt:
                     if logvar:
                         plt_func = ax2.loglog
