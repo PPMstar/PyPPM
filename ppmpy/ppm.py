@@ -632,6 +632,44 @@ class PPMtools:
 
     def average_profiles(self, fname, var, num_type='ndump', func=None, \
                          lagrangian=False, data_rlim=None, extra_args={}):
+        '''
+        Method to compute time-averaged radial profiles of any quantity.
+        Individual profiles can be stacked either in an Eulerian or in a
+        Lagrangian frame.
+        
+        Parameters
+        ----------
+        fname : int or list
+            Cycle number(s) or time value(s) to be used to in the time-
+            averaging.
+        var : str or list
+            Name of the variable whose radial profiles are to be averaged.
+            This can be anything if `func` is not None.
+        num_type : str
+            Type of fname, see yprofile.get() and RProf.get().
+        func : function
+            func(fname, num_type=num_type, **extra_args) can be any user-
+            defined function that returns a radial profile. Any number of
+            parameters can be passed to this function via `extra_args`.
+            `var` should be a single string if func is not None.
+        lagrangian : bool
+            All radial profiles will be interpolated on the mass scale `mt`
+            (integrated from the top inwards) that corresponds to t = 0.
+        data_rlim : list
+            List with two elements specifying what radial range should be
+            used in the analysis. If `lagrangian` is True the mass range
+            corresponding to this radial range at t = 0 will be used.
+        extra_args : dictionary
+            Extra arguments needed for either `func` or `self.compute` to
+            work.
+ 
+        Returns
+        -------
+        avg_profs : dictionary
+            Dictionary containing the time-averaged profiles, the radial
+            scale and, if `lagrangian` is True, also the mass scale `mt`
+            (integrated from the top inwards).
+        '''
         fname_list = any2list(fname)
         var_list = any2list(var)
         avg_profs = {}
@@ -708,6 +746,80 @@ class PPMtools:
                   src_correction=False, data_rlim=None, show_plots=True, ifig0=1, \
                   run_id='', logmt=False, mtlim=None, rlim=None, plot_var=True, \
                   logvar=False, varlim=None, sigmalim=None, Dlim=None, fit_rlim=None):
+        '''
+        Method that inverts the Lagrangian diffusion equation and computes
+        the diffusion coefficient based on radial profiles of the mass
+        fraction Xcld of the 'cloud' fluid (although other variables can
+        also be used) at two different points in time.
+        
+        Parameters
+        ----------
+        cycles1 : int or list
+            Cycle number(s) to be used to construct the initial radial
+            profile of `var`.
+        cycles2 : int or list
+            Cycle number(s) to be used to construct the final radial
+            profile of `var`.
+        var : str
+            Name of the variable whose radial profiles are to be used in
+            the analysis.
+        src_func : function
+            src_func(fname, num_type=num_type, **extra_args) should return
+            the radial profile of the rate of change of `var` for the point
+            in time specified by `fname` and `num_type`. This function will
+            be called with any number of extra arguments specified in the
+            dictionary `src_args`.
+        src_args : dictionary
+            Extra arguments needed for `src_func` to work.
+        src_correction : bool
+            Because `src_func` is only sampled at some number of discrete
+            points in time, its discrete time integral will not exactly
+            match the change in the radial profiles of `var`, which will
+            appear in the analysis as some diffusive flux unaccounted for.
+            This option allows the user to have `src_func` multiplied by
+            a factor that guarantees perfect balance. This factor is
+            reported in the output and a warning will be issued if it
+            differs from unity significantly (<2./3. or > 3./2.).
+        data_rlim : list
+            List with two elements specifying what radial range should be
+            used in the analysis. The mass range corresponding to this
+            radial range at t = 0 will be used.
+        show_plots : bool
+            Should any plots be shown?
+        ifig0 : int
+            The matplotlib figures used for graphical output will have
+            indices of ifig0, ifig0+1, and ifig0+2.
+        run_id : str
+            Run identifier to be use in the title of the plots.
+        logmt : bool
+            Should the scale of mass integrated from the top be logarithmic?
+        mtlim : list
+            Plotting limits for the mass integrated from the top.
+        rlim : list
+            Plotting limits for the radius.
+        plot_var : bool
+            Should the profiles of `var` be shown in the plots?
+        logvar : bool
+            Should the scale of `var` be logarithmic?
+        varlim : list
+            Plotting limits for `var`.
+        sigmalim : list
+            Plotting limits for the Lagrangian diffusion coefficient `sigma`.
+        Dlim : list
+            Plotting limits for the Eulerian diffusion coefficient `D`.
+        fit_rlim : list
+            Radial range for the fitting of the f_CBM model.
+            
+        Returns
+        -------
+        res : dictionary
+            Dictionary containing the Lagrangian and Eulerian diffusion
+            coefficients (`sigma`, `D`), mass scale `mt`, time-averaged source
+            function `xsrc`, times `t1` and `t2`, radial scales `r1` and `r2`,
+            pressure scale height profiles `Hp1` and `Hp2`, and the profiles
+            `x1` and `x2` of `var`, where 1 and 2 refer to the start and end
+            points of the analysis.
+        '''
         cycles1_list = any2list(cycles1)
         cycles2_list = any2list(cycles2)
     
@@ -991,9 +1103,9 @@ class PPMtools:
             ncol = 2 if plot_var else 1
             pl.legend(lns, lbls, loc=0, ncol=ncol)
 
-        res = {'t1':t1, 't2':t2, 'mt':mt, 'r':r, 'r1':r1, 'r2':r2, \
-               'Hp1':Hp1, 'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, \
-               'sigma':sigma, 'D':D}
+        res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
+               'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
+               'D':D}
         return res
 
     def boundary_radius(self, cycles, r_min, r_max, var='ut', \
