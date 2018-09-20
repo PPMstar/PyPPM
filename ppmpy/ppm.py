@@ -388,8 +388,8 @@ class PPMtools:
         thyng = 2.173913043478260869565 * T9
         vc12pg = 20000000.*TM23 * np.exp(-13.692*TM13 - thyng*thyng)
         vc12pg = vc12pg * (1. + T9*(9.89-T9*(59.8 - 266.*T9)))
-        thing2 = vc12pg + TM32*(1.0e5 * np.exp(-4.913*T9inv) + \
-                                4.24e5 * np.exp(-21.62*T9inv))
+        thing2 = vc12pg + TM23 * 1.0e5 * np.exp(-4.913*T9inv) + \
+                          TM32 * 4.24e5 * np.exp(-21.62*T9inv)
         
         thing2[np.where(T9 < .0059)] = 0.
         thing2[np.where(T9 > 0.75)] = 200.
