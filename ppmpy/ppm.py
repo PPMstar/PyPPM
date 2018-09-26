@@ -1464,9 +1464,8 @@ class PPMtools:
             print('rt is the upper limit for mass integration.')
             print('drt/dt = {:.2e} km/s'.format(1e3*rt_fc[0]))
             
-            min_val = np.min(mtot)
-            max_val = np.max(mtot)
-            max_val = np.max((max_val, np.max(mtot_fit)))
+            min_val = np.min([np.min(mtot), np.min(mb), np.min(mtot_fit)])
+            max_val = np.max([np.max(mtot), np.max(mb), np.max(mtot_fit)])
             max_val *= 1.1 # allow for some margin at the top of the plot
             oom = int(np.floor(np.log10(max_val)))
             
