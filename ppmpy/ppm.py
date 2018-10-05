@@ -9745,7 +9745,7 @@ class MomsData:
 
                 # ir is the first in sline, ignore it
                 for i in range(1,len(col_names)):
-                    self.__data.append(col_names[i])
+                    self.__vars.append(col_names[i])
 
             # if we are at the second table, we collect stats_vars
             elif tbl_count == 2:
@@ -9766,6 +9766,11 @@ class MomsData:
             # The first number is always the number of radial zones.
             n = int(sline[0])
 
+            # first time through, setup the data holding arrays
+            for i in range(1, len(col_names)):
+                if tbl_count == 1:
+                    self.__data[col_names[i]] = np.zeros(n)
+               
             # Register the columns, skipping the 1st one (ir)
             for j in range(n):
                 sline = lines[l].split()
@@ -9775,7 +9780,7 @@ class MomsData:
 
                     # if we are at the first table, working with vars
                     if tbl_count == 1:
-                        self.__vars[col_names[i]][n-idx] = val
+                        self.__data[col_names[i]][n-idx] = val
                     else:
                         # for now I am not collecting stats data
                         break
@@ -9850,11 +9855,11 @@ class MomsData:
             return data
         else:
             err = ("Variable '{:s}' does not exist.").format(var)
-                    self.__messenger.error(err)
+            self.__messenger.error(err)
                     
-                    msg = 'Available variables:\n'
-                    msg += str(self.__anyr_vars)
-                    self.__messenger.message(msg)
+            msg = 'Available variables:\n'
+            msg += str(self.__anyr_vars)
+            self.__messenger.message(msg)
         
 class MomsDataSet():
     '''
@@ -9862,7 +9867,7 @@ class MomsDataSet():
     of PPMstar 2.0.
     '''
     
-    def __init__(self, dir_name, verbose=3, cache_rprofs=True):
+    def __init__(self, dir_name, verbose=3, cache_momsdata=True):
         '''
         Init method.
         
