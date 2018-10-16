@@ -9670,4 +9670,446 @@ class Rprof:
                 err = "Unknown resolution setting '{:s}'.".format(resolution)
                 self.__messenger.error(err)
 
+class MomsData:
+    '''
+    MomsData reads and holds the contents of a single momsdata .rprof file written by PPMstar 2.0.
+    '''
+    
+    def __init__(self, file_path, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the momsdata .rprof file.
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''        
+        
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+        if self.__read_momsdata_file(file_path) != 0:
+            return
+        
+        self.__is_valid = True
+        
+    def __read_momsdata_file(self, file_path):
+        '''
+        Reads a single momsdata .rprof file written by PPMstar 2.0.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the momsdata .rprof file.
+            
+        Returns
+        -------
+        int
+            0 on success.
+        NoneType
+            Something failed.
+        ''' 
+        
+        try:
+            with open(file_path, 'r') as fin:
+                lines = fin.readlines()
+            self.__file_path = file_path
+        except IOError as e:
+            err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
+            self.__messenger.error(err)
+            return None
 
+        # There are no header and footer data as of right now, these are in rprofs
+        # I am only collecting the data which could be anything!
+        # DS: I am ignoring stats data for now
+        self.__data = {}
+        self.__vars = []
+        self.__stats_data = {}
+        self.__stats_vars = []
+
+        l = 0 # line index
+        tbl_count = 0 # which table?
+
+        eof = False
+        while l < len(lines):
+            # Find the next table.
+            while True:
+                sline = lines[l].split()
+                if len(sline) > 0:
+                    if sline[0] == 'ir':
+                        col_names = sline
+                        tbl_count += 1
+                        break
+
+                l += 1
+                if l == len(lines):
+                   eof = True
+                   break
+
+            if eof:
+                break
+
+            # ok, I have the columns data, the first table contains all types of vars
+            # lets make sure that the first table stores the vars names
+            if tbl_count == 1:
+
+                # ir is the first in sline, ignore it
+                for i in range(1,len(col_names)):
+                    self.__vars.append(col_names[i])
+
+            # if we are at the second table, we collect stats_vars
+            elif tbl_count == 2:
+
+                # ir is first in sline, ignore it
+                for i in range(1,len(col_names)):
+                    self.__stats_vars.append(col_names[i])
+
+            # Find the tables body
+            while True:
+                stripped_line = lines[l].strip()
+                if len(stripped_line) > 0 and stripped_line[0].isdigit():
+                    break
+                l += 1
+            
+            sline = lines[l].split()
+
+            # The first number is always the number of radial zones.
+            n = int(sline[0])
+
+            # first time through, setup the data holding arrays
+            for i in range(1, len(col_names)):
+                if tbl_count == 1:
+                    self.__data[col_names[i]] = np.zeros(n)
+               
+            # Register the columns, skipping the 1st one (ir)
+            for j in range(n):
+                sline = lines[l].split()
+                idx = int(sline[0])
+                for i in range(1, len(col_names)):
+                    val = float(sline[i])
+
+                    # if we are at the first table, working with vars
+                    if tbl_count == 1:
+                        self.__data[col_names[i]][n-idx] = val
+                    else:
+                        # for now I am not collecting stats data
+                        break
+                l += 1
+        
+        self.__vars = sorted(self.__vars, key=lambda s: s.lower())
+
+        # The list(set()) construct removes duplicate names.
+        self.__anyr_vars = sorted(list(set(self.__vars)), \
+                                  key=lambda s: s.lower())
+        self.__all_vars = sorted(list(set(self.__anyr_vars)), \
+                                  key=lambda s: s.lower())
+ 
+        return 0
+     
+    def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        boolean
+            True if the instance is valid. False otherwise.
+        '''
+        
+        return self.__is_valid
+     
+    def get_vars(self):
+        '''
+        Returns a list of any of the momsdata variables available
+        '''
+
+        # Return a copy.
+        return list(self.__vars)
+
+    def get_anyr_variables(self):
+        '''
+        Returns a list of any-resolution variables available.
+        '''
+        
+        # Return a copy.
+        return list(self.__anyr_vars)
+   
+    def get_all_variables(self):
+        '''
+        Returns a list of all variables available.
+        '''
+        
+        # Return a copy.
+        return list(self.__all_vars)
+
+    def get(self, var):
+        '''
+        Returns variable var if it exists. The method first searches for
+        a variable name match. 
+        
+        Parameters
+        ----------
+        var: string
+            Variable name.
+        
+        Returns
+
+        -------
+        np.ndarray
+            Variable var, if found.
+        '''
+
+        # there will need to be changes when stat vars are included
+        if var in self.__vars:
+            data = np.array(self.__data[var])
+            return data
+        else:
+            err = ("Variable '{:s}' does not exist.").format(var)
+            self.__messenger.error(err)
+                    
+            msg = 'Available variables:\n'
+            msg += str(self.__anyr_vars)
+            self.__messenger.message(msg)
+        
+class MomsDataSet():
+    '''
+    MomsDataSet holds a set of momsdata .rprof files from a single run
+    of PPMstar 2.0.
+    '''
+    
+    def __init__(self, dir_name, verbose=3, cache_momsdata=True):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for .rprof files.
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''        
+
+        # DS: this functionality may be added later
+        # PPMtools.__init__(self)
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+        
+        # __find_dumps() will set the following variables,
+        # if successful:
+        self.__dir_name = ''
+        self.__run_id = ''
+        self.__dumps = []
+        if not self.__find_dumps(dir_name):
+            return
+        
+        # To speed up repeated requests for data from the same dump, we
+        # will cache every Rprof that has already been read from disk.
+        # The user can still turn this off in case that they analyse a
+        # large number of long runs on a machine with a small RAM.
+        self.__cache_momsdata = cache_momsdata
+        self.__momsdata_cache = {}
+
+        # DS: this is ignored for now, no history associated with class
+        # history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
+        #                                                  self.__run_id)
+        # self.__history = RprofHistory(history_file_path, verbose=verbose)
+        # if not self.__history.is_valid():
+        #     wrng = ('History not available. You will not be able to access '
+        #            'rprof data by simulation time.')
+        #     self.__messenger.warning(wrng)
+        
+        self.__is_valid = True
+
+    def __find_dumps(self, dir_name):
+        '''
+        Searches for momsdata .rprof files and creates an internal list of dump numbers
+        available.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for momsdata .rprof files.
+        
+        Returns
+        -------
+        boolean
+            True when a set of momsdata .rprof files has been found. False otherwise.
+        '''
+        
+        if not os.path.isdir(dir_name):
+            err = "Directory '{:s}' does not exist.".format(dir_name)
+            self.__messenger.error(err)
+            return False
+        
+        # join() will add a trailing slash if not present.
+        self.__dir_name = os.path.join(dir_name, '')
+
+        moms_files = glob.glob(self.__dir_name + '*.rprof')
+        if len(moms_files) == 0:
+            err = "No momsdata rprof files found in '{:s}'.".format(self.__dir_name)
+            self.__messenger.error(err)
+            return False
+        
+        moms_files = [os.path.basename(moms_files[i]) \
+                       for i in range(len(moms_files))]
+        
+        # run_id is always separated from the rest of the file name
+        # by a single dash.
+        self.__run_id = moms_files[0].split('-')[0]
+
+        # the dump number
+        for i in range(len(moms_files)):
+            split1 = moms_files[i].split('-')
+            if split1[0] != self.__run_id:
+                wrng = ("momsdata rprof files with multiple run ids found in '{:s}'."
+                        "Using only those with run id '{:s}'.").\
+                       format(self.__dir_name, self.__run_id)
+                self.__messenger.warning(wrng)
+                continue
+            
+            # Skip files that do not fit the rprof naming pattern.
+            if len(split1) < 2:
+                continue
+
+            # Get rid of the extension and try to parse the dump number.
+            # Skip files that do not fit the rprof naming pattern.
+            split2 = split1[1].split('.')
+
+            # now, there is also the string BqAv in front of dump number
+            # let us ignore the first 4 characters and int
+            try:
+                dump_num = int(split2[0][4:])
+                self.__dumps.append(dump_num)
+            except:
+                continue
+        
+        self.__dumps = sorted(self.__dumps)
+        msg = "{:d} momsdata rprof files found in '{:s}.\n".format(len(self.__dumps), \
+              self.__dir_name)
+        msg += "Dump numbers range from {:d} to {:d}.".format(\
+               self.__dumps[0], self.__dumps[-1])
+        self.__messenger.message(msg)
+        if (self.__dumps[-1] - self.__dumps[0] + 1) != len(self.__dumps):
+            wrng = 'Some dumps are missing.'
+            self.__messenger.warning(wrng)
+
+        return True
+     
+    def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        boolean
+            True if the instance is valid. False otherwise.
+        '''
+        
+        return self.__is_valid
+    
+    def get_run_id(self):
+        '''
+        Returns the run identifier that precedes the dump number in the names
+        of .rprof files.
+        '''
+        
+        return str(self.__run_id)
+    
+    def get_dump_list(self):
+        '''
+        Returns a list of dumps available.
+        '''
+        
+        return list(self.__dumps)
+    
+    def get_dump(self, dump):
+        '''
+        Returns a single dump.
+        
+        Parameters
+        ----------
+        dump: integer
+            
+        Returns
+        -------
+        MomsData 
+            MomsData object corresponding to the selected dump.
+        '''
+        
+        if dump not in self.__dumps:
+            err = 'Dump {:d} is not available.'.format(dump)
+            self.__messenger.error(err)
+            return None
+
+        # with momsdata rprofs, we have BQav
+        file_path = '{:s}{:s}-BQav{:04d}.rprof'.format(self.__dir_name, \
+                                                   self.__run_id, dump)
+        
+        if self.__cache_momsdata:
+            if dump in self.__momsdata_cache:
+                rp = self.__momsdata_cache[dump]
+            else:
+                rp = MomsData(file_path)
+                self.__momsdata_cache[dump] = rp
+        else:
+            rp = MomsData(file_path)
+        
+        return rp
+    
+    def get(self, var, fname, num_type='NDump'):
+        '''
+        Returns variable var at a specific point in the simulation's time
+        evolution.
+        
+        Parameters
+        ----------
+        var: string
+            Name of the variable.
+        fname: integer/float
+            Dump number or time in seconds depending on the value of
+            num_type.
+        num_type: string (case insensitive)
+            If 'ndump' fname is expected to be a dump number (integer).
+            If 't' fname is expected to be a time value in seconds; run
+            history file (.hstry) must be available to search by time value.
+            At this time, MomsData does not support history
+
+        Returns
+        -------
+        numpy.ndarray
+            Variable var as given by MomsData.get() if the MomsData corresponding
+            to fname exists.
+        NoneType
+            If the Rprof corresponding to fname does not exist.
+        '''
+        
+        if num_type.lower() == 'ndump':
+            rp = self.get_dump(fname)
+        # elif num_type.lower() == 't':
+        #     if self.__history is None:
+        #         err = 'History not available. Cannot search by t.'
+        #         self.__messenger.error(err)
+        #         return None
+            
+        #     t = self.__history.get('time(secs)')
+        #     ndump = self.__history.get('NDump')
+            
+        #     closest_idx = np.argmin(np.abs(t - fname))
+        #     closest_dump = ndump[closest_idx]
+        #     closest_t = t[closest_idx]
+        #     msg = ('Dump {:d} at t = {:.2f} min is the closest to '
+        #            't = {:.2f} min.').format(closest_dump, \
+        #           closest_t/60., fname/60.)
+        #     self.__messenger.message(msg)
+        #     rp = self.get_dump(closest_dump)
+        else:
+            self.__messenger.error("'{:s}' is not a valid value of "
+                                   "num_type.".format(num_type))
+            return None
+        
+        if rp is not None:
+            return rp.get(var)
+        else:
+            return None
+        
