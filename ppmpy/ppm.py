@@ -743,14 +743,17 @@ class PPMtools:
         return avg_profs
     
     def DsolveLgr(self, cycles1, cycles2, var='Xcld', src_func=None, src_args={}, \
-                  src_correction=False, data_rlim=None, show_plots=True, ifig0=1, \
-                  run_id='', logmt=False, mtlim=None, rlim=None, plot_var=True, \
-                  logvar=False, varlim=None, sigmalim=None, Dlim=None, fit_rlim=None):
+                  src_correction=False, integrate_upwards=False, data_rlim=None, \
+                  show_plots=True, ifig0=1, run_id='', logmt=False, mtlim=None, \
+                  rlim=None, plot_var=True, logvar=False, varlim=None, \
+                  sigmalim=None, Dlim=None, fit_rlim=None):
         '''
         Method that inverts the Lagrangian diffusion equation and computes
         the diffusion coefficient based on radial profiles of the mass
         fraction Xcld of the 'cloud' fluid (although other variables can
-        also be used) at two different points in time.
+        also be used) at two different points in time. The diffusion
+        coefficient is assumed to vanish at the outermost data point (or
+        innermost if integrate_upwards == True).
         
         Parameters
         ----------
@@ -780,6 +783,10 @@ class PPMtools:
             a factor that guarantees perfect balance. This factor is
             reported in the output and a warning will be issued if it
             differs from unity significantly (<2./3. or > 3./2.).
+        integrate_upwards : bool
+            If True the usual integration for the downward diffusive flux
+            starting from the outermost point inwards will be done from the
+            innermost point outwards.
         data_rlim : list
             List with two elements specifying what radial range should be
             used in the analysis. The mass range corresponding to this
@@ -890,8 +897,9 @@ class PPMtools:
         #
         # where `flux` is the diffusive flux and `xsrc` is a source term (to
         # represent e.g. nuclear burning). We integrate the equation
-        # analytically from the outer crystal sphere, where we flux = 0, to
-        # a mass coordinate mt, which gives us an explicit expression for sigma: 
+        # analytically from the outer (or inner if integrate_upwards == True)
+        # crystal sphere, where we flux = 0, to a mass coordinate mt, which
+        # gives us an explicit expression for sigma: 
         #
         # sigma = (1./dxdm)*int_0^mt(dx/dt - xsrc)*dmt,
         #
@@ -924,6 +932,9 @@ class PPMtools:
         # Downward diffusive flux at the top (inner) wall of the i-th cell.
         # iph = i + 0.5
         flux_iph = -np.cumsum((dxdt - xsrc)*dmt)
+        
+        if integrate_upwards:        
+            flux_iph -= flux_iph[-1]
         
         # flux_iph = sigma_iph*dx2dm_iph, where we take the gradient of x2,
         # because we want to solve an implicit diffusion equation. 
