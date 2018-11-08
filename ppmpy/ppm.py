@@ -9670,3 +9670,285 @@ class Rprof:
                 err = "Unknown resolution setting '{:s}'.".format(resolution)
                 self.__messenger.error(err)
 
+class MomsData():
+    '''
+    MomsData reads in a single briquette averaged data cube which contains up
+    to 10 user-defined variables
+    '''
+    
+    def __init__(self, file_path, verbose=3, ghost=2):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the .rprof file.
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        ghost: integer
+            How many "ghost"/extra array indices are there in the data cube?
+        '''        
+        
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+        self.__ghost = ghost
+        
+        if self.__read_moms_cube(file_path) != 0:
+            return
+        
+        self.__is_valid = True
+        
+    def __read_moms_cube(self, file_path):
+        '''
+        Reads a single .aaa uncompressed data cube file written by PPMstar 2.0.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the .aaa data cube file
+            
+        Returns
+        -------
+        int
+            0 on success.
+        NoneType
+            Something failed.
+        ''' 
+        
+        try:
+            tempdata = np.fromfile(file_path)
+
+            # ok this is one large array with 10 variables of some length with
+            # some amount of ghost values. What's the resolution?
+            self.__resolution = 4. * (np.power(np.shape(data)[0] / 10.,1/3.) - self.__ghost)
+
+            # Now I can reshape this data array in 10 flattened arrays
+            self.data = tempdata.reshape((10,int(np.ceil((self.__resolution/4. + self.__ghost)**3))))
+
+            # save the file path
+            self.__file_path = file_path
+
+        except IOError as e:
+            err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
+            self.__messenger.error(err)
+            return None
+        
+        
+        return 0
+     
+    def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        boolean
+            True if the instance is valid. False otherwise.
+        '''
+        
+        return self.__is_valid
+     
+
+    def get(self, varloc):
+        '''
+        Returns a 3d array of the variable that is defined at whatever(varloc).
+        The shape is (3,resolution/4) with ordering x,y,z on first index
+
+        Parameters
+        ----------
+        varloc: integer
+            integer index of the quantity that is defined under whatever(varloc)
+        
+        Returns
+        -------
+        np.ndarray
+            Variable at whatever(varloc)
+        '''
+
+        # self.data contains flattened arrays that have ghost values
+
+
+class MomsDataSet:
+    '''
+    MomsDataSet contains a set of dumps of MomsData from a single run of the
+    Moments reader from PPMstar 2.0.
+    '''
+    
+    def __init__(self, dir_name, verbose=3, ghost=2):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for .aaa uncompressed moms data
+        cubes
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        ghost: integer
+            How many "ghost"/extra array indices are there in the data cube?
+        '''        
+        
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+        self.__ghost = ghost
+        
+        # __find_dumps() will set the following variables,
+        # if successful:
+        self.__dir_name = ''
+        self.__dumps = []
+        if not self.__find_dumps(dir_name):
+            return
+    
+        self.__is_valid = True
+
+    def __find_dumps(self, dir_name):
+        '''
+        Searches for .aaa files and creates an internal list of dump numbers
+        available.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for .aaa files.
+        
+        Returns
+        -------
+        boolean
+            True when a set of .aaa files has been found. False otherwise.
+        '''
+        
+        if not os.path.isdir(dir_name):
+            err = "Directory '{:s}' does not exist.".format(dir_name)
+            self.__messenger.error(err)
+            return False
+        
+        # join() will add a trailing slash if not present.
+        self.__dir_name = os.path.join(dir_name, '')
+
+        # ok this directory contains bobs like directory structure, search in
+        # sub-directories for actual files, grab dumps from file names
+        moms_files = []
+
+        for dirpath, dirnames, filenames in os.walk(self.__dir_name):
+            for filename in [f for f in filename if f.endswith('.aaa')]:
+                moms_files.append(os.path.join(dirname,filename))
+
+        if len(moms_files) == 0:
+            err = "No .aaa files found in '{:s}'.".format(self.__dir_name)
+            self.__messenger.error(err)
+            return False
+        
+        moms_files = [os.path.basename(moms_files[i]) \
+                       for i in range(len(moms_files))]
+        
+        # run_id is always separated from the rest of the file name
+        # by a single dash.
+        self.__run_id = moms_files[0].split('-')[0]
+        for i in range(len(moms_files)):
+            split1 = moms_files[i].split('-')
+            if split1[0] != self.__run_id:
+                wrng = (".aaa files with multiple run ids found in '{:s}'."
+                        "Using only those with run id '{:s}'.").\
+                       format(self.__dir_name, self.__run_id)
+                self.__messenger.warning(wrng)
+                continue
+            
+            # Skip files that do not fit the rprof naming pattern.
+            if len(split1) < 2:
+                continue
+
+            # Get rid of the extension and try to parse the dump number.
+            # Skip files that do not fit the rprof naming pattern.
+            split2 = split1[1].split('.')
+            try:
+                # there is always BQav prefix before dump
+                dump_num = int(split2[0][4:])
+                self.__dumps.append(dump_num)
+            except:
+                continue
+        
+        self.__dumps = sorted(self.__dumps)
+        msg = "{:d} .aaa files found in '{:s}.\n".format(len(self.__dumps), \
+              self.__dir_name)
+        msg += "Dump numbers range from {:d} to {:d}.".format(\
+               self.__dumps[0], self.__dumps[-1])
+        self.__messenger.message(msg)
+        if (self.__dumps[-1] - self.__dumps[0] + 1) != len(self.__dumps):
+            wrng = 'Some dumps are missing!'
+            self.__messenger.warning(wrng)
+
+        return True
+
+    def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        boolean
+            True if the instance is valid. False otherwise.
+        '''
+        
+        return self.__is_valid
+    
+    def get_run_id(self):
+        '''
+        Returns the run identifier that precedes the dump number in the names
+        of .rprof files.
+        '''
+        
+        return str(self.__run_id)
+        
+    def get_dump_list(self):
+        '''
+        Returns a list of dumps available.
+        '''
+        
+        return list(self.__dumps)
+    
+    def get_dump(self, dump):
+        '''
+        Returns a single dump.
+        
+        Parameters
+        ----------
+        dump: integer
+            
+        Returns
+        -------
+        MomsData
+            MomsData object corresponding to the selected dump.
+        '''
+        
+        if dump not in self.__dumps:
+            err = 'Dump {:d} is not available.'.format(dump)
+            self.__messenger.error(err)
+            return None
+        
+        file_path = '{:s}{:s}-BQav{:04d}.rprof'.format(self.__dir_name, \
+                                                   self.__run_id, dump)
+        
+        momsdata = MomsData(self.file_path,ghost=self.__ghost)
+
+        return momsdata
+    
+    def get_rprof(self, varloc):
+        '''
+        Returns a 1d radial profile of the variable that is defined at
+        whatever(varloc) and the radial axis values
+
+        Parameters
+        ----------
+        varloc: integer
+            integer index of the quantity that is defined under whatever(varloc)
+
+        Returns
+        -------
+        np.ndarray
+            Radial profile of whatever(varloc)
+        np.ndarry
+            
+        '''
+        return
