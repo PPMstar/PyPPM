@@ -9673,7 +9673,7 @@ class Rprof:
 class MomsData():
     '''
     MomsData reads in a single briquette averaged data cube which contains up
-    to 10 user-defined variables
+    to 10 user-defined variables. It is assumed that whatever(0) = xc
     '''
     
     def __init__(self, file_path, verbose=3, ghost=2):
@@ -9721,42 +9721,50 @@ class MomsData():
 
             # ok this is one large array with 10 variables of some length with
             # some amount of ghost values. What's the resolution?
-            self.__resolution = 4. * (np.power(np.shape(tempdata)[0] / 10.,1/3.) - self.__ghost)
+            self.resolution = 4. * (np.power(np.shape(tempdata)[0] / 10.,1/3.) - self.__ghost)
 
             # Now I can reshape this data array in 10 flattened arrays
-            ghostdata = tempdata.reshape((10,int(np.ceil((self.__resolution/4. + self.__ghost)**3))))
+            ghostdata = tempdata.reshape((10,int(np.ceil((self.resolution/4. + self.__ghost)**3))))
             del tempdata
 
             # I have ghosts... lets construct a bool array for what values to keep
-            bool_array = np.ones(len(np.shape(ghostdata)[1]))
+            bool_array = np.ones(np.shape(ghostdata)[1])
 
             # now x repeats every length of the cube
-            x_ghost = self.__resolution/4. + self.__ghost
-            x_loop = np.ceil(np.shape(ghostdata)[1]/x_ghost)
+            x_ghost = int(np.ceil(self.resolution/4. + self.__ghost))
+            x_loop = int(np.ceil(np.shape(ghostdata)[1]/x_ghost))
 
             for i in range(x_loop):
+                # for the negative ghost values
                 bool_array[i*x_ghost] = 0
 
+                # for the positive ghost values
+                bool_array[(x_ghost-1) + i*x_ghost] = 0
+
             # now y goes a length per value and repeats that pattern
-            y_ghost = self.__resolution/4. + self.__ghost
-            y_loop = np.ceil(np.shape(ghostdata)[1]/y_ghost)
+            y_ghost = int(np.ceil(self.resolution/4. + self.__ghost))
+            y_loop = int(np.ceil(np.shape(ghostdata)[1]/y_ghost))
 
             for i in range(y_loop):
                 # for the negative ghost values
-                bool_array[194*(i*194):(194*i*194)+194] = 0
+                bool_array[y_ghost*(i*y_ghost):(y_ghost*i*y_ghost)+y_ghost] = 0
 
                 # for the positive ghost values
-                bool_array[((193 + 194*i)*194):((193+194*i)*194 + 194)]
+                bool_array[(((y_ghost-1) + y_ghost*i)*y_ghost):(((y_ghost-1)+y_ghost*i)*y_ghost + y_ghost)]
 
-            # now z iterates through a single length twice
-            z_ghost = np.ceil(np.power(self.__resolution/4. + self.__ghost,2.0))
+            # now z iterates through a single length in two nested loops
+            z_ghost = int(np.ceil(np.power(self.resolution/4. + self.__ghost,2.0)))
+
+            # for the negative ghost values
             bool_array[0:z_ghost] = 0
+
+            # for the positive ghost values
             bool_array[-z_ghost:-1] = 0
             
-            # with this bool, delete certain indices
-            self.data = np.zeros((np.shape(ghostdata)[0],self.__resolution/4.))
+            # collect the actual moms data
+            self.data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution/4,3.0)))))
 
-            for i in range(len(np.shape(self.data)[0])):
+            for i in range(np.shape(self.data)[0]):
                 self.data[i] = ghostdata[i][np.where(bool_array > 0)]
 
             # save the file path
@@ -9968,7 +9976,7 @@ class MomsDataSet:
 
         return momsdata
     
-    def get_rprof(self, varloc):
+    def get_rprof(self,varloc,return_counts=False):
         '''
         Returns a 1d radial profile of the variable that is defined at
         whatever(varloc) and the radial axis values
@@ -9977,15 +9985,57 @@ class MomsDataSet:
         ----------
         varloc: integer
             integer index of the quantity that is defined under whatever(varloc)
-
+        return_counts: bool
+            Do you want to have the number of counts used in averaging along them
+            radial axis?
         Returns
         -------
-        np.ndarray
-            Radial profile of whatever(varloc)
-        np.ndarry
-            
+        rad_prof, radial_axis: np.ndarray
+            Radial profile of whatever(varloc) and the Radial axis which
+            whatever(varloc) is averaged on
+        counts: np.ndarray
+            The number of cells used in the radial bins averaging can be returned
+            if return_counts=True      
         '''
-        return
+
+        # get the x coordinate to construct a radial array
+        # DS: this is temporary
+        momsdata = self.get_dump(fname)
+        x = momsdata.data[0]
+        y = momsdata.data[1]
+        z = momsdata.data[2]
+        resolution = momsdata.resolution
+        delta_r = 2*np.min(np.unique(x)[np.where(np.unique(x)>0)])
+        radial_boundary = np.linspace(delta_r,delta_r*(resolution/4./2.),int(np.ceil(resolution/4./2.)))
+    
+        # these are the boundaries, now I need what is my "actual" r value
+        radial_axis = boundary_r - delta_r/2.
+
+        # compute the radius of x,y,z
+        radius = np.power(np.power(x,2.0) + np.power(y,2.0) + np.power(z,2.0),0.5)
+
+        # now, I loop through each radial_axis and determine average of quantity
+        average_quantity = np.zeros(len(radial_axis))
+        number_summed = np.zeros(len(radial_axis))
+
+        # now delta_r was sorted out in the radial_values function, use a simple diff
+        delta_r = np.diff(radial_boundary)[0]
+        eps = 1e-3 * delta_r
+
+        for i in range(len(average_quantity)):
+
+            # I have two conditions, you are below the "top value" and above the "bottom value"
+            within_r = np.where(radius <= delta_r*(i+1) + eps)
+            above_r = np.where(radius >= delta_r*i - eps)
+
+            # ok, now if they are within_r and above_r, we are good!
+            within_above_r = np.intersect1d(within_r,above_r)
+
+            # now we get the average quantity
+            average_quantity[i] = np.mean(quantity[within_above_r])
+            number_summed[i] = float(len(within_above_r))
+
+        return average_quantity, radial_axis
 
     def get(self, varloc, fname):
         '''
