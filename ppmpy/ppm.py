@@ -9696,7 +9696,7 @@ class MomsData():
         
         if self.__read_moms_cube(file_path) != 0:
             return
-        
+
         self.__is_valid = True
         
     def __read_moms_cube(self, file_path):
@@ -9777,7 +9777,7 @@ class MomsData():
         
         
         return 0
-     
+
     def is_valid(self):
         '''
         Checks if the instance is valid, i.e. fully initialised.
@@ -9810,6 +9810,16 @@ class MomsData():
         # self.data contains flattened arrays that have ghost values
         return self.data
 
+    def get_grid(self):
+        '''
+        Returns the xc, yc, zc and radius of the moments data cube
+
+        Returns
+        -------
+        xc,yc,zc,radius: np.ndarray
+             
+        '''
+        return self.__xc,self.__yc,self.__zc,self.__radius
 
 class MomsDataSet:
     '''
@@ -9842,7 +9852,11 @@ class MomsDataSet:
         self.__dumps = []
         if not self.__find_dumps(dir_name):
             return
-    
+
+        # Now create the grid
+        if self.__get_grid() != 0:
+            return
+        
         self.__is_valid = True
 
     def __find_dumps(self, dir_name):
@@ -9923,6 +9937,41 @@ class MomsDataSet:
 
         return True
 
+    def __get_grid(self):
+        '''
+        Constructs the PPMStar grid from the saved xc in whatever(0)
+        
+        Returns
+        -------
+        int
+            0 on success.
+        NoneType
+            Something failed.
+        '''
+
+        # we have self.data, assume that self.data[0] is a coordinate
+        momsdata = self.get_dump(self.get_dump_list()[0])
+        coord = np.unique(momsdata.data[0])
+
+        # there is all of the unique values, construct self.xc, self.yc, self.zc
+        self.__xc = np.tile(coord,momsdata.resolution*momsdata.resolution)
+        self.__yc = np.tile(np.repeat(coord,momsdata.resolution),momsdata.resolution)
+        self.__zc = np.repeat(coord,momsdata.resolution*momsdata.resolution)
+        self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
+                                np.power(self.__zc,2.0))
+
+        # from this, I will always setup vars for a rprof
+        delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
+        self.__radial_boundary = np.linspace(delta_r,delta_r*(resolution/4./2.),int(np.ceil(resolution/4./2.)))
+    
+        # these are the boundaries, now I need what is my "actual" r value
+        self.radial_axis = self.__radial_boundary - delta_r/2.
+
+        # might as well store the resolution of this MomsDataSet
+        self.resolution = momsdata.resolution
+
+        return 0
+
     def is_valid(self):
         '''
         Checks if the instance is valid, i.e. fully initialised.
@@ -9983,8 +10032,10 @@ class MomsDataSet:
 
         Parameters
         ----------
-        varloc: integer
+        varloc: integer 
             integer index of the quantity that is defined under whatever(varloc)
+        fname: integer
+            The dump number that you want a MomsData rprof for
         return_counts: bool
             Do you want to have the number of counts used in averaging along them
             radial axis?
@@ -9998,29 +10049,15 @@ class MomsDataSet:
             if return_counts=True      
         '''
 
-        # get the x coordinate to construct a radial array
-        # DS: this is temporary
-        momsdata = self.get_dump(fname)
-        x = momsdata.data[0]
-        y = momsdata.data[1]
-        z = momsdata.data[2]
-        quantity = momsdata.data[varloc]
-        resolution = momsdata.resolution
-        delta_r = 2*np.min(np.unique(x)[np.where(np.unique(x)>0)])
-        radial_boundary = np.linspace(delta_r,delta_r*(resolution/4./2.),int(np.ceil(resolution/4./2.)))
-    
-        # these are the boundaries, now I need what is my "actual" r value
-        radial_axis = radial_boundary - delta_r/2.
-
-        # compute the radius of x,y,z
-        radius = np.power(np.power(x,2.0) + np.power(y,2.0) + np.power(z,2.0),0.5)
+        # get the grid from a momsdata cube
+        quantity = self.get(varloc,fname)
 
         # now, I loop through each radial_axis and determine average of quantity
-        average_quantity = np.zeros(len(radial_axis))
-        number_summed = np.zeros(len(radial_axis))
+        average_quantity = np.zeros(len(self.radial_axis))
+        number_summed = np.zeros(len(self.radial_axis))
 
         # now delta_r was sorted out in the radial_values function, use a simple diff
-        delta_r = np.diff(radial_boundary)[0]
+        delta_r = np.diff(self.__radial_boundary)[0]
         eps = 1e-3 * delta_r
 
         for i in range(len(average_quantity)):
@@ -10036,7 +10073,11 @@ class MomsDataSet:
             average_quantity[i] = np.mean(quantity[within_above_r])
             number_summed[i] = float(len(within_above_r))
 
-        return average_quantity, radial_axis
+        # what do I return?
+        if return_counts:
+            return average_quantity, self.radial_axis, number_summed
+        else:
+            return average_quantity, self.radial_axis
 
     def get(self, varloc, fname):
         '''
