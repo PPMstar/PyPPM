@@ -9717,14 +9717,47 @@ class MomsData():
         ''' 
         
         try:
-            tempdata = np.fromfile(file_path)
+            tempdata = np.fromfile(file_path,dtype='float32',count=-1,sep="")
 
             # ok this is one large array with 10 variables of some length with
             # some amount of ghost values. What's the resolution?
-            self.__resolution = 4. * (np.power(np.shape(data)[0] / 10.,1/3.) - self.__ghost)
+            self.__resolution = 4. * (np.power(np.shape(tempdata)[0] / 10.,1/3.) - self.__ghost)
 
             # Now I can reshape this data array in 10 flattened arrays
-            self.data = tempdata.reshape((10,int(np.ceil((self.__resolution/4. + self.__ghost)**3))))
+            ghostdata = tempdata.reshape((10,int(np.ceil((self.__resolution/4. + self.__ghost)**3))))
+            del tempdata
+
+            # I have ghosts... lets construct a bool array for what values to keep
+            bool_array = np.ones(len(np.shape(ghostdata)[1]))
+
+            # now x repeats every length of the cube
+            x_ghost = self.__resolution/4. + self.__ghost
+            x_loop = np.ceil(np.shape(ghostdata)[1]/x_ghost)
+
+            for i in range(x_loop):
+                bool_array[i*x_ghost] = 0
+
+            # now y goes a length per value and repeats that pattern
+            y_ghost = self.__resolution/4. + self.__ghost
+            y_loop = np.ceil(np.shape(ghostdata)[1]/y_ghost)
+
+            for i in range(y_loop):
+                # for the negative ghost values
+                bool_array[194*(i*194):(194*i*194)+194] = 0
+
+                # for the positive ghost values
+                bool_array[((193 + 194*i)*194):((193+194*i)*194 + 194)]
+
+            # now z iterates through a single length twice
+            z_ghost = np.ceil(np.power(self.__resolution/4. + self.__ghost,2.0))
+            bool_array[0:z_ghost] = 0
+            bool_array[-z_ghost:-1] = 0
+            
+            # with this bool, delete certain indices
+            self.data = np.zeros((np.shape(ghostdata)[0],self.__resolution/4.))
+
+            for i in range(len(np.shape(self.data)[0])):
+                self.data[i] = ghostdata[i][np.where(bool_array > 0)]
 
             # save the file path
             self.__file_path = file_path
@@ -9767,6 +9800,7 @@ class MomsData():
         '''
 
         # self.data contains flattened arrays that have ghost values
+        return self.data
 
 
 class MomsDataSet:
@@ -9832,8 +9866,8 @@ class MomsDataSet:
         moms_files = []
 
         for dirpath, dirnames, filenames in os.walk(self.__dir_name):
-            for filename in [f for f in filename if f.endswith('.aaa')]:
-                moms_files.append(os.path.join(dirname,filename))
+            for filename in [f for f in filenames if f.endswith('.aaa')]:
+                moms_files.append(os.path.join(dirpath,filename))
 
         if len(moms_files) == 0:
             err = "No .aaa files found in '{:s}'.".format(self.__dir_name)
@@ -9927,10 +9961,10 @@ class MomsDataSet:
             self.__messenger.error(err)
             return None
         
-        file_path = '{:s}{:s}-BQav{:04d}.rprof'.format(self.__dir_name, \
-                                                   self.__run_id, dump)
+        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
+                                                             dump, self.__run_id, dump)
         
-        momsdata = MomsData(self.file_path,ghost=self.__ghost)
+        momsdata = MomsData(file_path,ghost=self.__ghost)
 
         return momsdata
     
@@ -9952,3 +9986,32 @@ class MomsDataSet:
             
         '''
         return
+
+    def get(self, varloc, fname):
+        '''
+        Returns variable var at a specific point in the simulation's time
+        evolution.
+        
+        Parameters
+        ----------
+        varloc: int
+            Index location of the variable you want
+        fname: integer/float
+            Dump number or time in seconds depending on the value of
+            num_type.            
+            
+        Returns
+        -------
+        numpy.ndarray
+            Variable in index varloc as given by MomsData.get() if the MomsData
+        corresponding to fname exists.
+        NoneType
+            If the MomsData corresponding to fname does not exist.
+        '''
+
+        momsdata = self.get_dump(fname)
+
+        if momsdata is not None:
+            return momsdata.get(varloc)
+        else:
+            return None
