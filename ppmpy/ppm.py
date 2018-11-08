@@ -9750,7 +9750,7 @@ class MomsData():
                 bool_array[y_ghost*(i*y_ghost):(y_ghost*i*y_ghost)+y_ghost] = 0
 
                 # for the positive ghost values
-                bool_array[(((y_ghost-1) + y_ghost*i)*y_ghost):(((y_ghost-1)+y_ghost*i)*y_ghost + y_ghost)]
+                bool_array[(((y_ghost-1) + y_ghost*i)*y_ghost):(((y_ghost-1)+y_ghost*i)*y_ghost + y_ghost)] = 0
 
             # now z iterates through a single length in two nested loops
             z_ghost = int(np.ceil(np.power(self.resolution/4. + self.__ghost,2.0)))
@@ -9976,7 +9976,7 @@ class MomsDataSet:
 
         return momsdata
     
-    def get_rprof(self,varloc,return_counts=False):
+    def get_rprof(self,varloc,fname,return_counts=False):
         '''
         Returns a 1d radial profile of the variable that is defined at
         whatever(varloc) and the radial axis values
@@ -10004,12 +10004,13 @@ class MomsDataSet:
         x = momsdata.data[0]
         y = momsdata.data[1]
         z = momsdata.data[2]
+        quantity = momsdata.data[varloc]
         resolution = momsdata.resolution
         delta_r = 2*np.min(np.unique(x)[np.where(np.unique(x)>0)])
         radial_boundary = np.linspace(delta_r,delta_r*(resolution/4./2.),int(np.ceil(resolution/4./2.)))
     
         # these are the boundaries, now I need what is my "actual" r value
-        radial_axis = boundary_r - delta_r/2.
+        radial_axis = radial_boundary - delta_r/2.
 
         # compute the radius of x,y,z
         radius = np.power(np.power(x,2.0) + np.power(y,2.0) + np.power(z,2.0),0.5)
