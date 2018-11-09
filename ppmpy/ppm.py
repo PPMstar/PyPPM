@@ -9676,7 +9676,7 @@ class MomsData():
     to 10 user-defined variables. It is assumed that whatever(0) = xc
     '''
     
-    def __init__(self, file_path, verbose=3, ghost=2):
+    def __init__(self, file_path, verbose=3):
         '''
         Init method.
         
@@ -9686,13 +9686,13 @@ class MomsData():
             Path to the .rprof file.
         verbose: integer
             Verbosity level as defined in class Messenger.
-        ghost: integer
-            How many "ghost"/extra array indices are there in the data cube?
         '''        
         
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
-        self.__ghost = ghost
+
+        # how many extra "ghost" indices are there for each dimension?
+        self.__ghost = 2
         
         if self.__read_moms_cube(file_path) != 0:
             return
@@ -9721,17 +9721,18 @@ class MomsData():
 
             # ok this is one large array with 10 variables of some length with
             # some amount of ghost values. What's the resolution?
-            self.resolution = 4. * (np.power(np.shape(tempdata)[0] / 10.,1/3.) - self.__ghost)
+            self.run_resolution = int(np.ceil(4. * (np.power(np.shape(tempdata)[0] / 10.,1/3.) - self.__ghost)))
+            self.resolution = int(np.ceil(self.run_resolution/4.))
 
             # Now I can reshape this data array in 10 flattened arrays
-            ghostdata = tempdata.reshape((10,int(np.ceil((self.resolution/4. + self.__ghost)**3))))
+            ghostdata = tempdata.reshape((10,int(np.ceil((self.resolution + self.__ghost)**3))))
             del tempdata
 
             # I have ghosts... lets construct a bool array for what values to keep
             bool_array = np.ones(np.shape(ghostdata)[1])
 
             # now x repeats every length of the cube
-            x_ghost = int(np.ceil(self.resolution/4. + self.__ghost))
+            x_ghost = int(np.ceil(self.resolution + self.__ghost))
             x_loop = int(np.ceil(np.shape(ghostdata)[1]/x_ghost))
 
             for i in range(x_loop):
@@ -9742,7 +9743,7 @@ class MomsData():
                 bool_array[(x_ghost-1) + i*x_ghost] = 0
 
             # now y goes a length per value and repeats that pattern
-            y_ghost = int(np.ceil(self.resolution/4. + self.__ghost))
+            y_ghost = int(np.ceil(self.resolution + self.__ghost))
             y_loop = int(np.ceil(np.shape(ghostdata)[1]/y_ghost))
 
             for i in range(y_loop):
@@ -9753,7 +9754,7 @@ class MomsData():
                 bool_array[(((y_ghost-1) + y_ghost*i)*y_ghost):(((y_ghost-1)+y_ghost*i)*y_ghost + y_ghost)] = 0
 
             # now z iterates through a single length in two nested loops
-            z_ghost = int(np.ceil(np.power(self.resolution/4. + self.__ghost,2.0)))
+            z_ghost = int(np.ceil(np.power(self.resolution + self.__ghost,2.0)))
 
             # for the negative ghost values
             bool_array[0:z_ghost] = 0
@@ -9762,7 +9763,7 @@ class MomsData():
             bool_array[-z_ghost:-1] = 0
             
             # collect the actual moms data
-            self.data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution/4,3.0)))))
+            self.data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))))
 
             for i in range(np.shape(self.data)[0]):
                 self.data[i] = ghostdata[i][np.where(bool_array > 0)]
@@ -9809,17 +9810,6 @@ class MomsData():
 
         # self.data contains flattened arrays that have ghost values
         return self.data
-
-    def get_grid(self):
-        '''
-        Returns the xc, yc, zc and radius of the moments data cube
-
-        Returns
-        -------
-        xc,yc,zc,radius: np.ndarray
-             
-        '''
-        return self.__xc,self.__yc,self.__zc,self.__radius
 
 class MomsDataSet:
     '''
@@ -9949,26 +9939,31 @@ class MomsDataSet:
             Something failed.
         '''
 
+        # lets send a message to the user about this
+        msg = "The PPMstar grid is being constructed, this can take a moment"
+        self.__messenger.message(msg)
+
         # we have self.data, assume that self.data[0] is a coordinate
         momsdata = self.get_dump(self.get_dump_list()[0])
         coord = np.unique(momsdata.data[0])
 
         # there is all of the unique values, construct self.xc, self.yc, self.zc
-        self.__xc = np.tile(coord,momsdata.resolution*momsdata.resolution)
-        self.__yc = np.tile(np.repeat(coord,momsdata.resolution),momsdata.resolution)
-        self.__zc = np.repeat(coord,momsdata.resolution*momsdata.resolution)
+        self.__xc = np.tile(coord,int(np.ceil(momsdata.resolution*momsdata.resolution)))
+        self.__yc = np.tile(np.repeat(coord,int(np.ceil(momsdata.resolution))),int(np.ceil(momsdata.resolution)))
+        self.__zc = np.repeat(coord,int(np.ceil(momsdata.resolution*momsdata.resolution)))
         self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
                                 np.power(self.__zc,2.0))
 
         # from this, I will always setup vars for a rprof
         delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
-        self.__radial_boundary = np.linspace(delta_r,delta_r*(resolution/4./2.),int(np.ceil(resolution/4./2.)))
+        self.__radial_boundary = np.linspace(delta_r,delta_r*(momsdata.resolution/2.),int(np.ceil(momsdata.resolution/2.)))
     
         # these are the boundaries, now I need what is my "actual" r value
         self.radial_axis = self.__radial_boundary - delta_r/2.
 
         # might as well store the resolution of this MomsDataSet
-        self.resolution = momsdata.resolution
+        # self.resolution = int(np.ceil(momsdata.resolution))
+        # self.run_resolution = int(np.ceil(momsdata.resolution*4.))
 
         return 0
 
@@ -10078,6 +10073,18 @@ class MomsDataSet:
             return average_quantity, self.radial_axis, number_summed
         else:
             return average_quantity, self.radial_axis
+
+    def get_grid(self):
+        '''
+        Returns the xc, yc, zc and radius of the moments data cube currently held
+        in memory
+
+        Returns
+        -------
+        xc,yc,zc,radius: np.ndarray
+             
+        '''
+        return self.__xc,self.__yc,self.__zc,self.__radius
 
     def get(self, varloc, fname):
         '''
