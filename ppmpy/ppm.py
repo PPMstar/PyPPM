@@ -9693,7 +9693,7 @@ class MomsData():
 
         # how many extra "ghost" indices are there for each dimension?
         self.__ghost = 2
-        
+
         if self.__read_moms_cube(file_path) != 0:
             return
 
@@ -9763,10 +9763,10 @@ class MomsData():
             bool_array[-z_ghost:-1] = 0
             
             # collect the actual moms data
-            self.data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))))
+            self.__data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))))
 
             for i in range(np.shape(self.data)[0]):
-                self.data[i] = ghostdata[i][np.where(bool_array > 0)]
+                self.__data[i] = ghostdata[i][np.where(bool_array > 0)]
 
             # save the file path
             self.__file_path = file_path
@@ -9809,7 +9809,7 @@ class MomsData():
         '''
 
         # self.data contains flattened arrays that have ghost values
-        return self.data
+        return self.__data[varloc]
 
 class MomsDataSet:
     '''
@@ -9817,7 +9817,7 @@ class MomsDataSet:
     Moments reader from PPMstar 2.0.
     '''
     
-    def __init__(self, dir_name, verbose=3, ghost=2):
+    def __init__(self, dir_name, init_dump_read=0, verbose=3):
         '''
         Init method.
         
@@ -9828,13 +9828,10 @@ class MomsDataSet:
         cubes
         verbose: integer
             Verbosity level as defined in class Messenger.
-        ghost: integer
-            How many "ghost"/extra array indices are there in the data cube?
         '''        
         
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
-        self.__ghost = ghost
         
         # __find_dumps() will set the following variables,
         # if successful:
@@ -9842,6 +9839,9 @@ class MomsDataSet:
         self.__dumps = []
         if not self.__find_dumps(dir_name):
             return
+
+        # ok, there is an initial dump that is read to get the grid
+        self.__init_dump_read = init_dump_read
 
         # Now create the grid
         if self.__get_grid() != 0:
@@ -9944,19 +9944,19 @@ class MomsDataSet:
         self.__messenger.message(msg)
 
         # we have self.data, assume that self.data[0] is a coordinate
-        momsdata = self.get_dump(self.get_dump_list()[0])
-        coord = np.unique(momsdata.data[0])
+        self.get_dump(self.get_dump_list()[0])
+        coord = np.unique(self.momsdata.get(0))
 
         # there is all of the unique values, construct self.xc, self.yc, self.zc
-        self.__xc = np.tile(coord,int(np.ceil(momsdata.resolution*momsdata.resolution)))
-        self.__yc = np.tile(np.repeat(coord,int(np.ceil(momsdata.resolution))),int(np.ceil(momsdata.resolution)))
-        self.__zc = np.repeat(coord,int(np.ceil(momsdata.resolution*momsdata.resolution)))
+        self.__xc = np.tile(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
+        self.__yc = np.tile(np.repeat(coord,int(np.ceil(self.momsdata.resolution))),int(np.ceil(self.momsdata.resolution)))
+        self.__zc = np.repeat(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
         self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
                                 np.power(self.__zc,2.0))
 
         # from this, I will always setup vars for a rprof
         delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
-        self.__radial_boundary = np.linspace(delta_r,delta_r*(momsdata.resolution/2.),int(np.ceil(momsdata.resolution/2.)))
+        self.__radial_boundary = np.linspace(delta_r,delta_r*(self.momsdata.resolution/2.),int(np.ceil(self.momsdata.resolution/2.)))
     
         # these are the boundaries, now I need what is my "actual" r value
         self.radial_axis = self.__radial_boundary - delta_r/2.
@@ -10015,10 +10015,12 @@ class MomsDataSet:
         
         file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
                                                              dump, self.__run_id, dump)
-        
-        momsdata = MomsData(file_path,ghost=self.__ghost)
 
-        return momsdata
+        # dump tracker
+        self.__what_dump_am_i = dump
+
+        self.momsdata = MomsData(file_path)
+
     
     def get_rprof(self,varloc,fname,return_counts=False):
         '''
@@ -10027,8 +10029,9 @@ class MomsDataSet:
 
         Parameters
         ----------
-        varloc: integer 
+        varloc: integer or np.ndarray
             integer index of the quantity that is defined under whatever(varloc)
+            OR you can supply an array that contains data. This will be flattened
         fname: integer
             The dump number that you want a MomsData rprof for
         return_counts: bool
@@ -10044,8 +10047,12 @@ class MomsDataSet:
             if return_counts=True      
         '''
 
-        # get the grid from a momsdata cube
-        quantity = self.get(varloc,fname)
+        # check if we have array or not
+        if type(varloc) != int:
+            quantity = np.ravel(varloc)
+        else:
+            # get the grid from a momsdata cube
+            quantity = self.get(varloc,fname)
 
         # now, I loop through each radial_axis and determine average of quantity
         average_quantity = np.zeros(len(self.radial_axis))
@@ -10058,8 +10065,8 @@ class MomsDataSet:
         for i in range(len(average_quantity)):
 
             # I have two conditions, you are below the "top value" and above the "bottom value"
-            within_r = np.where(radius <= delta_r*(i+1) + eps)
-            above_r = np.where(radius >= delta_r*i - eps)
+            within_r = np.where(self.__radius <= delta_r*(i+1) + eps)
+            above_r = np.where(self.__radius >= delta_r*i - eps)
 
             # ok, now if they are within_r and above_r, we are good!
             within_above_r = np.intersect1d(within_r,above_r)
@@ -10108,9 +10115,13 @@ class MomsDataSet:
             If the MomsData corresponding to fname does not exist.
         '''
 
-        momsdata = self.get_dump(fname)
+        # quick check if we already have the momsdata in memory
+        if self.__what_dump_am_i == fname:
+            self.momsdata.get(varloc)
+        else:
+            self.momsdata = self.get_dump(fname)
 
-        if momsdata is not None:
-            return momsdata.get(varloc)
+        if self.momsdata is not None:
+            return self.momsdata.get(varloc)
         else:
             return None
