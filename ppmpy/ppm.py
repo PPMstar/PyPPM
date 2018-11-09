@@ -10022,7 +10022,7 @@ class MomsDataSet:
 
         self.momsdata = MomsData(file_path)
 
-    def get_rprof2(self,varloc,fname):
+    def get_rprof(self,varloc,fname):
         '''
         Returns a 1d radial profile of the variable that is defined at
         whatever(varloc) and the radial axis values
@@ -10034,9 +10034,6 @@ class MomsDataSet:
             OR you can supply an array that contains data. This will be flattened
         fname: integer
             The dump number that you want a MomsData rprof for
-        return_counts: bool
-            Do you want to have the number of counts used in averaging along them
-            radial axis?
         Returns
         -------
         rad_prof, radial_axis: np.ndarray
@@ -10062,70 +10059,12 @@ class MomsDataSet:
         radialbins = self.radial_axis + delta_r
         radialbins = np.insert(radialbins,0,0)
 
-        # we can find how many are in a radial bin and weight it with quantity
+        # This will apply a "mean" to the quantity that is binned by radialbins
+        # using the self.__radius values
         average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',radialbins)
 
-        # maybe doing it over the histogram twice is good?
-        return average_quantity
-
-    def get_rprof(self,varloc,fname,return_counts=False):
-        '''
-        Returns a 1d radial profile of the variable that is defined at
-        whatever(varloc) and the radial axis values
-
-        Parameters
-        ----------
-        varloc: integer or np.ndarray
-            integer index of the quantity that is defined under whatever(varloc)
-            OR you can supply an array that contains data. This will be flattened
-        fname: integer
-            The dump number that you want a MomsData rprof for
-        return_counts: bool
-            Do you want to have the number of counts used in averaging along them
-            radial axis?
-        Returns
-        -------
-        rad_prof, radial_axis: np.ndarray
-            Radial profile of whatever(varloc) and the Radial axis which
-            whatever(varloc) is averaged on
-        counts: np.ndarray
-            The number of cells used in the radial bins averaging can be returned
-            if return_counts=True      
-        '''
-
-        # check if we have array or not
-        if type(varloc) != int:
-            quantity = np.ravel(varloc)
-        else:
-            # get the grid from a momsdata cube
-            quantity = self.get(varloc,fname)
-
-        # now, I loop through each radial_axis and determine average of quantity
-        average_quantity = np.zeros(len(self.radial_axis))
-        number_summed = np.zeros(len(self.radial_axis))
-
-        # now delta_r was sorted out in the radial_values function, use a simple diff
-        delta_r = np.diff(self.__radial_boundary)[0]
-        eps = 1e-3 * delta_r
-
-        for i in range(len(average_quantity)):
-
-            # I have two conditions, you are below the "top value" and above the "bottom value"
-            within_r = np.where(self.__radius <= delta_r*(i+1) + eps)
-            above_r = np.where(self.__radius >= delta_r*i - eps)
-
-            # ok, now if they are within_r and above_r, we are good!
-            within_above_r = np.intersect1d(within_r,above_r)
-
-            # now we get the average quantity
-            average_quantity[i] = np.mean(quantity[within_above_r])
-            number_summed[i] = float(len(within_above_r))
-
-        # what do I return?
-        if return_counts:
-            return average_quantity, self.radial_axis, number_summed
-        else:
-            return average_quantity, self.radial_axis
+        # return the radprof and radial_axis
+        return average_quantity, self.radial_axis
 
     def get_grid(self):
         '''
