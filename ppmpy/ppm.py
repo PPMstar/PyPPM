@@ -80,6 +80,7 @@ import os
 import re
 import nugridpy.astronomy as ast
 import scipy.interpolate
+import scipy.stats
 from scipy import optimize
 from scipy import integrate as integrate
 import copy
@@ -9765,7 +9766,7 @@ class MomsData():
             # collect the actual moms data
             self.__data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))))
 
-            for i in range(np.shape(self.data)[0]):
+            for i in range(np.shape(self.__data)[0]):
                 self.__data[i] = ghostdata[i][np.where(bool_array > 0)]
 
             # save the file path
@@ -9944,7 +9945,7 @@ class MomsDataSet:
         self.__messenger.message(msg)
 
         # we have self.data, assume that self.data[0] is a coordinate
-        self.get_dump(self.get_dump_list()[0])
+        self.get_dump(self.__init_dump_read)
         coord = np.unique(self.momsdata.get(0))
 
         # there is all of the unique values, construct self.xc, self.yc, self.zc
@@ -10021,7 +10022,52 @@ class MomsDataSet:
 
         self.momsdata = MomsData(file_path)
 
-    
+    def get_rprof2(self,varloc,fname):
+        '''
+        Returns a 1d radial profile of the variable that is defined at
+        whatever(varloc) and the radial axis values
+
+        Parameters
+        ----------
+        varloc: integer or np.ndarray
+            integer index of the quantity that is defined under whatever(varloc)
+            OR you can supply an array that contains data. This will be flattened
+        fname: integer
+            The dump number that you want a MomsData rprof for
+        return_counts: bool
+            Do you want to have the number of counts used in averaging along them
+            radial axis?
+        Returns
+        -------
+        rad_prof, radial_axis: np.ndarray
+            Radial profile of whatever(varloc) and the Radial axis which
+            whatever(varloc) is averaged on
+        counts: np.ndarray
+            The number of cells used in the radial bins averaging can be returned
+            if return_counts=True      
+        '''
+
+        # check if we have array or not
+        if type(varloc) != int:
+            quantity = np.ravel(varloc)
+        else:
+            # get the grid from a momsdata cube
+            quantity = self.get(varloc,fname)
+
+        # ok, we have our radial_axis, we can count how many radius values
+        # fall into each bin
+
+        # first get the construct array of the "right edge"
+        delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+        radialbins = self.radial_axis + delta_r
+        radialbins = np.insert(radialbins,0,0)
+
+        # we can find how many are in a radial bin and weight it with quantity
+        average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',radialbins)
+
+        # maybe doing it over the histogram twice is good?
+        return average_quantity
+
     def get_rprof(self,varloc,fname,return_counts=False):
         '''
         Returns a 1d radial profile of the variable that is defined at
@@ -10119,6 +10165,11 @@ class MomsDataSet:
         if self.__what_dump_am_i == fname:
             self.momsdata.get(varloc)
         else:
+            # we need to delete the old momsdata, it could live in memory through
+            # some other reference
+            del self.momsdata
+
+            # assign a new momsdata
             self.momsdata = self.get_dump(fname)
 
         if self.momsdata is not None:
