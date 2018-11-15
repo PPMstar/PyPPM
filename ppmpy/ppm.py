@@ -1119,9 +1119,9 @@ class PPMtools:
                'D':D}
         return res
 
-    def boundary_radius(self, cycles, r_min, r_max, var='ut', \
-                        criterion='min_grad', var_value=None, \
-                        return_var_scale_height=False, eps=1e-9):
+    def bound_rad(self, cycles, r_min, r_max, var='ut', \
+                  criterion='min_grad', var_value=None, \
+                  return_var_scale_height=False, eps=1e-9):
         '''
         Method that finds the radius of a convective boundary.
         
@@ -1264,10 +1264,10 @@ class PPMtools:
         else:
             return rb
 
-    def entrainment_rate(self, cycles, r_min, r_max, var='ut', criterion='min_grad', \
-                         var_value=None, offset=0., burn_func=None, burn_args={}, \
-                         fit_interval=None, show_plots=True, ifig0=1, \
-                         fig_file_name=None, return_time_series=False):
+    def entr_rate(self, cycles, r_min, r_max, var='ut', criterion='min_grad', \
+                  var_value=None, offset=0., burn_func=None, burn_args={}, \
+                  fit_interval=None, show_plots=True, ifig0=1, \
+                  fig_file_name=None, return_time_series=False):
         '''
         Method for calculating entrainment rates.
         
@@ -1281,13 +1281,13 @@ class PPMtools:
             Maximum radius to for the boundary search.
         var : string
             Name of the variable to be used in the boundary search.
-            See PPMtools.boundary_radius().
+            See PPMtools.bound_rad().
         criterion : string
             Boundary definition criterion.
-            See PPMtools.boundary_radius() for allowed values.
+            See PPMtools.bound_rad() for allowed values.
         var_value : float
             Value of var to be searched for if criterion == 'value'.
-            See PPMtools.boundary_radius() for allowed values.
+            See PPMtools.bound_rad() for allowed values.
         offset : float
             Offset between the boundary radius and the upper integration
             limit for mass integration. The absolute value of the scale 
@@ -1326,8 +1326,8 @@ class PPMtools:
             as a function of time. mb is an array of zeroes if burn_func is None.
         '''
         print('Computing boundary radius...')
-        rb, Hv = self.boundary_radius(cycles, r_min, r_max, var=var, criterion=criterion, \
-                                      var_value=var_value, return_var_scale_height=True)
+        rb, Hv = self.bound_rad(cycles, r_min, r_max, var=var, criterion=criterion, \
+                                var_value=var_value, return_var_scale_height=True)
         rt = rb + offset*np.abs(Hv)
         print('Done.')
         
@@ -5519,7 +5519,7 @@ class yprofile(DataPlot, PPMtools):
         if return_burnt:
             return m_HHe_burnt
     '''        
-    def entrainment_rate_old(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
+    def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False, 
                          integrate_upwards=False, show_output=True, ifig0=1, \
                          silent=True, mdot_curve_label=None, file_name=None,
@@ -5711,7 +5711,7 @@ class yprofile(DataPlot, PPMtools):
         else:
             return mdot
 
-    def boundary_radius_old(self, cycles, r_min, r_max, var='vxz', \
+    def boundary_radius(self, cycles, r_min, r_max, var='vxz', \
                         criterion='min_grad', var_value=None):
         '''
         Calculates the boundary of the yprofile.
@@ -9188,7 +9188,7 @@ class RprofSet(PPMtools):
         pl.legend(loc=2)
         pl.tight_layout()
 
-    def entrainment_rate_old(self, cycles, r_min, r_max, airmu, cldmu, var='vxz', criterion='min_grad', \
+    def entrainment_rate(self, cycles, r_min, r_max, airmu, cldmu, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False, 
                          integrate_upwards=False, show_output=True, ifig0=1, \
                          silent=True, mdot_curve_label=None, file_name=None,
