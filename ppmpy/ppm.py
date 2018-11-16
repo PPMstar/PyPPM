@@ -9945,7 +9945,7 @@ class MomsDataSet:
         self.__messenger.message(msg)
 
         # we have self.data, assume that self.data[0] is a coordinate
-        self.get_dump(self.__init_dump_read)
+        self.momsdata = self.get_dump(self.__init_dump_read)
         coord = np.unique(self.momsdata.get(0))
 
         # there is all of the unique values, construct self.xc, self.yc, self.zc
@@ -10020,7 +10020,7 @@ class MomsDataSet:
         # dump tracker
         self.__what_dump_am_i = dump
 
-        self.momsdata = MomsData(file_path)
+        return MomsData(file_path)
 
     def get_rprof(self,varloc,fname):
         '''
