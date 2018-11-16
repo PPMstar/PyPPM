@@ -1006,7 +1006,7 @@ class PPMtools:
                 ttl += '[{:d}, {:d}]'.format(cycles1_list[0], cycles1_list[-1])
             else:
                 ttl += '{:d}'.format(cycles1_list[0])
-            ttl += ' – '
+            ttl += ' - '
             if len(cycles2_list) > 1:
                 ttl += '[{:d}, {:d}]'.format(cycles2_list[0], cycles2_list[-1])
             else:
