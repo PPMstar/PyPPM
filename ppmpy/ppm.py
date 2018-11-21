@@ -80,6 +80,7 @@ import os
 import re
 import nugridpy.astronomy as ast
 import scipy.interpolate
+import scipy.stats
 from scipy import optimize
 from scipy import integrate as integrate
 import copy
@@ -9670,3 +9671,447 @@ class Rprof:
                 err = "Unknown resolution setting '{:s}'.".format(resolution)
                 self.__messenger.error(err)
 
+class MomsData():
+    '''
+    MomsData reads in a single briquette averaged data cube which contains up
+    to 10 user-defined variables. It is assumed that whatever(0) = xc
+    '''
+    
+    def __init__(self, file_path, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the .rprof file.
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''        
+        
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+
+        # how many extra "ghost" indices are there for each dimension?
+        self.__ghost = 2
+
+        if self.__read_moms_cube(file_path) != 0:
+            return
+
+        self.__is_valid = True
+        
+    def __read_moms_cube(self, file_path):
+        '''
+        Reads a single .aaa uncompressed data cube file written by PPMstar 2.0.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the .aaa data cube file
+            
+        Returns
+        -------
+        int
+            0 on success.
+        NoneType
+            Something failed.
+        ''' 
+        
+        try:
+            tempdata = np.fromfile(file_path,dtype='float32',count=-1,sep="")
+
+            # ok this is one large array with 10 variables of some length with
+            # some amount of ghost values. What's the resolution?
+            self.run_resolution = int(np.ceil(4. * (np.power(np.shape(tempdata)[0] / 10.,1/3.) - self.__ghost)))
+            self.resolution = int(np.ceil(self.run_resolution/4.))
+
+            # Now I can reshape this data array in 10 flattened arrays
+            ghostdata = tempdata.reshape((10,int(np.ceil((self.resolution + self.__ghost)**3))))
+            del tempdata
+
+            # I have ghosts... lets construct a bool array for what values to keep
+            bool_array = np.ones(np.shape(ghostdata)[1])
+
+            # now x repeats every length of the cube
+            x_ghost = int(np.ceil(self.resolution + self.__ghost))
+            x_loop = int(np.ceil(np.shape(ghostdata)[1]/x_ghost))
+
+            for i in range(x_loop):
+                # for the negative ghost values
+                bool_array[i*x_ghost] = 0
+
+                # for the positive ghost values
+                bool_array[(x_ghost-1) + i*x_ghost] = 0
+
+            # now y goes a length per value and repeats that pattern
+            y_ghost = int(np.ceil(self.resolution + self.__ghost))
+            y_loop = int(np.ceil(np.shape(ghostdata)[1]/y_ghost))
+
+            for i in range(y_loop):
+                # for the negative ghost values
+                bool_array[y_ghost*(i*y_ghost):(y_ghost*i*y_ghost)+y_ghost] = 0
+
+                # for the positive ghost values
+                bool_array[(((y_ghost-1) + y_ghost*i)*y_ghost):(((y_ghost-1)+y_ghost*i)*y_ghost + y_ghost)] = 0
+
+            # now z iterates through a single length in two nested loops
+            z_ghost = int(np.ceil(np.power(self.resolution + self.__ghost,2.0)))
+
+            # for the negative ghost values
+            bool_array[0:z_ghost] = 0
+
+            # for the positive ghost values
+            bool_array[-z_ghost:-1] = 0
+            
+            # collect the actual moms data
+            self.__data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))))
+
+            for i in range(np.shape(self.__data)[0]):
+                self.__data[i] = ghostdata[i][np.where(bool_array > 0)]
+
+            # save the file path
+            self.__file_path = file_path
+
+        except IOError as e:
+            err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
+            self.__messenger.error(err)
+            return None
+        
+        
+        return 0
+
+    def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        boolean
+            True if the instance is valid. False otherwise.
+        '''
+        
+        return self.__is_valid
+     
+
+    def get(self, varloc):
+        '''
+        Returns a 3d array of the variable that is defined at whatever(varloc).
+        The shape is (3,resolution/4) with ordering x,y,z on first index
+
+        Parameters
+        ----------
+        varloc: integer
+            integer index of the quantity that is defined under whatever(varloc)
+        
+        Returns
+        -------
+        np.ndarray
+            Variable at whatever(varloc)
+        '''
+
+        # self.data contains flattened arrays that have ghost values
+        return self.__data[varloc]
+
+class MomsDataSet:
+    '''
+    MomsDataSet contains a set of dumps of MomsData from a single run of the
+    Moments reader from PPMstar 2.0.
+    '''
+    
+    def __init__(self, dir_name, init_dump_read=0, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for .aaa uncompressed moms data
+        cubes
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''        
+        
+        self.__is_valid = False
+        self.__messenger = Messenger(verbose=verbose)
+        
+        # __find_dumps() will set the following variables,
+        # if successful:
+        self.__dir_name = ''
+        self.__dumps = []
+        if not self.__find_dumps(dir_name):
+            return
+
+        # ok, there is an initial dump that is read to get the grid
+        self.__init_dump_read = init_dump_read
+
+        # Now create the grid
+        if self.__get_grid() != 0:
+            return
+        
+        self.__is_valid = True
+
+    def __find_dumps(self, dir_name):
+        '''
+        Searches for .aaa files and creates an internal list of dump numbers
+        available.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for .aaa files.
+        
+        Returns
+        -------
+        boolean
+            True when a set of .aaa files has been found. False otherwise.
+        '''
+        
+        if not os.path.isdir(dir_name):
+            err = "Directory '{:s}' does not exist.".format(dir_name)
+            self.__messenger.error(err)
+            return False
+        
+        # join() will add a trailing slash if not present.
+        self.__dir_name = os.path.join(dir_name, '')
+
+        # ok this directory contains bobs like directory structure, search in
+        # sub-directories for actual files, grab dumps from file names
+        moms_files = []
+
+        for dirpath, dirnames, filenames in os.walk(self.__dir_name):
+            for filename in [f for f in filenames if f.endswith('.aaa')]:
+                moms_files.append(os.path.join(dirpath,filename))
+
+        if len(moms_files) == 0:
+            err = "No .aaa files found in '{:s}'.".format(self.__dir_name)
+            self.__messenger.error(err)
+            return False
+        
+        moms_files = [os.path.basename(moms_files[i]) \
+                       for i in range(len(moms_files))]
+        
+        # run_id is always separated from the rest of the file name
+        # by a single dash.
+        self.__run_id = moms_files[0].split('-')[0]
+        for i in range(len(moms_files)):
+            split1 = moms_files[i].split('-')
+            if split1[0] != self.__run_id:
+                wrng = (".aaa files with multiple run ids found in '{:s}'."
+                        "Using only those with run id '{:s}'.").\
+                       format(self.__dir_name, self.__run_id)
+                self.__messenger.warning(wrng)
+                continue
+            
+            # Skip files that do not fit the rprof naming pattern.
+            if len(split1) < 2:
+                continue
+
+            # Get rid of the extension and try to parse the dump number.
+            # Skip files that do not fit the rprof naming pattern.
+            split2 = split1[1].split('.')
+            try:
+                # there is always BQav prefix before dump
+                dump_num = int(split2[0][4:])
+                self.__dumps.append(dump_num)
+            except:
+                continue
+        
+        self.__dumps = sorted(self.__dumps)
+        msg = "{:d} .aaa files found in '{:s}.\n".format(len(self.__dumps), \
+              self.__dir_name)
+        msg += "Dump numbers range from {:d} to {:d}.".format(\
+               self.__dumps[0], self.__dumps[-1])
+        self.__messenger.message(msg)
+        if (self.__dumps[-1] - self.__dumps[0] + 1) != len(self.__dumps):
+            wrng = 'Some dumps are missing!'
+            self.__messenger.warning(wrng)
+
+        return True
+
+    def __get_grid(self):
+        '''
+        Constructs the PPMStar grid from the saved xc in whatever(0)
+        
+        Returns
+        -------
+        int
+            0 on success.
+        NoneType
+            Something failed.
+        '''
+
+        # lets send a message to the user about this
+        msg = "The PPMstar grid is being constructed, this can take a moment"
+        self.__messenger.message(msg)
+
+        # we have self.data, assume that self.data[0] is a coordinate
+        self.momsdata = self.get_dump(self.__init_dump_read)
+        coord = np.unique(self.momsdata.get(0))
+
+        # there is all of the unique values, construct self.xc, self.yc, self.zc
+        self.__xc = np.tile(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
+        self.__yc = np.tile(np.repeat(coord,int(np.ceil(self.momsdata.resolution))),int(np.ceil(self.momsdata.resolution)))
+        self.__zc = np.repeat(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
+        self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
+                                np.power(self.__zc,2.0))
+
+        # from this, I will always setup vars for a rprof
+        delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
+        self.__radial_boundary = np.linspace(delta_r,delta_r*(self.momsdata.resolution/2.),int(np.ceil(self.momsdata.resolution/2.)))
+    
+        # these are the boundaries, now I need what is my "actual" r value
+        self.radial_axis = self.__radial_boundary - delta_r/2.
+
+        # might as well store the resolution of this MomsDataSet
+        # self.resolution = int(np.ceil(momsdata.resolution))
+        # self.run_resolution = int(np.ceil(momsdata.resolution*4.))
+
+        return 0
+
+    def is_valid(self):
+        '''
+        Checks if the instance is valid, i.e. fully initialised.
+        
+        Returns
+        -------
+        boolean
+            True if the instance is valid. False otherwise.
+        '''
+        
+        return self.__is_valid
+    
+    def get_run_id(self):
+        '''
+        Returns the run identifier that precedes the dump number in the names
+        of .rprof files.
+        '''
+        
+        return str(self.__run_id)
+        
+    def get_dump_list(self):
+        '''
+        Returns a list of dumps available.
+        '''
+        
+        return list(self.__dumps)
+    
+    def get_dump(self, dump):
+        '''
+        Returns a single dump.
+        
+        Parameters
+        ----------
+        dump: integer
+            
+        Returns
+        -------
+        MomsData
+            MomsData object corresponding to the selected dump.
+        '''
+        
+        if dump not in self.__dumps:
+            err = 'Dump {:d} is not available.'.format(dump)
+            self.__messenger.error(err)
+            return None
+        
+        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
+                                                             dump, self.__run_id, dump)
+
+        # dump tracker
+        self.__what_dump_am_i = dump
+
+        return MomsData(file_path)
+
+    def get_rprof(self,varloc,fname):
+        '''
+        Returns a 1d radial profile of the variable that is defined at
+        whatever(varloc) and the radial axis values
+
+        Parameters
+        ----------
+        varloc: integer or np.ndarray
+            integer index of the quantity that is defined under whatever(varloc)
+            OR you can supply an array that contains data. This will be flattened
+        fname: integer
+            The dump number that you want a MomsData rprof for
+        Returns
+        -------
+        rad_prof, radial_axis: np.ndarray
+            Radial profile of whatever(varloc) and the Radial axis which
+            whatever(varloc) is averaged on
+        counts: np.ndarray
+            The number of cells used in the radial bins averaging can be returned
+            if return_counts=True      
+        '''
+
+        # check if we have array or not
+        if type(varloc) != int:
+            quantity = np.ravel(varloc)
+        else:
+            # get the grid from a momsdata cube
+            quantity = self.get(varloc,fname)
+
+        # ok, we have our radial_axis, we can count how many radius values
+        # fall into each bin
+
+        # first get the construct array of the "right edge"
+        delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+        radialbins = self.radial_axis + delta_r
+        radialbins = np.insert(radialbins,0,0)
+
+        # This will apply a "mean" to the quantity that is binned by radialbins
+        # using the self.__radius values
+        average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',radialbins)
+
+        # return the radprof and radial_axis
+        return average_quantity, self.radial_axis
+
+    def get_grid(self):
+        '''
+        Returns the xc, yc, zc and radius of the moments data cube currently held
+        in memory
+
+        Returns
+        -------
+        xc,yc,zc,radius: np.ndarray
+             
+        '''
+        return self.__xc,self.__yc,self.__zc,self.__radius
+
+    def get(self, varloc, fname):
+        '''
+        Returns variable var at a specific point in the simulation's time
+        evolution.
+        
+        Parameters
+        ----------
+        varloc: int
+            Index location of the variable you want
+        fname: integer/float
+            Dump number or time in seconds depending on the value of
+            num_type.            
+            
+        Returns
+        -------
+        numpy.ndarray
+            Variable in index varloc as given by MomsData.get() if the MomsData
+        corresponding to fname exists.
+        NoneType
+            If the MomsData corresponding to fname does not exist.
+        '''
+
+        # quick check if we already have the momsdata in memory
+        if self.__what_dump_am_i == fname:
+            self.momsdata.get(varloc)
+        else:
+            # we need to delete the old momsdata, it could live in memory through
+            # some other reference
+            del self.momsdata
+
+            # assign a new momsdata
+            self.momsdata = self.get_dump(fname)
+
+        if self.momsdata is not None:
+            return self.momsdata.get(varloc)
+        else:
+            return None
