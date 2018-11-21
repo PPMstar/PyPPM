@@ -79,7 +79,7 @@ import nugridpy.mesa as ms
 import os
 import re
 import nugridpy.astronomy as ast
-import scipy.interpolate as interpolate
+import scipy.interpolate
 from scipy import optimize
 from scipy import integrate as integrate
 import copy
@@ -246,8 +246,1284 @@ def cdiff(x):
     
     return dx
 
+def interpolate(x, y, x_new, kind='linear'):
+    inverse_order = (x[-1] < x[0])
+    xx = x[::-1] if inverse_order else x
+    yy = y[::-1] if inverse_order else y
 
-class yprofile(DataPlot):
+    if kind == 'linear':
+        int_func = scipy.interpolate.interp1d(xx, yy, fill_value='extrapolate')
+        y_new = int_func(x_new)
+    elif kind == 'cubic':
+        cs = scipy.interpolate.CubicSpline(xx, yy, extrapolate=False)
+        y_new = cs(x_new)
+    else:
+        print("Error: Unknown interpolation kind '{:s}'.".format(kind))
+        return None
+    
+    return y_new
+
+def any2list(arg):
+    if isinstance(arg, str):
+        return [arg, ]
+    try:
+        return list(arg)
+    except TypeError:
+        return [arg, ]
+
+
+class PPMtools:
+    def __init__(self, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''
+
+        self.__messenger = Messenger(verbose=verbose)
+        self.__isyprofile = isinstance(self, yprofile)
+        self.__isRprofSet= isinstance(self, RprofSet)
+
+        # This sets which method computes which quantity.
+        self.__compute_methods = {'enuc_C12pg':self.compute_enuc_C12pg, \
+                                  'Hp':self.compute_Hp, \
+                                  'm':self.compute_m, \
+                                  'mt':self.compute_mt, \
+                                  'r4rho2':self.compute_r4rho2, \
+                                  'rhodot_C12pg':self.compute_rhodot_C12pg, \
+                                  'T9':self.compute_T9, \
+                                  'T9corr':self.compute_T9corr, \
+                                  'Xcld':self.compute_Xcld, \
+                                  'Xdot_C12pg':self.compute_Xdot_C12pg}
+        self.__computable_quantities = self.__compute_methods.keys()
+
+    def isyprofile(self):
+        return self.__isyprofile
+
+    def isRprofSet(self):
+        return self.__isRprofSet
+
+    def get_computable_quantities(self):
+        '''
+        Returns a list of computable quantities.
+        '''
+        
+        # Return a copy.
+        return list(self.__computable_quantities)
+
+    def compute(self, quantity, fname, num_type='ndump', extra_args={}):
+        if quantity in self.__computable_quantities:
+            m = self.__compute_methods[quantity]
+            return m(fname, num_type=num_type, **extra_args)
+        else:
+            self.__messenger.error("Unknown quantity '{:s}'.".format(quantity))
+            print('The following quantities can be computed:')
+            print(self.get_computable_quantities())
+
+    def compute_enuc_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
+                           atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
+                           T9corr_params={}, Q=1.944, corr_fact=1.):
+        if self.__isyprofile:
+            fv = self.get('FV H+He', fname=fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname=fname, num_type=num_type, resolution='l')
+            rhocld = self.get('Rho H+He', fname=fname, num_type=num_type, \
+                              resolution='l')
+            rhoair = self.get('RHOconv', fname=fname, num_type = num_type, \
+                              resolution='l')
+            
+            if fkair is None or fkcld is None or atomicnoair is None or \
+               atomicnocld is None:
+                self.__messenger.error('Yprofiles do not contain the values of fkair, '
+                                       'fkcld, atomicnoair, and atomicnocld. You have '
+                                       'to provide via optional parameters.')
+                return None
+        
+        if self.__isRprofSet:
+            fv = self.get('FV', fname=fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho0', fname=fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname=fname, num_type=num_type, resolution='l')
+            
+            # We allow the user to replace the following values read from the .rprof
+            # files should those ever become wrong/unavailable.
+            if fkair is None:
+                fkair = self.get('fkair', fname, num_type=num_type)
+            
+            if fkcld is None:
+                fkcld = self.get('fkcld', fname, num_type=num_type)
+            
+            if atomicnoair is None:
+                atomicnoair = self.get('atomicnoair', fname, num_type=num_type)
+            
+            if atomicnocld is None:
+                atomicnocld = self.get('atomicnocld', fname, num_type=num_type)
+
+            if airmu is None:
+                airmu = self.get('airmu', fname, num_type=num_type)
+
+            if cldmu is None:
+                cldmu = self.get('cldmu', fname, num_type=num_type)
+            
+            # Individual densities of the two ideal gases assuming thermal and
+            # pressure equlibrium.
+            rhocld = rho/(fv + (1. - fv)*airmu/cldmu)
+            rhoair = rho/(fv*cldmu/airmu + (1. - fv))
+
+        # compute_T9corr() returns the uncorrected temperature if no correction
+        # parameters are supplied.
+        T9 = self.compute_T9corr(fname=fname, num_type=num_type, airmu=airmu, \
+                                 cldmu=cldmu, **T9corr_params)
+        TP13 = T9**(1./3.)
+        TP23 = TP13*TP13
+        TP12 = np.sqrt(T9)
+        TP14 = np.sqrt(TP12)
+        TP32 = T9*TP12
+        TM13 = 1./TP13
+        TM23 = 1./TP23
+        TM32 = 1./TP32
+        
+        T9inv = 1. / T9
+        thyng = 2.173913043478260869565 * T9
+        vc12pg = 20000000.*TM23 * np.exp(-13.692*TM13 - thyng*thyng)
+        vc12pg = vc12pg * (1. + T9*(9.89-T9*(59.8 - 266.*T9)))
+        thing2 = vc12pg + TM23 * 1.0e5 * np.exp(-4.913*T9inv) + \
+                          TM32 * 4.24e5 * np.exp(-21.62*T9inv)
+        
+        thing2[np.where(T9 < .0059)] = 0.
+        thing2[np.where(T9 > 0.75)] = 200.
+        
+        vc12pg = thing2 * rho * 1000.
+        
+        v = 1./ rho
+        atomicnocldinv = 1./atomicnocld
+        atomicnoairinv = 1./atomicnoair
+        
+        Y1 =  rhocld * fv * v * atomicnocldinv
+        Y2 =  rhoair * (1. - fv) * v * atomicnoairinv
+        
+        CN = 96.480733
+        # RA (6 Sep 2018): I have to comment out the following part of the code,
+        # because the right instantaneous value of dt is currently unavailable.
+        # 
+        #reallysmall=1e-14
+        #if use_dt:
+        #    # We want the average rate during the current time step.
+        #    # If the burning is too fast all the stuff available burns
+        #    # in a fraction of the time step. We do not allow to burn 
+        #    # more than what is available, so the average burn rate is
+        #    # lower than then instantaneous one.
+        #    thing3 = fkair * Y1 * Y2 * vc12pg * dt
+        #    thing3[where(Y1 < reallysmall)] = 0.
+        #    thing2 = np.min(np.array((thing3, Y1)), axis = 0)
+        #    
+        #    #for i in range(len(Y1)):
+        #    #    print '{:d}   {:.1e}   {:.1e}   {:.1e}'.format(i, Y1[i], thing3[i], Y1[i]/thing3[i])
+        #    
+        #    DY = fkcld * thing2
+        #    enuc = DY * rho * CN * Q / dt
+        #else:
+        
+        # We want the instantaneous burning rate. This does not
+        # depend on how much stuff is available.
+        thing3 = fkair * Y1 * Y2 * vc12pg
+
+        DY = fkcld * thing3
+        enuc = DY * rho * CN * Q
+        
+        # This factor can account for the heating bug if present.
+        enuc *= corr_fact
+        
+        return enuc
+    
+    def compute_Hp(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            r = self.get('Y', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+
+        Hp = np.abs(cdiff(r))/(np.abs(cdiff(np.log(p))) + 1e-100)
+        return Hp
+
+    def compute_m(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            r = self.get('Y', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+
+        dm = -4.*np.pi*r**2*cdiff(r)*rho
+        m = np.cumsum(dm)
+
+        # We store everything from the surface to the core.
+        m = m[-1] - m
+
+        return m
+
+    def compute_mt(self, fname, num_type='ndump'):
+        m = self.compute_m(fname, num_type=num_type)
+        mt = m[0] - m
+
+        return mt
+    
+    def compute_r4rho2(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            r = self.get('Y', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+
+        return r**4*rho**2
+    
+    def compute_rhodot_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
+                             atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
+                             T9corr_params={}):
+        # We allow the user to replace the following values read from the .rprof
+        # files should those ever become wrong/unavailable.
+        if fkcld is None:
+            fkcld = self.get('fkcld', fname, num_type=num_type)
+        
+        if atomicnocld is None:
+            atomicnocld = self.get('atomicnocld', fname, num_type=num_type)
+
+        # It does not matter what Q value we use, but we have to make sure that
+        # compute_enuc_C12pg() uses the same Q as we use in this method.
+        Q = 1.944
+        corr_fact = 1.
+        enuc = self.compute_enuc_C12pg(fname, num_type=num_type, fkair=fkair, \
+                                       fkcld=fkcld, atomicnoair=atomicnoair, \
+                                       atomicnocld=atomicnocld, airmu=airmu, \
+                                       cldmu=cldmu, T9corr_params=T9corr_params, \
+                                       Q=Q)
+        
+        # MeV in code units.
+        MeV = 1.60218e-6/1e43
+        
+        # Reaction rate per unit volume.
+        ndot = enuc/(Q*MeV)
+        
+        # Remember: atomicno is actually the mass number.
+        # fkcld is the number fraction of H nucleii in the 'cloud' fluid.
+        # X_H is the mass fraction of H in the 'cloud' fluid.
+        atomicnoH = 1.
+        X_H = fkcld*atomicnoH/atomicnocld
+        
+        # Atomic mass unit in PPMstar units.
+        amu = 1.660539040e-24/1e27
+        
+        # The nominator is the mass burning rate of H per unit volume.
+        # PPMstar cannot remove H from the 'cloud' fluid. When some mass M_H
+        # of H is burnt, PPMstar actually removes M_H/X_H units of mass of
+        # the 'cloud' fluid. The sign is negative, because mass is removed.
+        rhodot = -atomicnoH*amu*ndot/X_H
+        
+        return rhodot
+    
+    def compute_T9(self, fname, num_type='ndump', airmu=None, cldmu=None):
+        if self.__isyprofile:
+            if (airmu is None or cldmu is None):
+                self.__messenger.error('airmu and cldmu parameters are '
+                                       'required to compute T9 for a '
+                                       'yprofile.')
+                
+            fv = self.get('FV H+He', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+        
+        muair = airmu
+        mucld = cldmu
+        
+        if self.__isRprofSet:
+            # We allow the user to replace the mu values read from the .rprof
+            # files should those ever become wrong/unavailable.
+            if muair is None:
+                muair = self.get('airmu', fname, num_type=num_type)
+            
+            if mucld is None:
+                mucld = self.get('cldmu', fname, num_type=num_type)
+        
+            fv = self.get('FV', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+        
+        # mu of a mixture of two ideal gases coexisting in thermal and
+        # pressure equlibrium.
+        mu = (1. - fv)*muair + fv*mucld
+        
+        # Gas constant as defined in PPMstar.
+        Rgasconst = 8.314462
+        
+        # p = rho*Rgasconst*T9/mu
+        T9 = (mu/Rgasconst)*(p/rho)
+        
+        return T9
+    
+    def compute_T9corr(self, fname, num_type='ndump', kind=0, params=None, \
+                       airmu=None, cldmu=None):
+        T9 = self.compute_T9(fname, num_type=num_type, airmu=airmu, \
+                             cldmu=cldmu)
+        
+        T9corr = None
+        if kind == 0:
+            T9corr = T9
+        elif kind == 1:
+            if params is None or 'a' not in params or 'b' not in params:
+                self.__messenger.error("Parameters 'a' and 'b' are required "
+                                       "with kind = 1 (T9corr = a*T9**b).")
+            else:
+                T9corr = params['a']*T9**params['b']
+        else:
+            self.__messenger.error("T9 correction of kind = {:d} does "
+                                   "not exist.".format(kind))
+        
+        return T9corr
+    
+    def compute_Xcld(self, fname, num_type='ndump'):
+        # Different variables are available depending on data souce, so Xcld
+        # is computed in different ways. Both results will be biased, although
+        # in different ways, because the average of a product is not the
+        # product of the corresponding averages.
+
+        if self.__isyprofile:
+            fv = self.get('FV H+He', fname, num_type=num_type, resolution='l')
+            rho_cld = self.get('Rho H+He', fname, num_type=num_type, resolution='l')
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            Xcld = fv*rho_cld/rho
+
+        if self.__isRprofSet:
+            fv = self.get('FV', fname, num_type=num_type, resolution='l')
+            airmu = self.get('airmu', fname, num_type=num_type)
+            cldmu = self.get('cldmu', fname, num_type=num_type)
+            Xcld = fv/((1. - fv)*(airmu/cldmu) + fv)
+
+        return Xcld
+    
+    def compute_Xdot_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
+                           atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
+                           T9corr_params={}):
+        rhodot = self.compute_rhodot_C12pg(fname=fname, num_type=num_type, fkair=fkair, \
+                                           fkcld=fkcld, atomicnoair=atomicnoair, \
+                                           atomicnocld=atomicnocld, airmu=airmu, \
+                                           cldmu=cldmu, T9corr_params=T9corr_params)
+        
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+                
+        Xdot = rhodot/rho
+        
+        return Xdot
+
+    def average_profiles(self, fname, var, num_type='ndump', func=None, \
+                         lagrangian=False, data_rlim=None, extra_args={}):
+        '''
+        Method to compute time-averaged radial profiles of any quantity.
+        Individual profiles can be stacked either in an Eulerian or in a
+        Lagrangian frame.
+        
+        Parameters
+        ----------
+        fname : int or list
+            Cycle number(s) or time value(s) to be used to in the time-
+            averaging.
+        var : str or list
+            Name of the variable whose radial profiles are to be averaged.
+            This can be anything if `func` is not None.
+        num_type : str
+            Type of fname, see yprofile.get() and RProf.get().
+        func : function
+            func(fname, num_type=num_type, **extra_args) can be any user-
+            defined function that returns a radial profile. Any number of
+            parameters can be passed to this function via `extra_args`.
+            `var` should be a single string if func is not None.
+        lagrangian : bool
+            All radial profiles will be interpolated on the mass scale `mt`
+            (integrated from the top inwards) that corresponds to t = 0.
+        data_rlim : list
+            List with two elements specifying what radial range should be
+            used in the analysis. If `lagrangian` is True the mass range
+            corresponding to this radial range at t = 0 will be used.
+        extra_args : dictionary
+            Extra arguments needed for either `func` or `self.compute` to
+            work.
+ 
+        Returns
+        -------
+        avg_profs : dictionary
+            Dictionary containing the time-averaged profiles, the radial
+            scale and, if `lagrangian` is True, also the mass scale `mt`
+            (integrated from the top inwards).
+        '''
+        fname_list = any2list(fname)
+        var_list = any2list(var)
+        avg_profs = {}
+
+        # The grid is assumed to be static, so we get the radial
+        # scale only once at fname_list[0].
+        if self.__isyprofile:
+            radius_variable = 'Y'
+            r = self.get(radius_variable, fname_list[0], resolution='l')
+            gettable_variables = self.getDCols()
+
+        if self.__isRprofSet:
+            radius_variable = 'R'
+            r = self.get(radius_variable, fname_list[0], resolution='l')
+            rp = self.get_dump(fname_list[0])
+            gettable_variables = rp.get_anyr_variables()
+
+        computable_quantities = self.__computable_quantities
+        
+        data_slice = range(0, len(r))
+        if data_rlim is not None:
+            idx0 = np.argmin(np.abs(r - data_rlim[0]))
+            idx1 = np.argmin(np.abs(r - data_rlim[1]))
+            
+            # We store everything from the surface to the core.
+            data_slice = range(idx1, idx0+1)
+        
+        if lagrangian:
+            # Get the initial mass scale. Everything will be interpolated onto 
+            # this scale. We use mt, i.e. mass integrated from the top, because
+            # the density stratification is extreme in some cases. There are
+            # also some cases (PPMstar 1.0 run), in which some mass leaks in
+            # through the inner crystal sphere and the total mass is not
+            # conserved. There is no such issue with the outer crystal sphere.
+            mt0 = self.compute('mt', 0, num_type='t')
+            if data_rlim is not None:
+                mt0 = mt0[data_slice]
+            avg_profs['mt'] = mt0
+        
+        for v in var_list:
+            avg_profs[v] = np.zeros(data_slice[-1] - data_slice[0] + 1)
+            avg_profs[radius_variable] = np.zeros(data_slice[-1] - \
+                                                  data_slice[0] + 1)
+            
+            for i, fnm in enumerate(fname_list):
+                if func is not None:
+                    data = func(fnm, num_type=num_type, **extra_args)
+                elif v in gettable_variables:
+                    data = self.get(v, fnm, num_type=num_type, resolution='l')
+                elif v in computable_quantities:
+                    data = self.compute(v, fnm, num_type=num_type, \
+                                        extra_args=extra_args)
+                else:
+                    self.__messenger.warning("Unknown quantity '{:s}'".\
+                         format(v))
+                    break
+                
+                rr = r
+                if lagrangian:
+                    # Interpolate everything on the initial mass scale.
+                    mt = self.compute('mt', fnm, num_type=num_type)
+                    data = interpolate(mt, data, mt0)
+                    rr = interpolate(mt, rr, mt0)
+                
+                avg_profs[v] += data
+                avg_profs[radius_variable] += rr
+                    
+            avg_profs[v] /= float(len(fname_list))
+            avg_profs[radius_variable] /= float(len(fname_list))
+        
+        return avg_profs
+    
+    def DsolveLgr(self, cycles1, cycles2, var='Xcld', src_func=None, src_args={}, \
+                  src_correction=False, integrate_upwards=False, data_rlim=None, \
+                  show_plots=True, ifig0=1, run_id='', logmt=False, mtlim=None, \
+                  rlim=None, plot_var=True, logvar=False, varlim=None, \
+                  sigmalim=None, Dlim=None, fit_rlim=None):
+        '''
+        Method that inverts the Lagrangian diffusion equation and computes
+        the diffusion coefficient based on radial profiles of the mass
+        fraction Xcld of the 'cloud' fluid (although other variables can
+        also be used) at two different points in time. The diffusion
+        coefficient is assumed to vanish at the outermost data point (or
+        innermost if integrate_upwards == True).
+        
+        Parameters
+        ----------
+        cycles1 : int or list
+            Cycle number(s) to be used to construct the initial radial
+            profile of `var`.
+        cycles2 : int or list
+            Cycle number(s) to be used to construct the final radial
+            profile of `var`.
+        var : str
+            Name of the variable whose radial profiles are to be used in
+            the analysis.
+        src_func : function
+            src_func(fname, num_type=num_type, **extra_args) should return
+            the radial profile of the rate of change of `var` for the point
+            in time specified by `fname` and `num_type`. This function will
+            be called with any number of extra arguments specified in the
+            dictionary `src_args`.
+        src_args : dictionary
+            Extra arguments needed for `src_func` to work.
+        src_correction : bool
+            Because `src_func` is only sampled at some number of discrete
+            points in time, its discrete time integral will not exactly
+            match the change in the radial profiles of `var`, which will
+            appear in the analysis as some diffusive flux unaccounted for.
+            This option allows the user to have `src_func` multiplied by
+            a factor that guarantees perfect balance. This factor is
+            reported in the output and a warning will be issued if it
+            differs from unity significantly (<2./3. or > 3./2.).
+        integrate_upwards : bool
+            If True the usual integration for the downward diffusive flux
+            starting from the outermost point inwards will be done from the
+            innermost point outwards.
+        data_rlim : list
+            List with two elements specifying what radial range should be
+            used in the analysis. The mass range corresponding to this
+            radial range at t = 0 will be used.
+        show_plots : bool
+            Should any plots be shown?
+        ifig0 : int
+            The matplotlib figures used for graphical output will have
+            indices of ifig0, ifig0+1, and ifig0+2.
+        run_id : str
+            Run identifier to be use in the title of the plots.
+        logmt : bool
+            Should the scale of mass integrated from the top be logarithmic?
+        mtlim : list
+            Plotting limits for the mass integrated from the top.
+        rlim : list
+            Plotting limits for the radius.
+        plot_var : bool
+            Should the profiles of `var` be shown in the plots?
+        logvar : bool
+            Should the scale of `var` be logarithmic?
+        varlim : list
+            Plotting limits for `var`.
+        sigmalim : list
+            Plotting limits for the Lagrangian diffusion coefficient `sigma`.
+        Dlim : list
+            Plotting limits for the Eulerian diffusion coefficient `D`.
+        fit_rlim : list
+            Radial range for the fitting of the f_CBM model.
+            
+        Returns
+        -------
+        res : dictionary
+            Dictionary containing the Lagrangian and Eulerian diffusion
+            coefficients (`sigma`, `D`), mass scale `mt`, time-averaged source
+            function `xsrc`, times `t1` and `t2`, radial scales `r1` and `r2`,
+            pressure scale height profiles `Hp1` and `Hp2`, and the profiles
+            `x1` and `x2` of `var`, where 1 and 2 refer to the start and end
+            points of the analysis.
+        '''
+        cycles1_list = any2list(cycles1)
+        cycles2_list = any2list(cycles2)
+    
+        # Get average profiles and the average time corresponding to cycles1.
+        res1 = self.average_profiles(cycles1_list, [var, 'Hp', 'r4rho2'], \
+               lagrangian=True, data_rlim=data_rlim)
+        mt = res1['mt']
+        if self.__isyprofile:
+            r1 = res1['Y']
+        if self.__isRprofSet:
+            r1 = res1['R']
+        x1 = res1[var]
+        Hp1 = res1['Hp']
+        r4rho2_1 = res1['r4rho2']
+        t1 = 0.
+        for fn in cycles1_list:
+            this_t = self.get('t', fn)
+            t1 += this_t[-1] if self.__isyprofile else this_t
+        t1 /= float(len(cycles1_list))
+
+        # Get average profiles and the average time corresponding to cycles2.
+        res2 = self.average_profiles(cycles2_list, [var, 'Hp', 'r4rho2'], \
+               lagrangian=True, data_rlim=data_rlim)
+        mt = res2['mt']
+        if self.__isyprofile:
+            r2 = res2['Y']
+        if self.__isRprofSet:
+            r2 = res2['R']
+        x2 = res2[var]
+        Hp2 = res2['Hp']
+        r4rho2_2 = res2['r4rho2']
+        t2 = 0.
+        for fn in cycles2_list:
+            this_t = self.get('t', fn)
+            t2 += this_t[-1] if self.__isyprofile else this_t
+        t2 /= float(len(cycles2_list))
+
+        xsrc = np.zeros(len(mt))
+        if src_func is not None:
+            cyc1 = cycles1_list[len(cycles1_list)//2]
+            cyc2 = cycles2_list[len(cycles2_list)//2]
+            res = self.average_profiles(range(cyc1, cyc2+1), 'src_func', \
+                                        func=src_func, extra_args=src_args, \
+                                        lagrangian=True, data_rlim=data_rlim)
+            xsrc = res['src_func']
+        
+        # We take a simple average whenever a single profile representative of
+        # the whole solution interval is needed.
+        r = 0.5*(r1 + r2)
+        Hp = 0.5*(Hp1 + Hp2)
+        r4rho2 = 0.5*(r4rho2_1 + r4rho2_2)
+        
+        # Technically speaking, the mass corrdinate mt[i] corresponds to
+        # i-1/2, i.e. to the lower (outer) cell wall. We will make use of this
+        # in calculating the cell mass dmt[i]. However, x1[i] and x2[i] are 
+        # cell averages, which correspond to cell-centred values to the 2nd
+        # order of accuracy. This minute difference has probably little effect,
+        # but let's get it right.
+        dmt = np.roll(mt, -1) - mt
+        dmt[-1] = dmt[-2] + (dmt[-2] - dmt[-3])
+        mt = 0.5*(mt + np.roll(mt, -1))
+        mt[-1] = mt[-2] + (mt[-2] - mt[-3])
+        
+        # We are going to compute the Lagrangian diffusion coefficient sigma
+        # from the diffusion equation
+        #
+        # dx/dt = -d(-sigma*dx/dm)/dm + xsrc = -d(flux)/dm + xsrc,
+        #
+        # where `flux` is the diffusive flux and `xsrc` is a source term (to
+        # represent e.g. nuclear burning). We integrate the equation
+        # analytically from the outer (or inner if integrate_upwards == True)
+        # crystal sphere, where we flux = 0, to a mass coordinate mt, which
+        # gives us an explicit expression for sigma: 
+        #
+        # sigma = (1./dxdm)*int_0^mt(dx/dt - xsrc)*dmt,
+        #
+        # where int_0^mt is a definite integral from 0 to mt.
+        
+        dxdt = (x2 - x1)/(t2 - t1)
+        
+        if src_correction:
+            # If the source term is time dependent, we will never get the exact
+            # time averages from a few samples and some mass will be unaccounted
+            # for. We can correct for this by multiplying xsrc by the factor
+            # src_corr_fact, which is computed by assuming that any change in the
+            # sum of dxdt should be due to xsrc. This factor should be close to
+            # unity and we will warn the user if it is not.
+            dxdt_sum = np.sum(dxdt*dmt)
+            xsrc_sum = np.sum(xsrc*dmt)
+            src_corr_fact = dxdt_sum/xsrc_sum
+            xsrc *= src_corr_fact
+            print('Source term correction factor: ', src_corr_fact)
+            if src_corr_fact < 2./3.:
+                self.__messenger.warning('The value of the correction factor '
+                                         'should be positive and close to '
+                                         'unity. Please check your data and '
+                                         'parameters.')
+            if src_corr_fact > 3./2.:
+                self.__messenger.warning('The value of the correction factor '
+                                         'is suspiciously large. Please check '
+                                         'your data and parameters.')
+        
+        # Downward diffusive flux at the top (inner) wall of the i-th cell.
+        # iph = i + 0.5
+        flux_iph = -np.cumsum((dxdt - xsrc)*dmt)
+        
+        if integrate_upwards:        
+            flux_iph -= flux_iph[-1]
+        
+        # flux_iph = sigma_iph*dx2dm_iph, where we take the gradient of x2,
+        # because we want to solve an implicit diffusion equation. 
+        dx2dm_iph = (np.roll(x2, -1) - x2)/(np.roll(mt, -1) - mt)
+        dx2dm_iph[-1] = dx2dm_iph[-2] + (dx2dm_iph[-2] - dx2dm_iph[-3])
+
+        # dx2dm_iph will be zero in some places and we will not be able to
+        # compute sigma_iph in those places. Let's avoid useless warnings.
+        with np.errstate(divide='ignore', invalid='ignore'):
+            sigma_iph = -flux_iph/dx2dm_iph
+        
+        # We should compute the cell-centred value of sigma, but let's not do 
+        # that, because it would increase the number of NaNs in the array if
+        # there are any.
+        sigma = sigma_iph
+        
+        # Convert the Lagrangian diffusion coefficient sigma to an Eulerian
+        # diffusion coefficient D. The way we define r4rho2 may matter here.
+        D = sigma/(16.*np.pi**2*r4rho2)
+        
+        if show_plots:
+            var_lbl = var
+            if var == 'Xcld':
+                var_lbl = 'X'
+
+            # Plot the diffusive flux.
+            ifig=ifig0; pl.close(ifig); fig=pl.figure(ifig)
+            ax1 = fig.gca()
+            lns = []
+            plt_func = ax1.semilogx if logmt else ax1.plot
+            lns += plt_func((1e27/ast.msun_g)*mt, (1e27/ast.msun_g)*flux_iph, '-', \
+                            color='k', label=r'flux')
+            ax1.ticklabel_format(style='sci',scilimits=(0,0),axis='y')
+            if mtlim is not None:
+                ax1.set_xlim(mtlim)
+            ax1.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
+            ax1.set_ylabel(r'Downward diffusive flux / M$_\odot$ s$^{-1}$')
+
+            if plot_var:
+                ax2 = ax1.twinx()
+                plt_func = ax2.plot
+                if logmt:
+                    if logvar:
+                        plt_func = ax2.loglog
+                    else:
+                        plt_func = ax2.semilogx
+                elif logvar:
+                        plt_func = ax2.semilogy
+                    
+                lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
+                                label=var_lbl+r'$_1$')
+                lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
+                                label=var_lbl+r'$_2$')
+                
+                if mtlim is not None:
+                    ax2.set_xlim(mtlim)
+                if varlim is not None:
+                    ax2.set_ylim(varlim)
+                else:
+                    ax2.set_ylim((0., 1.))
+                ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
+                ax2.set_ylabel(var_lbl)
+            
+            ttl = ''
+            if run_id != '':
+                ttl = run_id + ', '
+            ttl += 'dumps '
+            if len(cycles1_list) > 1:
+                ttl += '[{:d}, {:d}]'.format(cycles1_list[0], cycles1_list[-1])
+            else:
+                ttl += '{:d}'.format(cycles1_list[0])
+            ttl += ' - '
+            if len(cycles2_list) > 1:
+                ttl += '[{:d}, {:d}]'.format(cycles2_list[0], cycles2_list[-1])
+            else:
+                ttl += '{:d}'.format(cycles2_list[0])
+            pl.title(ttl)
+            lbls = [l.get_label() for l in lns]
+            ncol = 2 if plot_var else 1
+            pl.legend(lns, lbls, loc=0, ncol=ncol)
+            
+            # Plot the Lagrangian diffusion coefficient.
+            ifig=ifig0+1; pl.close(ifig); fig=pl.figure(ifig)
+            ax1 = fig.gca()
+            lns = []
+            plt_func = ax1.loglog if logmt else ax1.semilogy
+            lns += plt_func((1e27/ast.msun_g)*mt, 1e54*sigma, '-', \
+                            color='k', label=r'$\sigma$ > 0')
+            lns += plt_func((1e27/ast.msun_g)*mt, -1e54*sigma, '--', \
+                            color='k', label=r'$\sigma$ < 0')
+            if mtlim is not None:
+                ax1.set_xlim(mtlim)
+            if sigmalim is not None:
+                ax1.set_ylim(sigmalim)
+            ax1.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
+            ax1.set_ylabel(r'$\sigma$ / g$^2$ s$^{-1}$')
+
+            if plot_var:
+                ax2 = ax1.twinx()
+                plt_func = ax2.plot
+                if logmt:
+                    if logvar:
+                        plt_func = ax2.loglog
+                    else:
+                        plt_func = ax2.semilogx
+                elif logvar:
+                        plt_func = ax2.semilogy
+                
+                lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
+                                label=var_lbl+r'$_1$')
+                lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
+                                label=var_lbl+r'$_2$')
+                
+                if mtlim is not None:
+                    ax2.set_xlim(mtlim)
+                if varlim is not None:
+                    ax2.set_ylim(varlim)
+                else:
+                    ax2.set_ylim((0., 1.))
+                ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
+                ax2.set_ylabel(var_lbl)
+            
+            pl.title(ttl)
+            lbls = [l.get_label() for l in lns]
+            ncol = 2 if plot_var else 1
+            pl.legend(lns, lbls, loc=0, ncol=ncol)
+
+            # Plot the Eulerian diffusion coefficient.
+            ifig=ifig0+2; pl.close(ifig); fig=pl.figure(ifig)
+            ax1 = fig.gca()
+            lns = []
+            if fit_rlim is not None:
+                i0 = np.argmin(np.abs(r - fit_rlim[0]))
+                i1 = np.argmin(np.abs(r - fit_rlim[1]))
+                r_fit = r[i1:i0+1]
+                D_data = D[i1:i0+1]
+                fit_coeffs = np.polyfit(r_fit[D_data > 0], \
+                            np.log(D_data[D_data > 0]), 1)
+                D_fit = np.exp(r_fit*fit_coeffs[0] + fit_coeffs[1])
+                f_CBM = -2./(fit_coeffs[0]*Hp[i0])
+                lbl = r'f$_\mathrm{{CBM}}$ = {:.3f}'.format(f_CBM)
+                lns += ax1.semilogy(r_fit, 1e16*D_fit, '-', color='g', \
+                            lw=4., label=lbl)
+
+            lns += ax1.semilogy(r, 1e16*D, '-', color='k', label='D > 0')
+            lns += ax1.semilogy(r, -1e16*D, '--', color='k', label='D < 0')
+            if rlim is not None:
+                ax1.set_xlim(rlim)
+            if Dlim is not None:
+                ax1.set_ylim(Dlim)
+            ax1.set_xlabel('r / Mm')
+            ax1.set_ylabel(r'D / cm$^2$ s$^{-1}$')
+
+            if plot_var:
+                ax2 = ax1.twinx()
+                if logvar:
+                    lns += ax2.semilogy(r1, x1, '-', color='b', \
+                                label=var_lbl+r'$_1$')
+                    lns += ax2.semilogy(r2, x2, '--', color='r', \
+                                label=var_lbl+r'$_2$')
+                else:
+                    lns += ax2.plot(r1, x1, '-', color='b', \
+                            label=var_lbl+r'$_1$')
+                    lns += ax2.plot(r2, x2, '--', color='r', \
+                            label=var_lbl+r'$_2$')
+                if rlim is not None:
+                    ax2.set_xlim(rlim)
+                if varlim is not None:
+                    ax2.set_ylim(varlim)
+                else:
+                    ax2.set_ylim((0., 1.))
+                ax2.set_xlabel('r / Mm')
+                ax2.set_ylabel(var_lbl)
+
+            pl.title(ttl)
+            lbls = [l.get_label() for l in lns]
+            ncol = 2 if plot_var else 1
+            pl.legend(lns, lbls, loc=0, ncol=ncol)
+
+        res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
+               'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
+               'D':D}
+        return res
+
+    def bound_rad(self, cycles, r_min, r_max, var='ut', \
+                  criterion='min_grad', var_value=None, \
+                  return_var_scale_height=False, eps=1e-9):
+        '''
+        Method that finds the radius of a convective boundary.
+        
+        If the search is based on gradients, second-order centred finite
+        differences are used to compute the gradient. The radius where
+        the gradient reaches a local extreme (minimum or maximum depending
+        on the value of criterion) is found. This radius is further
+        refined by fitting a parabola to the three points around the
+        local extreme and computing the radius at that the parabola
+        reaches its extreme.
+        
+        If a certain value of var is searched for the method finds two
+        cells between which var crosses the requested value and then it
+        computes the radius of the actual crossing by linear interpolation.
+        
+        Parameters
+        ----------
+        cycles : list
+            Cycle numbers to be used in the analysis.
+        r_min : float
+            Minimum radius to for the boundary search.
+        r_max : float
+            Maximum radius to for the boundary search.
+        var : string
+            Name of the variable to be used in the boundary search.
+            This can be any variable contained in the data file or
+            a special variable 'ut', which is the tangential velocity
+            (computed in slightly different ways depending on the
+            source of data).
+        criterion : string
+            Boundary definition criterion with the following options:
+            'min_grad' : Search for a local minimum in d(var)/dr.
+            'max_grad' : Search for a local maximum in d(var)/dr.
+            'value' : Search for the radius where var == var_value.
+        var_value : float
+            Value of var to be searched for if criterion == 'value'.
+        return_var_scale_height : bool
+            Allows the user to have the scale height of var evaluated
+            at the boundary radius to be returned as well.
+        eps : float
+            Smallest value considered non-zero in the search alorighm.
+            
+        Returns
+        -------
+        rb : 1D numpy array
+            The boundary radius is returned if return_var_scale_height == False.
+        rb, Hv: 1D numpy arrays
+            The boundary radius rb and the scale height Hv of var evaluated
+            at rb are returned if return_var_scale_height == True.
+        '''
+        cycle_list = any2list(cycles)
+        rb = np.zeros(len(cycle_list))
+        if return_var_scale_height:
+            Hv = np.zeros(len(cycle_list))
+
+        # The grid is assumed to be static, so we get the radial
+        # scale only once at cycle_list[0].
+        if self.__isyprofile:
+            r = self.get('Y', cycle_list[0], resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', cycle_list[0], resolution='l')
+
+        idx_r_min = np.argmin(np.abs(r - r_min))
+        idx_r_max = np.argmin(np.abs(r - r_max))
+        # Make sure that the range includes idx_r_min.
+        idx_r_min = idx_r_min+1 if idx_r_min < len(r)-2 else len(r)-1
+
+        for i, cyc in enumerate(cycle_list):
+            if var == 'ut':
+                if self.__isyprofile:
+                    v = self.get('EkXZ', fname=cyc, resolution='l')**0.5
+                
+                if self.__isRprofSet:
+                    v = self.get('|Ut|', fname=cyc, resolution='l')
+            else:
+                v = self.get(var, cyc, resolution='l')
+
+            dvdr = cdiff(v)/cdiff(r)
+            if criterion == 'min_grad' or criterion == 'max_grad':
+                # The following code always looks for a local minimum in dv.
+                # A local maximum is found by looking for a local minimum in
+                # -dvdr.
+                dvdr2 = dvdr
+                if criterion == 'max_grad':
+                    dvdr2 = -dvdr2
+
+                # 0th-order estimate.
+                idx0 = idx_r_max + np.argmin(dvdr2[idx_r_max:idx_r_min])
+                r0 = r[idx0]
+
+                # Try to pinpoint the radius of the local minimum by fitting
+                # a parabola around r0.
+                coefs = np.polyfit(r[idx0-1:idx0+2], dvdr2[idx0-1:idx0+2], 2)
+                if np.abs(coefs[0]) > eps:
+                    r00 = -coefs[1]/(2.*coefs[0])
+
+                    # Only use the refined radius if it is within the three
+                    # cells.
+                    if r00 < r[idx0-1] and r00 > r[idx0+1]:
+                        r0 = r00
+            elif criterion == 'value':
+                # 0th-order estimate.
+                idx0 = idx_r_max + np.argmin(np.abs(v[idx_r_max:idx_r_min] - var_value))
+                r0 = r[idx0]
+
+                if np.abs(v[idx0] - var_value) > eps:
+                    # 1st-order refinement.
+                    if idx0 < idx_r_min and idx0 > idx_r_max:
+                        if (v[idx0-1] < var_value and v[idx0] > var_value) or \
+                           (v[idx0-1] > var_value and v[idx0] < var_value):
+                            slope = v[idx0] - v[idx0-1]
+                            t = (var_value - v[idx0-1])/slope
+                            r0 = (1. - t)*r[idx0-1] + t*r[idx0]
+                        elif (v[idx0] < var_value and v[idx0+1] > var_value) or \
+                            (v[idx0] > var_value and v[idx0+1] < var_value):
+                            slope = v[idx0+1] - v[idx0]
+                            t = (var_value - v[idx0])/slope
+                            r0 = (1. - t)*r[idx0] + t*r[idx0+1]
+                        else:
+                            r0 = r_max
+                        
+            rb[i] = r0
+        
+            if return_var_scale_height:
+                Hv_prof = np.abs(v)/(np.abs(dvdr) + 1e-100)
+                
+                idx0 = np.argmin(np.abs(r - r0))
+                if r[idx0] > r0:
+                    t = (r0 - r[idx0])/(r[idx0+1] - r[idx0])
+                    Hv[i] = (1. - t)*Hv_prof[idx0] + t*Hv_prof[idx0+1]
+                elif r[idx0] < r0:
+                    t = (r0 - r[idx0-1])/(r[idx0] - r[idx0-1])
+                    Hv[i] = (1. - t)*Hv_prof[idx0 - 1] + t*Hv_prof[idx0]
+                else:
+                    Hv[i] = Hv_prof[idx0]
+                    
+        if return_var_scale_height:
+            return rb, Hv
+        else:
+            return rb
+
+    def entr_rate(self, cycles, r_min, r_max, var='ut', criterion='min_grad', \
+                  var_value=None, offset=0., burn_func=None, burn_args={}, \
+                  fit_interval=None, show_plots=True, ifig0=1, \
+                  fig_file_name=None, return_time_series=False):
+        '''
+        Method for calculating entrainment rates.
+        
+        Parameters
+        ----------
+        cycles : list
+            Cycle numbers to be used in the analysis.
+        r_min : float
+            Minimum radius to for the boundary search.
+        r_max : float
+            Maximum radius to for the boundary search.
+        var : string
+            Name of the variable to be used in the boundary search.
+            See PPMtools.bound_rad().
+        criterion : string
+            Boundary definition criterion.
+            See PPMtools.bound_rad() for allowed values.
+        var_value : float
+            Value of var to be searched for if criterion == 'value'.
+            See PPMtools.bound_rad() for allowed values.
+        offset : float
+            Offset between the boundary radius and the upper integration
+            limit for mass integration. The absolute value of the scale 
+            height of var evaluated at the boundary is used as a unit for
+            the offset. Negative values shift the upper integration limit
+            inwards and positive values outwards.
+        burn_func : function
+            burn_func(cycle, **burn_args) has to return the radial profile
+            of the mass burning rate of the entrained fluid per unit volume
+            for the cycle number passed as the first argument. For a data 
+            object obj, it can be e.g. obj.compute_rhodot_C12pg. The user
+            can define a custom function and pass a reference to obj via
+            burn_args.
+        fit_interval : list
+            List with the start and end time for the entrainment rate fit
+            in seconds.
+        burn_args : dictionary
+            All arguments, with the exception of the cycle number, that
+            burn_func() needs.
+        show_plots : bool
+            Should any plots be shown?
+        ifig0 : int
+            Figure index for the first plot shown.
+        fig_file_name : string
+            Name of the file, into which the entrainment rate plot will
+            be saved.
+        return_time_series : bool
+            Switch to control what the method returns, see below.
+            
+        Returns
+        -------
+        mdot : float
+            The entrainment rate is returned if return_time_series == False.
+        time, mir, mb: 1D numpy arrays
+            The entrained mass present and burnt inside the integration radius
+            as a function of time. mb is an array of zeroes if burn_func is None.
+        '''
+        print('Computing boundary radius...')
+        rb, Hv = self.bound_rad(cycles, r_min, r_max, var=var, criterion=criterion, \
+                                var_value=var_value, return_var_scale_height=True)
+        rt = rb + offset*np.abs(Hv)
+        print('Done.')
+        
+        # The grid is assumed to be static, so we get the radial
+        # scale only once at cycles[0].
+        if self.__isyprofile:
+            r = self.get('Y', cycles[0], resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', cycles[0], resolution='l')
+
+        r_cell_top = 0.5*(np.roll(r, +1) + r)
+        r_cell_top[0] = r_cell_top[1] + (r_cell_top[1] - r_cell_top[2])
+        r3_cell_top = r_cell_top**3
+        dr3 = r3_cell_top - np.roll(r3_cell_top, -1)
+        dr3[-1] = dr3[-2] + (dr3[-2] - dr3[-3])
+        dV = (4./3.)*np.pi*dr3
+        
+        t = np.zeros(len(cycles))
+        burn_rate = np.zeros(len(cycles))
+        # mir == mass inside radius (rt)
+        mir = np.zeros(len(cycles))
+        wct0 = time.time()
+        print('Integrating entrained mass...')
+        for i, cyc in enumerate(cycles):
+            if self.__isyprofile:
+                t[i] = self.get('t', fname=cyc, resolution='l')[-1]
+            
+            if self.__isRprofSet:
+                t[i] = self.get('t', fname=cyc, resolution='l')
+            
+            Xcld = self.compute('Xcld', cyc)
+            
+            if self.__isyprofile:
+                rho = self.get('Rho', cyc, resolution='l')
+
+            if self.__isRprofSet:
+                rho = self.get('Rho0', cyc, resolution='l') + \
+                      self.get('Rho1', cyc, resolution='l')
+            
+            if burn_func is not None:
+                rhodot = burn_func(cyc, **burn_args)
+            
+            # We assume that Xlcd and rho are cell averages, so we can
+            # integrate all but the last cell using the rectangle rule.
+            # We do piecewise linear reconstruction in the last cell and 
+            # integrate only over the portion of the cell where r < rt[i].
+            # We should be as accurate as possible here, because Xcld is 
+            # usually much larger in this cell than in the bulk of the 
+            # convection zone.
+            idx_top = np.argmax(r_cell_top < rt[i])
+            dm = Xcld*rho*dV
+            # mir == mass inside radius (rt)
+            mir[i] = np.sum(dm[idx_top:])
+            
+            # Linear reconstruction. The integrand f = Xcld*rho is
+            # assumed to take the form
+            #
+            #   f(r) = f0 + s*r
+            #
+            # within a cell. The slope s is computed using cell averages
+            # in the cell's two next-door neighbours and the integral of 
+            # f(r)*dV over the cell's volume V_j is enforced to be 
+            # f_j*V_j, where j is the index of the cell.
+            #
+            j = idx_top - 1
+            
+            # jmo = j - 1
+            # jpo = j + 1
+            r_jmo = r[j-1]
+            r_j   = r[j]
+            r_jpo = r[j+1]
+            f_jmo = Xcld[j-1]*rho[j-1]
+            f_j   = Xcld[j  ]*rho[j  ]
+            f_jpo = Xcld[j+1]*rho[j+1]
+            
+            # jmh = j - 0.5
+            # jph = j + 0.5
+            r_jmh = 0.5*(r_jmo + r_j)
+            r_jph = 0.5*(r_j + r_jpo)
+            f_jmh = 0.5*(f_jmo + f_j)
+            f_jph = 0.5*(f_j + f_jpo)
+            
+            s = (f_jph - f_jmh)/(r_jph - r_jmh)
+            V_j = (4./3.)*np.pi*(r_jmh**3 - r_jph**3)
+            f0 = f_j - np.pi*(r_jmh**4 - r_jph**4)/V_j*s
+            mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jph**3)*f0 + \
+                      np.pi*(rt[i]**4 - r_jph**4)*s
+                
+            if burn_func is not None:
+                # We have to use the minus sign, because rhodot < 0.
+                burn_rate[i] = -np.sum(rhodot[idx_top:]*dV[idx_top:])
+                
+            wct1 = time.time()
+            if wct1 - wct0 > 5.:
+                print('{:d}/{:d} cycles processed.'.format(\
+                      i+1, len(cycles)), end='\r')
+                wct0 = wct1
+                
+        print('{:d}/{:d} cycles processed.'.format(i+1, len(cycles)))
+        print('Done.')
+        
+        mir *= 1e27/ast.msun_g
+        # mb = mass burnt
+        mb = integrate.cumtrapz(burn_rate, x=t, initial=0.)
+        mb *= 1e27/ast.msun_g
+        mtot = mir + mb
+            
+        fit_idx0 = 0
+        fit_idx1 = len(t)
+        if fit_interval is not None:
+            fit_idx0 = np.argmin(np.abs(t - fit_interval[0]))
+            fit_idx1 = np.argmin(np.abs(t - fit_interval[1])) + 1
+            if fit_idx1 > len(t):
+                fit_idx1 = len(t)
+        fit_range = range(fit_idx0, fit_idx1)
+        
+        # fc = fit coefficients
+        rb_fc = np.polyfit(t[fit_range], rb[fit_range], 1)
+        rb_fit = rb_fc[0]*t[fit_range] + rb_fc[1]
+        rt_fc = np.polyfit(t[fit_range], rt[fit_range], 1)
+        rt_fit = rt_fc[0]*t[fit_range] + rt_fc[1]
+        
+        # fc = fit coefficients
+        mtot_fc = np.polyfit(t[fit_range], mtot[fit_range], 1)
+        mtot_fit = mtot_fc[0]*t[fit_range] + mtot_fc[1]
+        mdot = mtot_fc[0]
+
+        if show_plots:
+            cb = utils.colourblind
+            pl.close(ifig0); fig1=pl.figure(ifig0)
+            pl.plot(t/60., rt, color=cb(5), ls='-', label=r'r$_\mathrm{top}$')
+            pl.plot(t/60., rb, color=cb(8), ls='--', label=r'r$_\mathrm{b}$')
+            pl.plot(t[fit_range]/60., rt_fit, color=cb(4), ls='-')
+            pl.plot(t[fit_range]/60., rb_fit, color=cb(4), ls='-')
+            pl.xlabel('t / min')
+            pl.ylabel('r / Mm')
+            xfmt = ScalarFormatter(useMathText=True)
+            pl.gca().xaxis.set_major_formatter(xfmt)
+            pl.legend(loc = 0)
+            fig1.tight_layout()
+
+            print('rb is the radius of the convective boundary.')
+            print('drb/dt = {:.2e} km/s\n'.format(1e3*rb_fc[0]))
+            print('rt is the upper limit for mass integration.')
+            print('drt/dt = {:.2e} km/s'.format(1e3*rt_fc[0]))
+            
+            min_val = np.min([np.min(mtot), np.min(mb), np.min(mtot_fit)])
+            max_val = np.max([np.max(mtot), np.max(mb), np.max(mtot_fit)])
+            max_val *= 1.1 # allow for some margin at the top of the plot
+            oom = int(np.floor(np.log10(max_val)))
+            
+            pl.close(ifig0+1); fig2=pl.figure(ifig0+1)
+            mdot_str = '{:e}'.format(mdot)
+            parts = mdot_str.split('e')
+            mantissa = float(parts[0])
+            exponent = int(parts[1])
+            lbl = (r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} '
+                   r'\times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$').\
+                   format(mantissa, exponent)
+            pl.plot(t[fit_range]/60., mtot_fit/10**oom, color=cb(4), \
+                    ls='-', label=lbl, zorder=100)
+            
+            lbl = ''
+            if burn_func is not None:
+                pl.plot(t/60., mir/10**oom, ':', color=cb(3), label='present')
+                pl.plot(t/60., mb/10**oom, '--', color=cb(6), label='burnt')
+                lbl = 'total'
+            pl.plot(t/60., mtot/10**oom, color=cb(5), label=lbl)
+            
+            
+            pl.ylim((min_val/10**oom, max_val/10**oom))
+            pl.xlabel('t / min')
+            sub = 'e'
+            ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
+            if oom == 0.:
+                ylbl = r'M$_{:s}$ / M$_\odot$'.format(sub)
+                
+            pl.ylabel(ylbl)
+            yfmt = FormatStrFormatter('%.1f')
+            fig2.gca().yaxis.set_major_formatter(yfmt)
+            fig2.tight_layout()
+            pl.legend(loc=2)
+            if fig_file_name is not None:
+                fig2.savefig(fig_file_name)
+        
+            print('Resolution: {:d}^3'.format(2*len(r)))
+            print('mtot_fc = ', mtot_fc)
+            print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
+        
+        if return_time_series:
+            return t, mir, mb
+        else:
+            return mdot
+
+class yprofile(DataPlot, PPMtools):
     """ 
     Data structure for holding data in the  YProfile.bobaaa files.
     
@@ -258,7 +1534,7 @@ class yprofile(DataPlot):
         
     """
 
-    def __init__(self, sldir='.', filename_offset=0, silent = True):
+    def __init__(self, sldir='.', filename_offset=0, silent=False):
         """ 
         init method
 
@@ -269,6 +1545,7 @@ class yprofile(DataPlot):
         
         """
 
+        PPMtools.__init__(self)
         self.files = []  # List of files in this directory
         self.cycles= []  # list of cycles in this directory
         self.hattrs = [] # header attributes
@@ -4275,7 +5552,7 @@ class yprofile(DataPlot):
         '''
 
         def regrid(x, y, x_int):
-            int_func = interpolate.CubicSpline(x[::-1], y[::-1])
+            int_func = scipy.interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
         
         r = self.get('Y', fname = cycles[0], resolution='l')
@@ -4390,7 +5667,7 @@ class yprofile(DataPlot):
             oom = int(np.floor(np.log10(max_val)))
             
             pl.close(ifig0 + 1); fig2 = pl.figure(ifig0 + 1)
-            pl.plot(time/60., m_ir/10**oom, color = cb(5), label=mdot_curve_label)
+            pl.plot(time/60., m_ir/10**oom, color = cb(5))
             mdot_str = '{:e}'.format(mdot)
             parts = mdot_str.split('e')
             mantissa = float(parts[0])
@@ -4466,7 +5743,7 @@ class yprofile(DataPlot):
             if var == 'vxz':
                 v = self.get('EkXZ', fname = cycles[i], resolution='l')**0.5
             else:
-               v = self.get(var, cycles[i], resolution='l')
+                v = self.get(var, cycles[i], resolution='l')
 
             if criterion == 'min_grad' or criterion == 'max_grad':
                 # The following code always looks for a local minimum in dv.
@@ -7629,13 +8906,13 @@ class RprofHistory:
 
         
         
-class RprofSet:
+class RprofSet(PPMtools):
     '''
     RprofSet holds a set of .rprof files from a single run
     of PPMstar 2.0.
     '''
     
-    def __init__(self, dir_name, verbose=3):
+    def __init__(self, dir_name, verbose=3, cache_rprofs=True):
         '''
         Init method.
         
@@ -7647,6 +8924,7 @@ class RprofSet:
             Verbosity level as defined in class Messenger.
         '''        
         
+        PPMtools.__init__(self)
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
         
@@ -7657,6 +8935,13 @@ class RprofSet:
         self.__dumps = []
         if not self.__find_dumps(dir_name):
             return
+        
+        # To speed up repeated requests for data from the same dump, we
+        # will cache every Rprof that has already been read from disk.
+        # The user can still turn this off in case that they analyse a
+        # large number of long runs on a machine with a small RAM.
+        self.__cache_rprofs = cache_rprofs
+        self.__rprof_cache = {}
 
         history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
                                                          self.__run_id)
@@ -7799,7 +9084,16 @@ class RprofSet:
         file_path = '{:s}{:s}-{:04d}.rprof'.format(self.__dir_name, \
                                                    self.__run_id, dump)
         
-        return Rprof(file_path)
+        if self.__cache_rprofs:
+            if dump in self.__rprof_cache:
+                rp = self.__rprof_cache[dump]
+            else:
+                rp = Rprof(file_path)
+                self.__rprof_cache[dump] = rp
+        else:
+            rp = Rprof(file_path)
+        
+        return rp
     
     def get(self, var, fname, num_type='NDump', resolution='l'):
         '''
@@ -7851,6 +9145,10 @@ class RprofSet:
                   closest_t/60., fname/60.)
             self.__messenger.message(msg)
             rp = self.get_dump(closest_dump)
+        else:
+            self.__messenger.error("'{:s}' is not a valid value of "
+                                   "num_type.".format(num_type))
+            return None
         
         if rp is not None:
             return rp.get(var, resolution=resolution)
@@ -7923,10 +9221,10 @@ class RprofSet:
         '''
 
         def regrid(x, y, x_int):
-            int_func = interpolate.CubicSpline(x[::-1], y[::-1])
+            int_func = scipy.interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
         
-        r = self.get('R', fname = cycles[0], resolution='l')[::-1]
+        r = self.get('R', fname = cycles[0], resolution='l')
         
         idx_min = np.argmin(np.abs(r - r_max))
         idx_max = np.argmin(np.abs(r - r_min))
@@ -7945,9 +9243,9 @@ class RprofSet:
             time[i] = self.get('t', fname = cycles[i], resolution='l')
             
             if var == 'vxz':
-                q = (self.get('|Ut|', fname = cycles[i], resolution='l')[::-1])[idx_min:(idx_max + 1)]**0.5
+                q = (self.get('|Ut|', fname = cycles[i], resolution='l'))[idx_min:(idx_max + 1)]**0.5
             else:
-                q = (self.get(var, fname = cycles[i], resolution='l')[::-1])[idx_min:(idx_max + 1)]
+                q = (self.get(var, fname = cycles[i], resolution='l'))[idx_min:(idx_max + 1)]
             
             q_int = regrid(r, q, r_int)
             grad = cdiff(q_int)/dr_int
@@ -7980,15 +9278,15 @@ class RprofSet:
         r_top_fit = r_top_fc[0]*timelong + r_top_fc[1]
         
         m_ir = np.zeros(len(cycles))
-        r = self.get('R', fname = cycles[0], resolution='h')[::-1]
+        r = self.get('R', fname = cycles[0], resolution='h')
         r_int = np.linspace(np.min(r), np.max(r), num = 20.*len(r))
         dr_int = cdiff(r_int)
         for i in range(len(cycles)):
-            rho0 = self.get('Rho0', fname = cycles[i], resolution='h')[::-1]
-            rho1 = self.get('Rho1', fname = cycles[i], resolution='h')[::-1]
+            rho0 = self.get('Rho0', fname = cycles[i], resolution='h')
+            rho1 = self.get('Rho1', fname = cycles[i], resolution='h')
             rho = rho0 + rho1
             if not integrate_both_fluids:
-                FV_HHe = self.get('FV', fname = cycles[i], resolution='h')[::-1]
+                FV_HHe = self.get('FV', fname = cycles[i], resolution='h')
                 rhocldtoair = cldmu/airmu
                 rhoair = rho/((1. - FV_HHe) + FV_HHe*rhocldtoair)
                 rhocld = rhocldtoair*rhoair
@@ -8217,15 +9515,15 @@ class Rprof:
                     self.__lr_vars.append(col_names[i])
                     self.__lr_data[col_names[i]] = np.zeros(n)
 
-            for i in range(n):
+            for j in range(n):
                 sline = lines[l].split()
                 idx = int(sline[0])
                 for i in range(1, len(col_names)):
                     val = float(sline[i])
                     if is_hr:
-                        self.__hr_data[col_names[i]][idx-1] = val
+                        self.__hr_data[col_names[i]][n-idx] = val
                     else:
-                        self.__lr_data[col_names[i]][idx-1] = val
+                        self.__lr_data[col_names[i]][n-idx] = val
                 l += 1
         
         if footer_reached:
@@ -8256,6 +9554,12 @@ class Rprof:
         self.__hr_vars = sorted(self.__hr_vars, key=lambda s: s.lower())
         self.__header_vars = sorted(self.__header_vars, key=lambda s: s.lower())
 
+        # The list(set()) construct removes duplicate names.
+        self.__anyr_vars = sorted(list(set(self.__lr_vars+self.__hr_vars)), \
+                                  key=lambda s: s.lower())
+        self.__all_vars = sorted(list(set(self.__header_vars+self.__anyr_vars)), \
+                                  key=lambda s: s.lower())
+ 
         return 0
      
     def is_valid(self):
@@ -8285,7 +9589,7 @@ class Rprof:
         
         # Return a copy.
         return list(self.__lr_vars)
-    
+      
     def get_hr_variables(self):
         '''
         Returns a list of high-resolution variables available.
@@ -8293,6 +9597,22 @@ class Rprof:
         
         # Return a copy.
         return list(self.__hr_vars)
+    
+    def get_anyr_variables(self):
+        '''
+        Returns a list of any-resolution variables available.
+        '''
+        
+        # Return a copy.
+        return list(self.__anyr_vars)
+   
+    def get_all_variables(self):
+        '''
+        Returns a list of all variables available.
+        '''
+        
+        # Return a copy.
+        return list(self.__all_vars)
 
     def get(self, var, resolution='l'):
         '''
@@ -8310,6 +9630,7 @@ class Rprof:
             of the computational grid ('l').
         
         Returns
+
         -------
         np.ndarray
             Variable var, if found.
@@ -8321,13 +9642,18 @@ class Rprof:
             if resolution.lower() == 'l':
                 if var in self.__lr_vars:
                     return np.array(self.__lr_data[var])
+                elif var in self.__hr_vars:
+                    data = np.array(self.__hr_data[var])
+                    # This will only work for arrays of even length, but
+                    # we always get such arrays from PPMstar.
+                    data = 0.5*(data[::2] + data[1::2])
+                    return data
                 else:
-                    err = ("Low-resolution data not available for variable "
-                          "{:s}.").format(var)
+                    err = ("Variable '{:s}' does not exist.").format(var)
                     self.__messenger.error(err)
                     
-                    msg = 'Available low-resolution variables:\n'
-                    msg += str(self.__lr_vars)
+                    msg = 'Available variables:\n'
+                    msg += str(self.__anyr_vars)
                     self.__messenger.message(msg)
             elif resolution.lower() == 'h':
                 if var in self.__hr_vars:
@@ -8343,3 +9669,4 @@ class Rprof:
             else:
                 err = "Unknown resolution setting '{:s}'.".format(resolution)
                 self.__messenger.error(err)
+
