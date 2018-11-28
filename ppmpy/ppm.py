@@ -9727,7 +9727,6 @@ class MomsData():
 
             # Now I can reshape this data array in 10 flattened arrays
             ghostdata = tempdata.reshape((10,int(np.ceil((self.resolution + self.__ghost)**3))))
-            del tempdata
 
             # I have ghosts... lets construct a bool array for what values to keep
             bool_array = np.ones(np.shape(ghostdata)[1])
@@ -9763,14 +9762,18 @@ class MomsData():
             # for the positive ghost values
             bool_array[-z_ghost:-1] = 0
             
-            # collect the actual moms data
-            self.__data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))))
+            # collect the actual moms data, make sure it is a float 32!
+            self.__data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))),dtype=np.float32)
 
             for i in range(np.shape(self.__data)[0]):
                 self.__data[i] = ghostdata[i][np.where(bool_array > 0)]
 
             # save the file path
             self.__file_path = file_path
+
+            # remove references to original data with ghosts
+            del tempdata
+            del ghostdata
 
         except IOError as e:
             err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
@@ -9842,12 +9845,13 @@ class MomsDataSet:
             return
 
         # ok, there is an initial dump that is read to get the grid
-        self.__init_dump_read = init_dump_read
+        self.__what_dump_am_i = init_dump_read
 
-        # Now create the grid
-        if self.__get_grid() != 0:
-            return
-        
+        # we do not create the grid, we only do that if it is needed
+        # bools track what has happened
+        self.__is_valid_cgrid = False
+        self.__is_valid_sgrid = False
+
         self.__is_valid = True
 
     def __find_dumps(self, dir_name):
@@ -9928,10 +9932,22 @@ class MomsDataSet:
 
         return True
 
-    def __get_grid(self):
+    def __cgrid_exists(self):
         '''
-        Constructs the PPMStar grid from the saved xc in whatever(0)
-        
+        Do we have a cartesian grid already stored in memory? This is static!
+
+        Returns
+        -------
+        boolean
+            True if it exists
+        '''
+
+        return self.__is_valid_cgrid
+
+    def __get_cgrid(self):
+        '''
+        Constructs the PPMStar cartesian grid from the saved xc in whatever(0) as well as a radial coordinate
+
         Returns
         -------
         int
@@ -9940,33 +9956,96 @@ class MomsDataSet:
             Something failed.
         '''
 
-        # lets send a message to the user about this
-        msg = "The PPMstar grid is being constructed, this can take a moment"
-        self.__messenger.message(msg)
+        # check, do we already have this?
+        if not self.__cgrid_exists():
 
-        # we have self.data, assume that self.data[0] is a coordinate
-        self.momsdata = self.get_dump(self.__init_dump_read)
-        coord = np.unique(self.momsdata.get(0))
+            # lets send a message to the user about this
+            msg = "The PPMstar cartesian grid is being constructed, this can take a moment"
+            self.__messenger.message(msg)
 
-        # there is all of the unique values, construct self.xc, self.yc, self.zc
-        self.__xc = np.tile(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
-        self.__yc = np.tile(np.repeat(coord,int(np.ceil(self.momsdata.resolution))),int(np.ceil(self.momsdata.resolution)))
-        self.__zc = np.repeat(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
-        self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
-                                np.power(self.__zc,2.0))
+            # we have self.data, assume that self.data[0] is a coordinate
+            self.momsdata = self.get_dump(self.__what_dump_am_i)
+            coord = np.unique(self.momsdata.get(0))
 
-        # from this, I will always setup vars for a rprof
-        delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
-        self.__radial_boundary = np.linspace(delta_r,delta_r*(self.momsdata.resolution/2.),int(np.ceil(self.momsdata.resolution/2.)))
-    
-        # these are the boundaries, now I need what is my "actual" r value
-        self.radial_axis = self.__radial_boundary - delta_r/2.
+            # there is all of the unique values, construct self.xc, self.yc, self.zc
+            self.__xc = np.tile(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
+            self.__yc = np.tile(np.repeat(coord,int(np.ceil(self.momsdata.resolution))),int(np.ceil(self.momsdata.resolution)))
+            self.__zc = np.repeat(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
+            self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
+                                    np.power(self.__zc,2.0))
 
-        # might as well store the resolution of this MomsDataSet
-        # self.resolution = int(np.ceil(momsdata.resolution))
-        # self.run_resolution = int(np.ceil(momsdata.resolution*4.))
+            # from this, I will always setup vars for a rprof
+            delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
+            self.__radial_boundary = np.linspace(delta_r,delta_r*(self.momsdata.resolution/2.),int(np.ceil(self.momsdata.resolution/2.)))
 
-        return 0
+            # these are the boundaries, now I need what is my "actual" r value
+            self.radial_axis = self.__radial_boundary - delta_r/2.
+
+            # might as well store the resolution of this MomsDataSet
+            # self.resolution = int(np.ceil(momsdata.resolution))
+            # self.run_resolution = int(np.ceil(momsdata.resolution*4.))
+
+            # all is good, set that we have made our grid
+            self.__cgrid_exists = True
+
+            return 0
+
+        else:
+            return 0
+
+    def __sgrid_exists(self):
+        '''
+        Do we have a spherical coordinates grid already stored in memory? This is static!
+        We will always have the cartesian grid if we are making the spherical coordinates
+
+        Returns
+        -------
+        boolean
+            True if it exists
+        '''
+
+        return self.__is_valid_sgrid
+
+    def __get_sgrid(self):
+        '''
+        Constructs the PPMStar spherical coordinates grid
+
+        Returns
+        -------
+        int
+            0 on success.
+        NoneType
+            Something failed.
+
+        '''
+
+        # check if we already have this in memory or not
+        if not self.__sgrid_exists():
+
+            # we are going to need the cartesian grid
+            if not self.__cgrid_exists():
+                self.__get_cgrid()
+
+            # ok we are good to go for the spherical coordinates
+            # lets send a message to the user about this
+            msg = "The PPMstar spherical coordinates grid is being constructed, this can take a moment"
+            self.__messenger.message(msg)
+
+            # we have the radius already, need theta and phi
+            self.__theta = np.arctan2(np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0)),self.__zc)
+
+            # with phi we have a problem with the way np.arctan2 works, we get negative
+            # angles in quadrants 3 and 4. we can fix this by adding 2pi to the negative values
+            self.__phi = np.arctan2(self.__yc,self.__xc)
+            self.__phi[self.__phi < 0] += 2. * np.pi
+
+            # ok all is good, set our flag that everything is good
+            self.__sgrid_exists = True
+
+            return 0
+
+        else:
+            return 0
 
     def is_valid(self):
         '''
@@ -9997,7 +10076,7 @@ class MomsDataSet:
     
     def get_dump(self, dump):
         '''
-        Returns a single dump.
+        Returns a single MomsData object for a dump.
         
         Parameters
         ----------
@@ -10017,7 +10096,7 @@ class MomsDataSet:
         file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
                                                              dump, self.__run_id, dump)
 
-        # dump tracker
+        # dump tracker updated
         self.__what_dump_am_i = dump
 
         return MomsData(file_path)
@@ -10044,6 +10123,10 @@ class MomsDataSet:
             if return_counts=True      
         '''
 
+        # we need to make sure we have our cartesian grid, it isn't made at the start
+        if not self.__cgrid_exists():
+            self.__get_cgrid()
+
         # check if we have array or not
         if type(varloc) != int:
             quantity = np.ravel(varloc)
@@ -10066,17 +10149,29 @@ class MomsDataSet:
         # return the radprof and radial_axis
         return average_quantity, self.radial_axis
 
-    def get_grid(self):
+    def get_cgrid(self):
         '''
-        Returns the xc, yc, zc and radius of the moments data cube currently held
-        in memory
+        Returns the central values of the grid for x,y and z of the moments data cube currently held
+        in memory. This is the cartesian grid
 
         Returns
         -------
-        xc,yc,zc,radius: np.ndarray
+        xc,yc,zc: np.ndarray
              
         '''
-        return self.__xc,self.__yc,self.__zc,self.__radius
+        return self.__xc,self.__yc,self.__zc
+
+    def get_sgrid(self):
+        '''
+        Returns the central values of the grid for r,theta and phi of the moments data cube currently held
+        in memory. This is of course the physics version where theta is defined as the angle from the z axis
+        and phi is the cylindrical angle
+
+        Returns
+        -------
+        radius,theta,phi: np.ndarray
+        '''
+        return self.__radius,self.__theta,self.__phi
 
     def get(self, varloc, fname):
         '''
