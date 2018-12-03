@@ -9851,7 +9851,11 @@ class MomsDataSet:
         # bools track what has happened
         self.__is_valid_cgrid = False
         self.__is_valid_sgrid = False
-
+        
+        # get the initial dump momsdata
+        self.momsdata = self.get_dump(self.__what_dump_am_i)
+        
+        # alright we are now a valid instance
         self.__is_valid = True
 
     def __find_dumps(self, dir_name):
@@ -9986,7 +9990,7 @@ class MomsDataSet:
             # self.run_resolution = int(np.ceil(momsdata.resolution*4.))
 
             # all is good, set that we have made our grid
-            self.__cgrid_exists = True
+            self.__is_valid_cgrid = True
 
             return 0
 
@@ -10040,7 +10044,7 @@ class MomsDataSet:
             self.__phi[self.__phi < 0] += 2. * np.pi
 
             # ok all is good, set our flag that everything is good
-            self.__sgrid_exists = True
+            self.__is_valid_sgrid = True
 
             return 0
 
@@ -10095,10 +10099,6 @@ class MomsDataSet:
         
         file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
                                                              dump, self.__run_id, dump)
-
-        # we are reading in a new momsdata cube, notify user
-        msg = "We are reading in a new Momsdata object, this can take some time"
-        self.__messenger.message(msg)
 
         # dump tracker updated
         self.__what_dump_am_i = dump
