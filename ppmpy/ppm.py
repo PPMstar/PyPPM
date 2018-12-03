@@ -10096,6 +10096,10 @@ class MomsDataSet:
         file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
                                                              dump, self.__run_id, dump)
 
+        # we are reading in a new momsdata cube, notify user
+        msg = "We are reading in a new Momsdata object, this can take some time"
+        self.__messenger.message(msg)
+
         # dump tracker updated
         self.__what_dump_am_i = dump
 
@@ -10157,8 +10161,12 @@ class MomsDataSet:
         Returns
         -------
         xc,yc,zc: np.ndarray
-             
         '''
+
+        # does this exist yet?
+        if not self.__cgrid_exists():
+            self.__get_cgrid()
+
         return self.__xc,self.__yc,self.__zc
 
     def get_sgrid(self):
@@ -10171,6 +10179,11 @@ class MomsDataSet:
         -------
         radius,theta,phi: np.ndarray
         '''
+
+        # does this exist yet?
+        if not self.__sgrid_exists():
+            self.__get_sgrid()
+
         return self.__radius,self.__theta,self.__phi
 
     def get(self, varloc, fname):
