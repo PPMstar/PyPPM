@@ -9851,6 +9851,7 @@ class MomsDataSet:
         # bools track what has happened
         self.__is_valid_cgrid = False
         self.__is_valid_sgrid = False
+        self.__is_valid_mollweide = False
         
         # get the initial dump momsdata
         self.momsdata = self.get_dump(self.__what_dump_am_i)
@@ -9984,6 +9985,11 @@ class MomsDataSet:
 
             # these are the boundaries, now I need what is my "actual" r value
             self.radial_axis = self.__radial_boundary - delta_r/2.
+            
+            # construct the bins for computing averages ON radial_axis, these are "right edges"
+            delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+            radialbins = self.radial_axis + delta_r
+            self.radial_bins = np.insert(radialbins,0,0)
 
             # might as well store the resolution of this MomsDataSet
             # self.resolution = int(np.ceil(momsdata.resolution))
@@ -10009,6 +10015,19 @@ class MomsDataSet:
         '''
 
         return self.__is_valid_sgrid
+    
+    def __mollweide_exists(self):
+        '''
+        Do we have a mollweide projection already stored in memory? This is static!
+        We will always have the cartesian grid if we are making the spherical coordinates
+
+        Returns
+        -------
+        boolean
+            True if it exists
+        '''
+
+        return self.__is_valid_mollweide       
 
     def __get_sgrid(self):
         '''
@@ -10051,6 +10070,46 @@ class MomsDataSet:
         else:
             return 0
 
+    def __get_mollweide(self):
+        '''
+        Constructs the PPMStar spherical coordinates grid
+
+        Returns
+        -------
+        int
+            0 on success.
+        NoneType
+            Something failed.
+
+        '''
+
+        # check if we already have this in memory or not
+        if not self.__mollweide_exists():
+
+            # we are going to need the cartesian grid
+            if not self.__cgrid_exists():
+                self.__get_cgrid()
+
+            # ok we are good to go for the spherical coordinates
+            # lets send a message to the user about this
+            msg = "The PPMstar mollweide projection coordinates is being constructed, this can take a moment"
+            self.__messenger.message(msg)
+
+            # we have the radius already, need theta and phi
+            self.__mollweide_theta = np.arctan2(self.__zc,np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0)))
+
+            # with phi we have a problem with the way np.arctan2 works, we get negative
+            # angles in quadrants 3 and 4. This is what we want
+            self.__mollweide_phi = np.arctan2(self.__yc,self.__xc)
+
+            # ok all is good, set our flag that everything is good
+            self.__is_valid_mollweide = True
+
+            return 0
+
+        else:
+            return 0
+        
     def is_valid(self):
         '''
         Checks if the instance is valid, i.e. fully initialised.
@@ -10138,17 +10197,9 @@ class MomsDataSet:
             # get the grid from a momsdata cube
             quantity = self.get(varloc,fname)
 
-        # ok, we have our radial_axis, we can count how many radius values
-        # fall into each bin
-
-        # first get the construct array of the "right edge"
-        delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
-        radialbins = self.radial_axis + delta_r
-        radialbins = np.insert(radialbins,0,0)
-
         # This will apply a "mean" to the quantity that is binned by radialbins
         # using the self.__radius values
-        average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',radialbins)
+        average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',self.radial_bins)
 
         # return the radprof and radial_axis
         return average_quantity, self.radial_axis
@@ -10185,6 +10236,23 @@ class MomsDataSet:
             self.__get_sgrid()
 
         return self.__radius,self.__theta,self.__phi
+    
+    def get_sgrid_mollweide(self):
+        '''
+        Returns the central values of the grid for r,theta and phi of the moments data cube currently held
+        in memory. This is the mollweide projection so theta runs from pi/2 -> -pi/2 going down from the z axis
+        and 0 -> pi from quadrants 1->2 and then -0 -> -pi from quadrants 4->3. Useful for plotting projections
+
+        Returns
+        -------
+        theta,phi: np.ndarray
+        '''        
+        
+        # does this exist yet?
+        if not self.__mollweide_exists():
+            self.__get_mollweide()
+            
+        return self.__mollweide_theta,self.__mollweide_phi
 
     def get(self, varloc, fname):
         '''
