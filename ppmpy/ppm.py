@@ -9718,7 +9718,7 @@ class MomsData():
         ''' 
         
         try:
-            tempdata = np.fromfile(file_path,dtype='float32',count=-1,sep="")
+            ghostdata = np.fromfile(file_path,dtype='float32',count=-1,sep="")
 
             # ok this is one large array with 10 variables of some length with
             # some amount of ghost values. What's the resolution?
@@ -9726,10 +9726,10 @@ class MomsData():
             self.resolution = int(np.ceil(self.run_resolution/4.))
 
             # Now I can reshape this data array in 10 flattened arrays
-            ghostdata = tempdata.reshape((10,int(np.ceil((self.resolution + self.__ghost)**3))))
+            ghostdata = ghostdata.reshape((10,int(np.ceil((self.resolution + self.__ghost)**3))))
 
             # I have ghosts... lets construct a bool array for what values to keep
-            bool_array = np.ones(np.shape(ghostdata)[1])
+            bool_array = np.ones(np.shape(ghostdata)[1],dtype='float32')
 
             # now x repeats every length of the cube
             x_ghost = int(np.ceil(self.resolution + self.__ghost))
@@ -9763,17 +9763,14 @@ class MomsData():
             bool_array[-z_ghost:-1] = 0
             
             # collect the actual moms data, make sure it is a float 32!
-            self.__data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))),dtype=np.float32)
-
-            for i in range(np.shape(self.__data)[0]):
-                self.__data[i] = ghostdata[i][np.where(bool_array > 0)]
+            self.__data = ghostdata[0:,np.where(bool_array > 0)].reshape((int(ghostdata.shape[0]),int(np.power(self.resolution,3.0))))
 
             # save the file path
             self.__file_path = file_path
 
-            # remove references to original data with ghosts
-            del tempdata
+            # remove references to read in data and boolean array
             del ghostdata
+            del bool_array
 
         except IOError as e:
             err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
@@ -9968,14 +9965,14 @@ class MomsDataSet:
             msg = "The PPMstar cartesian grid is being constructed, this can take a moment"
             self.__messenger.message(msg)
 
-            # we have self.data, assume that self.data[0] is a coordinate
+            # we have self.data, assume that self.data[0] is a coordinate. Let's store unique values
             self.momsdata = self.get_dump(self.__what_dump_am_i)
-            coord = np.unique(self.momsdata.get(0))
+            self.__unique_coord = np.unique(self.momsdata.get(0))
 
             # there is all of the unique values, construct self.xc, self.yc, self.zc
-            self.__xc = np.tile(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
-            self.__yc = np.tile(np.repeat(coord,int(np.ceil(self.momsdata.resolution))),int(np.ceil(self.momsdata.resolution)))
-            self.__zc = np.repeat(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
+            self.__xc = np.tile(self.__unique_coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
+            self.__yc = np.tile(np.repeat(self.__unique_coord,int(np.ceil(self.momsdata.resolution))),int(np.ceil(self.momsdata.resolution)))
+            self.__zc = np.repeat(self.__unique_coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
             self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
                                     np.power(self.__zc,2.0))
 
