@@ -10291,3 +10291,31 @@ class MomsDataSet:
             return self.momsdata.get(varloc)
         else:
             return None
+        
+    def transform_mollweide(self,theta,phi):
+        '''
+        Transforms a "physics" spherical coordinates array into the spherical coordinates
+        that matplotlib uses for projection plots
+
+        Parameters
+        ----------
+        theta, phi: np.array
+            The "physics" theta and phi arrays
+
+        Returns
+        -------
+        theta, phi numpy.ndarray
+            theta and phi transformed
+        '''
+
+        # phi instead goes from -pi to pi with -pi/2 being the -y axis and
+        # the x axis defines phi = 0
+
+        phi[np.where(phi > np.pi)] = phi[np.where(phi > np.pi)] - 2*np.pi
+
+        # theta instead goes from -pi/2 to pi/2 with pi/2 being the positive
+        # z axis and the xy plane defines theta = 0
+        theta[np.where(theta <= np.pi/2.)] = abs(theta[np.where(theta <= np.pi/2.)] - np.pi/2.)
+        theta[np.where(theta > np.pi/2.)] = -(theta[np.where(theta > np.pi/2.)] - np.pi/2.)
+
+        return theta, phi
