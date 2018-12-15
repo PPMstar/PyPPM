@@ -9696,6 +9696,9 @@ class MomsData():
         # how many extra "ghost" indices are there for each dimension?
         self.__ghost = 2
 
+        # number of whatevers, probably won't change anytime soon
+        self.__number_of_whatevers = 10
+
         # set blanks for these at the start
         self.resolution = 0
         self.run_resolution = 0
@@ -9741,7 +9744,7 @@ class MomsData():
         # ok, I can reshape without reallocating an array
         ghostview = ghostdata.view()
         size = int(np.ceil(self.resolution+self.__ghost))
-        ghostview.shape = (10,size,size,size)
+        ghostview.shape = (self.__number_of_whatevers,size,size,size)
 
         # my removed "ghost" values is quite easy! Now in an intuitive format
         # self.data[z,y,x]
@@ -9787,7 +9790,7 @@ class MomsDataSet:
     Moments reader from PPMstar 2.0.
     '''
 
-    def __init__(self, dir_name, init_dump_read=0, dumps_in_mem=3, verbose=3):
+    def __init__(self, dir_name, init_dump_read=0, dumps_in_mem=2, var_list=[], verbose=3):
         '''
         Init method.
         
@@ -9799,6 +9802,9 @@ class MomsDataSet:
             The initial dump to read into memory when object is initialized
         dumps_in_mem: integer
             The number of dumps to be held into memory. These datacubes can be large (~2Gb for 384^3)
+        var_list: list
+            This is a list that can be filled with strings that will reference data. E.g element 0 is 'xc'
+            which will refer to the variable location data[0] in the large array of data
         verbose: integer
             Verbosity level as defined in class Messenger.
         '''        
@@ -9813,23 +9819,34 @@ class MomsDataSet:
         if not self.__find_dumps(dir_name):
             return
 
-        # ok, there is an initial dump that is read to get the grid
-        self.__what_dump_am_i = init_dump_read
-
         # we do not create the grid, we only do that if it is needed
         # bools track what has happened
         self.__is_valid_cgrid = False
         self.__is_valid_sgrid = False
         self.__is_valid_mollweide = False
-        
+
+        # setup some useful dictionaries, there is also a list implemented
+        self.__varloc = {}
+        self.__number_of_whatevers = 10
+
+        # For storing multiple momsdata we use a dictionary so that it can be referenced
+        # I will store in a list the dumps that are in there
+        self.__many_momsdata = {}
+        self.__many_momsdata_keys = []
+        self.__dumps_in_mem = dumps_in_mem
+
+        # initialize the dictionaries if needed
+        if not self.__set_dictionaries(var_list):
+            return
+
         # get the initial dump momsdata
         self.__momsdata = None
-        self.__get_dump(self.__what_dump_am_i)
+        self.__get_dump(init_dump_read)
 
         # set objects resolution and original run resolution
-        # I will not use the explicitly set 
-        self.moms_resolution = copy.deepcopy(self.__momsdata.resolution)
-        self.run_resolution = copy.deepcopy(self.__momsdata.run_resolution)
+        # these are deep copies to ensure no reference back on momsdata
+        self.moms_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].resolution)
+        self.run_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_resolution)
 
         # alright we are now a valid instance
         self.__is_valid = True
@@ -9929,15 +9946,72 @@ class MomsDataSet:
         file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
                                                              dump, self.__run_id, dump)
 
-        # dump tracker updated
-        self.__what_dump_am_i = dump
+        # we first check if we can add a new moments data to memory
+        # without removing another
+        if len(self.__many_momsdata) < self.__dumps_in_mem:
 
-        if self.__momsdata == None:
-            self.__momsdata = MomsData(file_path)
+            # add it to our dictionary!
+            self.__many_momsdata.update(zip([str(dump)],[MomsData(file_path)]))
+
+            # append the key. This keeps track of order of read in
+            self.__many_momsdata_keys.append(str(dump))
+
         else:
-            # delete reference
-            del self.__momsdata
-            self.__momsdata = MomsData(file_path)
+
+            # we gotta remove one of them, this will be index 0 of a list
+            del self.__many_momsdata[str(self.__many_momsdata_keys[0])]
+            self.__many_momsdata_keys.remove(self.__many_momsdata_keys[0])
+
+            # now add a new momsdata object to our dict
+            self.__many_momsdata.update(zip([str(dump)],[MomsData(file_path)]))
+
+            # append the key. This keeps track of order of read in
+            self.__many_momsdata_keys.append(str(dump))
+
+    def __set_dictionaries(self,var_list):
+        '''
+        This function will setup the dictionaries that will house multiple moments data objects and
+        a convenience dictionary to refer to variables by a string
+
+        Returns
+        -------
+        Boolean
+            True if successful
+            False if failure
+        '''
+
+        # check if the list is empty
+        if not var_list:
+
+            # ok it is empty, construct default dictionary
+            var_keys = [str(i) for i in range(self.__number_of_whatevers)]
+            var_vals = [i for i in range(self.__number_of_whatevers)]
+
+        else:
+
+            # first we check that var_list is the correct length
+            if len(var_list) != self.__number_of_whatevers:
+
+                # we use the default
+                var_keys = [str(i) for i in range(self.__number_of_whatevers)]
+                var_vals = [i for i in range(self.__number_of_whatevers)]
+
+            else:
+
+                # ok we are in the clear
+                var_keys = [str(i) for i in var_list]
+                var_vals = [i for i in range(self.__number_of_whatevers)]
+
+                # I will also allow for known internal varloc to point to the same things
+                # with this dictionary, i.e xc: varloc = 0 ALWAYS
+                var_keys2 = [str(i) for i in range(self.__number_of_whatevers)]
+
+                self.__varloc.update(zip(var_keys2,var_vals))
+
+        # construct the variable dictionary
+        self.__varloc.update(zip(var_keys,var_vals))
+
+        return True
 
     def __transform_mollweide(self,theta,phi):
         '''
@@ -9997,7 +10071,7 @@ class MomsDataSet:
 
             # We assume that x is always the zero varloc
             # We also make sure it is a copy and separated from self.__momsdata.data
-            xc_array = self.__get(0,self.__what_dump_am_i).copy()
+            xc_array = self.__get(self.__varloc['0'],self.__many_momsdata_keys[0]).copy()
 
             # x contains all the info for y and z, just different order. I figured this out
             # and lets use strides so that we don't allocate new wasteful arrays (~230Mb for 1536!)
@@ -10029,7 +10103,7 @@ class MomsDataSet:
 
             # from this, I will always setup vars for a rprof
             delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
-            self.__radial_boundary = np.linspace(delta_r,delta_r*(self.__momsdata.resolution/2.),int(np.ceil(self.__momsdata.resolution/2.)))
+            self.__radial_boundary = np.linspace(delta_r,delta_r*(self.moms_resolution/2.),int(np.ceil(self.moms_resolution/2.)))
 
             # these are the boundaries, now I need what is my "actual" r value
             self.radial_axis = self.__radial_boundary - delta_r/2.
@@ -10171,18 +10245,18 @@ class MomsDataSet:
         '''
 
         # quick check if we already have the momsdata in memory
-        if self.__what_dump_am_i == fname:
+        if str(fname) in self.__many_momsdata:
 
-            # this is private, we can send references as long as they die in a method
-            return self.__momsdata.get(varloc)
+            # This is public, we must give a copy
+            return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
 
         else:
 
             # grab a new datacube. This updates self.__momsdata.data
             self.__get_dump(fname)
 
-            # this is private, we can send references as long as they die in a method
-            return self.__momsdata.get(varloc)
+            # This is public, we must give a copy
+            return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
 
     def is_valid(self):
         '''
@@ -10325,11 +10399,11 @@ class MomsDataSet:
         corresponding to fname exists.
         '''
 
-        # quick check if we already have the momsdata in memoryf
-        if self.__what_dump_am_i == fname:
+        # quick check if we already have the momsdata in memory
+        if str(fname) in self.__many_momsdata:
 
             # This is public, we must give a copy
-            return self.__momsdata.get(varloc).copy()
+            return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
 
         else:
 
@@ -10337,4 +10411,4 @@ class MomsDataSet:
             self.__get_dump(fname)
 
             # This is public, we must give a copy
-            return self.__momsdata.get(varloc).copy()
+            return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
