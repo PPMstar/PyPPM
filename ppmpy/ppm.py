@@ -9768,7 +9768,6 @@ class MomsData():
     def get(self, varloc):
         '''
         Returns a 3d array of the variable that is defined at whatever(varloc).
-        The shape is (3,resolution/4) with ordering x,y,z on first index
 
         Parameters
         ----------
@@ -10136,7 +10135,7 @@ class MomsDataSet:
             self.__zc = np.ravel(zc_array)
 
             # might as well grab unique values
-            self.__unique_coord = xc[0,0,:].copy()
+            self.__unique_coord = xc_array[0,0,:].copy()
 
             # creating a new array, radius
             self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
@@ -10153,6 +10152,17 @@ class MomsDataSet:
             delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
             radialbins = self.radial_axis + delta_r
             self.radial_bins = np.insert(radialbins,0,0)
+
+            # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
+            self.__xc_view = self.__xc.view()
+            self.__xc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__yc_view = self.__yc.view()
+            self.__yc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__zc_view = self.__zc.view()
+            self.__zc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
+            self.__radius_view = self.__radius.view()
+            self.__radius_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
 
             # all is good, set that we have made our grid
             self.__is_valid_cgrid = True
@@ -10202,6 +10212,12 @@ class MomsDataSet:
             # angles in quadrants 3 and 4. we can fix this by adding 2pi to the negative values
             self.__phi = np.arctan2(self.__yc,self.__xc)
             self.__phi[self.__phi < 0] += 2. * np.pi
+
+            # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
+            self.__theta_view = self.__theta.view()
+            self.__theta_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__phi_view = self.__phi.view()
+            self.__phi_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
 
             # ok all is good, set our flag that everything is good
             self.__is_valid_sgrid = True
@@ -10256,6 +10272,12 @@ class MomsDataSet:
             # # angles in quadrants 3 and 4. This is what we want
             # self.__mollweide_phi = np.arctan2(self.__yc,self.__xc)
 
+            # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
+            self.__mollweide_theta_view = self.__mollweide_theta.view()
+            self.__mollweide_theta_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__mollweide_phi_view = self.__mollweide_phi.view()
+            self.__mollweide_phi_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
             # ok all is good, set our flag that everything is good
             self.__is_valid_mollweide = True
 
@@ -10268,7 +10290,8 @@ class MomsDataSet:
         '''
         Returns variable var at a specific point in the simulation's time
         evolution. This is used internally for data claims that will be references
-        that die in a method
+        that die in a method. IMPORTANT: The arrays are NOT flattened but if they need
+        to be a NEW array must be made
         
         Parameters
         ----------
@@ -10293,8 +10316,9 @@ class MomsDataSet:
 
             except KeyError as e:
                 err = 'Invalid key for varloc. A list of keys: \n'
-                err += ', '.join(map(str,self.__varloc.keys()))
+                err += ', '.join(sorted(map(str,self.__varloc.keys())))
                 self.__messenger.error(err)
+                raise e
 
         else:
 
@@ -10306,8 +10330,9 @@ class MomsDataSet:
 
             except KeyError as e:
                 err = 'Invalid key for varloc. A list of keys: \n'
-                err += ', '.join(map(str,self.__varloc.keys()))
+                err += ', '.join(sorted(map(str,self.__varloc.keys())))
                 self.__messenger.error(err)
+                raise e
 
     def is_valid(self):
         '''
@@ -10359,7 +10384,7 @@ class MomsDataSet:
         '''
 
         # check if we have array or not
-        if type(varloc) != int:
+        if type(varloc) == np.ndarray:
             quantity = np.ravel(varloc)
         else:
             # get the grid from a momsdata cube
@@ -10383,16 +10408,12 @@ class MomsDataSet:
         xc,yc,zc: np.ndarray
         '''
 
-        # get the coordinate views to reformat, not making a new array
-        xc_view = self.__xc.view()
-        xc.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
-        yc_view = self.__yc.view()
-        yc.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
-        zc.view = self.__zc.view()
-        zc.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+        # does this exist?
+        if not self.__cgrid_exists():
+            self.__get_cgrid()
 
         # we can send the real deal as this is static
-        return xc_view, yc_view, zc_view
+        return self.__xc_view, self.__yc_view, self.__zc_view
 
     def get_sgrid(self):
         '''
@@ -10409,15 +10430,7 @@ class MomsDataSet:
         if not self.__sgrid_exists():
             self.__get_sgrid()
 
-        # get the coordinate views to reformat, not making a new array
-        r_view = self.__radius.view()
-        r.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
-        theta_view = self.__theta.view()
-        theta.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
-        phi_view = self.__phi.view()
-        phi.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
-
-        return r_view, theta_view, phi_view
+        return self.__radius_view, self.__theta_view, self.__phi_view
     
     def get_mollweide(self):
         '''
@@ -10434,15 +10447,7 @@ class MomsDataSet:
         if not self.__mollweide_exists():
             self.__get_mollweide()
 
-        # get the coordinate views to reformat, not making a new array
-        r_view = self.__radius.view()
-        r.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
-        mollweide_theta_view = self.__mollweide_theta.view()
-        mollweide_theta.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
-        mollweide_phi_view = self.__mollweide_phi.view()
-        mollweide_phi.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
-
-        return self.__mollweide_theta_view, mollweide_phi_view
+        return self.__mollweide_theta_view, self.__mollweide_phi_view
 
     def get_interpolation(self, varloc, fname, radius, num_points=5000, plot_mollweide=True):
         '''
@@ -10476,7 +10481,8 @@ class MomsDataSet:
         # create an interpolation object, order is z,y,x
         # are we going to get a key error?
         try:
-            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__many_momsdata[str(fname)].__get(self.__varloc[str(varloc)]))
+            # I need to flatten varloc!
+            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),np.ravel(self.__many_momsdata[str(fname)].__get(self.__varloc[str(varloc)])))
 
         except KeyError as e:
             err = 'Invalid key for varloc. A list of keys: \n'
@@ -10524,8 +10530,9 @@ class MomsDataSet:
 
             except KeyError as e:
                 err = 'Invalid key for varloc. A list of keys: \n'
-                err += ', '.join(map(str,self.__varloc.keys()))
+                err += ', '.join(sorted(map(str,self.__varloc.keys())))
                 self.__messenger.error(err)
+                raise e
 
         else:
 
@@ -10539,5 +10546,6 @@ class MomsDataSet:
 
             except KeyError as e:
                 err = 'Invalid key for varloc. A list of keys: \n'
-                err += ', '.join(map(str,self.__varloc.keys()))
+                err += ', '.join(sorted(map(str,self.__varloc.keys())))
                 self.__messenger.error(err)
+                raise e
