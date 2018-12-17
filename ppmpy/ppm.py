@@ -10449,7 +10449,7 @@ class MomsDataSet:
 
         return self.__mollweide_theta_view, self.__mollweide_phi_view
 
-    def get_interpolation(self, varloc, fname, radius, num_points=5000, plot_mollweide=True):
+    def get_interpolation(self, varloc, fname, radius, perturbation=False, num_points=5000, plot_mollweide=True):
         '''
         Returns the trillinear interpolated array of values of 'varloc' at a radius of
         'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
@@ -10463,6 +10463,9 @@ class MomsDataSet:
             Dump number
         radius: float
             The radius of the sphere you want 'varloc' to be interpolated to
+        perturbation: bool
+            Do we subtract off the average (on a sphere) from 'varloc' being interpolated and
+            then scale it by that average (on a sphere)? i.e varloc_interpolated = (varloc - <varloc>)/<varloc>
         num_points: int
             The number of 'theta and phi' points you want for a projection plot
 
@@ -10491,6 +10494,13 @@ class MomsDataSet:
 
         # we have interpolation object, get interpolated values
         varloc_vals = varloc_interp(zyx_grid)
+
+        # do we subtract off the mean?
+        if perturbation:
+            # these can be large arrays, dont make a million copies, do in place
+            mean_vals = np.mean(varloc_vals)
+            np.subtract(varloc_vals,mean_vals,out=varloc_vals)
+            np.divide(varloc_vals,mean_vals,out=varloc_vals)
 
         if plot_mollweide:
             return varloc_vals, theta_grid, phi_grid
