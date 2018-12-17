@@ -9843,10 +9843,17 @@ class MomsDataSet:
         self.__momsdata = None
         self.__get_dump(init_dump_read)
 
+        # hold the initial dump in attribute
+        self.what_dump_am_i = init_dump_read
+
         # set objects resolution and original run resolution
         # these are deep copies to ensure no reference back on momsdata
         self.moms_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].resolution)
         self.run_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_resolution)
+
+        # On instantiation we create cartesian ALWAYS
+        if not self.__cgrid_exists():
+            self.__get_cgrid()
 
         # alright we are now a valid instance
         self.__is_valid = True
@@ -9968,6 +9975,9 @@ class MomsDataSet:
             # append the key. This keeps track of order of read in
             self.__many_momsdata_keys.append(str(dump))
 
+        # all is good. update what_dump_am_i
+        self.what_dump_am_i = dump
+
     def __set_dictionaries(self,var_list):
         '''
         This function will setup the dictionaries that will house multiple moments data objects and
@@ -10041,6 +10051,37 @@ class MomsDataSet:
 
         return theta, phi
 
+    def __uniform_spherical_grid(self,radius,npoints):
+        '''
+        Create a uniformly spaced (in spherical coordinates) grid of points in which
+        the interpolation is done on to get a value of quantity at radius r
+
+        Parameters
+        ----------
+        npoints: int
+            The number of points on the uniform grid. 5000 is plenty for most images
+
+        Returns
+        -------
+        xyz_grid,theta_interp,phi_interp: np.ndarray
+            The spherical coordinates (physics) of the points on the sphere with their
+            associated x,y,z
+        '''
+
+        indices = np.arange(0, num_points, dtype=np.float32) + 0.5
+
+        # Based on equal amount of points in equal area on a sphere...
+        theta = np.arccos(1. - 2.*indices/float(num_points))
+        phi = np.pi * (1 + 5**0.5) * indices  - 2*np.pi*np.floor(np.pi * (1 + 5**0.5) * indices / (2 * np.pi))
+
+        # create the interp_grid. It is written in this fashion to work with interpolation, z,y,x
+        igrid = np.zeros((num_points,3))
+        igrid[:,0] = radius * np.cos(theta)
+        igrid[:,1] = radius * np.sin(theta) * np.sin(phi)
+        igrid[:,2] = radius * np.cos(theta) * np.sin(phi)
+
+        return igrid, theta, phi
+
     def __cgrid_exists(self):
         '''
         Do we have a cartesian grid already stored in memory? This is static!
@@ -10095,7 +10136,7 @@ class MomsDataSet:
             self.__zc = np.ravel(zc_array)
 
             # might as well grab unique values
-            self.__unique_coord = np.unique(self.__xc)
+            self.__unique_coord = xc[0,0,:].copy()
 
             # creating a new array, radius
             self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
@@ -10247,16 +10288,26 @@ class MomsDataSet:
         # quick check if we already have the momsdata in memory
         if str(fname) in self.__many_momsdata:
 
-            # This is public, we must give a copy
-            return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
+            try:
+                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
+
+            except KeyError as e:
+                err = 'Invalid key for varloc. A list of keys: \n'
+                err += ', '.join(map(str,self.__varloc.keys()))
+                self.__messenger.error(err)
 
         else:
 
             # grab a new datacube. This updates self.__momsdata.data
             self.__get_dump(fname)
 
-            # This is public, we must give a copy
-            return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
+            try:
+                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
+
+            except KeyError as e:
+                err = 'Invalid key for varloc. A list of keys: \n'
+                err += ', '.join(map(str,self.__varloc.keys()))
+                self.__messenger.error(err)
 
     def is_valid(self):
         '''
@@ -10292,11 +10343,11 @@ class MomsDataSet:
 
         Parameters
         ----------
-        varloc: integer or np.ndarray
+        varloc: int or np.ndarray
             integer index of the quantity that is defined under whatever(varloc)
             OR you can supply an array that contains data. This will be flattened
-        fname: integer
-            The dump number that you want a MomsData rprof for
+        fname: int
+            Dump number
         Returns
         -------
         rad_prof, radial_axis: np.ndarray
@@ -10306,10 +10357,6 @@ class MomsDataSet:
             The number of cells used in the radial bins averaging can be returned
             if return_counts=True      
         '''
-
-        # we need to make sure we have our cartesian grid, it isn't made at the start
-        if not self.__cgrid_exists():
-            self.__get_cgrid()
 
         # check if we have array or not
         if type(varloc) != int:
@@ -10329,25 +10376,29 @@ class MomsDataSet:
     def get_cgrid(self):
         '''
         Returns the central values of the grid for x,y and z of the moments data cube currently held
-        in memory. This is the cartesian grid
+        in memory. This is the cartesian grid and it is formatted as xc[z,y,x] and so
 
         Returns
         -------
         xc,yc,zc: np.ndarray
         '''
 
-        # does this exist yet?
-        if not self.__cgrid_exists():
-            self.__get_cgrid()
+        # get the coordinate views to reformat, not making a new array
+        xc_view = self.__xc.view()
+        xc.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+        yc_view = self.__yc.view()
+        yc.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+        zc.view = self.__zc.view()
+        zc.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
 
         # we can send the real deal as this is static
-        return self.__xc,self.__yc,self.__zc
+        return xc_view, yc_view, zc_view
 
     def get_sgrid(self):
         '''
         Returns the central values of the grid for r,theta and phi of the moments data cube currently held
         in memory. This is of course the physics version where theta is defined as the angle from the z axis
-        and phi is the cylindrical angle
+        and phi is the cylindrical angle. it is formatted as phi[z,y,x] and so phi[0,0,:] will give a plane of constant x
 
         Returns
         -------
@@ -10358,7 +10409,15 @@ class MomsDataSet:
         if not self.__sgrid_exists():
             self.__get_sgrid()
 
-        return self.__radius,self.__theta,self.__phi
+        # get the coordinate views to reformat, not making a new array
+        r_view = self.__radius.view()
+        r.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+        theta_view = self.__theta.view()
+        theta.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+        phi_view = self.__phi.view()
+        phi.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
+        return r_view, theta_view, phi_view
     
     def get_mollweide(self):
         '''
@@ -10369,13 +10428,69 @@ class MomsDataSet:
         Returns
         -------
         theta,phi: np.ndarray
-        '''        
-        
-        # does this exist yet?
+        '''
+
+        # DOES this exist yet?
         if not self.__mollweide_exists():
             self.__get_mollweide()
-            
-        return self.__mollweide_theta,self.__mollweide_phi
+
+        # get the coordinate views to reformat, not making a new array
+        r_view = self.__radius.view()
+        r.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+        mollweide_theta_view = self.__mollweide_theta.view()
+        mollweide_theta.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+        mollweide_phi_view = self.__mollweide_phi.view()
+        mollweide_phi.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
+        return self.__mollweide_theta_view, mollweide_phi_view
+
+    def get_interpolation(self, varloc, fname, radius, num_points=5000, plot_mollweide=True):
+        '''
+        Returns the trillinear interpolated array of values of 'varloc' at a radius of
+        'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
+
+        Parameters
+        ----------
+        varloc: str, int
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
+        fname: int
+            Dump number
+        radius: float
+            The radius of the sphere you want 'varloc' to be interpolated to
+        num_points: int
+            The number of 'theta and phi' points you want for a projection plot
+
+        Returns
+        -------
+        plot_mollweide: True
+            varloc_interpolated,theta,phi: np.ndarray
+
+        plot_mollweide: False
+            varloc_interpolated
+        '''
+
+        # First we get the spherical grid
+        zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius, npoints)
+
+        # create an interpolation object, order is z,y,x
+        # are we going to get a key error?
+        try:
+            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__many_momsdata[str(fname)].__get(self.__varloc[str(varloc)]))
+
+        except KeyError as e:
+            err = 'Invalid key for varloc. A list of keys: \n'
+            err += ', '.join(map(str,self.__varloc.keys()))
+            self.__messenger.error(err)
+
+        # we have interpolation object, get interpolated values
+        varloc_vals = varloc_interp(zyx_grid)
+
+        if plot_mollweide:
+            return varloc_vals, theta_grid, phi_grid
+        else:
+            return varloc_vals
+
 
     def get(self, varloc, fname):
         '''
@@ -10383,27 +10498,34 @@ class MomsDataSet:
         evolution. IMPORTANT NOTE: This is a copy of the actual data. This
         is to ensure that a dump's data will be deleted when new data is deleted
         i.e we are preserving that there will be no references!
-        
+
         Parameters
         ----------
-        varloc: int
-            Index location of the variable you want
-        fname: integer/float
-            Dump number or time in seconds depending on the value of
-            num_type.            
-            
+        varloc: str, int
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
+        fname: int
+            Dump number
+
         Returns
         -------
         numpy.ndarray
             Variable in index varloc as given by MomsData.get() if the MomsData
-        corresponding to fname exists.
+            corresponding to fname exists.
         '''
 
         # quick check if we already have the momsdata in memory
         if str(fname) in self.__many_momsdata:
 
             # This is public, we must give a copy
-            return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
+            # let's try this, if we get key error then obviously...
+            try:
+                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
+
+            except KeyError as e:
+                err = 'Invalid key for varloc. A list of keys: \n'
+                err += ', '.join(map(str,self.__varloc.keys()))
+                self.__messenger.error(err)
 
         else:
 
@@ -10411,4 +10533,11 @@ class MomsDataSet:
             self.__get_dump(fname)
 
             # This is public, we must give a copy
-            return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
+            # let's try this, if we get key error then obviously...
+            try:
+                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
+
+            except KeyError as e:
+                err = 'Invalid key for varloc. A list of keys: \n'
+                err += ', '.join(map(str,self.__varloc.keys()))
+                self.__messenger.error(err)
