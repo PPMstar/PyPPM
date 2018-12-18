@@ -9820,9 +9820,12 @@ class MomsDataSet:
 
         # we do not create the grid, we only do that if it is needed
         # bools track what has happened
-        self.__is_valid_cgrid = False
-        self.__is_valid_sgrid = False
-        self.__is_valid_mollweide = False
+        self.__cgrid_exists = False
+        self.__sgrid_exists = False
+        self.__mollweide_exists = False
+
+        # we also check if we have our unit vectors
+        self.__jacobian_exists = False
 
         # setup some useful dictionaries, there is also a list implemented
         self.__varloc = {}
@@ -10081,18 +10084,6 @@ class MomsDataSet:
 
         return igrid, theta, phi
 
-    def __cgrid_exists(self):
-        '''
-        Do we have a cartesian grid already stored in memory? This is static!
-
-        Returns
-        -------
-        boolean
-            True if it exists
-        '''
-
-        return self.__is_valid_cgrid
-
     def __get_cgrid(self):
         '''
         Constructs the PPMStar cartesian grid from the saved xc in whatever(0) as well as a radial coordinate
@@ -10105,7 +10096,7 @@ class MomsDataSet:
         '''
 
         # check, do we already have this?
-        if not self.__cgrid_exists():
+        if not self.__cgrid_exists:
 
             # Ok, we will always have a dump in memory so carry on!
 
@@ -10165,25 +10156,12 @@ class MomsDataSet:
             self.__radius_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
 
             # all is good, set that we have made our grid
-            self.__is_valid_cgrid = True
+            self.__cgrid_exists = True
 
             return True
 
         else:
             return True
-
-    def __sgrid_exists(self):
-        '''
-        Do we have a spherical coordinates grid already stored in memory? This is static!
-        We will always have the cartesian grid if we are making the spherical coordinates
-
-        Returns
-        -------
-        boolean
-            True if it exists
-        '''
-
-        return self.__is_valid_sgrid
 
     def __get_sgrid(self):
         '''
@@ -10197,11 +10175,7 @@ class MomsDataSet:
         '''
 
         # check if we already have this in memory or not
-        if not self.__sgrid_exists():
-
-            # we are going to need the cartesian grid
-            if not self.__cgrid_exists():
-                self.__get_cgrid()
+        if not self.__sgrid_exists:
 
             # ok we are good to go for the spherical coordinates
 
@@ -10220,25 +10194,12 @@ class MomsDataSet:
             self.__phi_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
 
             # ok all is good, set our flag that everything is good
-            self.__is_valid_sgrid = True
+            self.__sgrid_exists = True
 
             return True
 
         else:
             return True
-
-    def __mollweide_exists(self):
-        '''
-        Do we have a mollweide projection already stored in memory? This is static!
-        We will always have the cartesian grid if we are making the spherical coordinates
-
-        Returns
-        -------
-        boolean
-            True if it exists
-        '''
-
-        return self.__is_valid_mollweide
 
     def __get_mollweide(self):
         '''
@@ -10252,11 +10213,7 @@ class MomsDataSet:
         '''
 
         # check if we already have this in memory or not
-        if not self.__mollweide_exists():
-
-            # we are going to need the cartesian grid
-            if not self.__cgrid_exists():
-                self.__get_cgrid()
+        if not self.__mollweide_exists:
 
             # ok we are good to go for the spherical coordinates
 
@@ -10279,14 +10236,55 @@ class MomsDataSet:
             self.__mollweide_phi_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
 
             # ok all is good, set our flag that everything is good
-            self.__is_valid_mollweide = True
+            self.__mollweide_exists = True
 
             return True
 
         else:
             return True
 
-    def __get(self,varloc,fname):
+    def __get_jacobian(self):
+        '''
+        This function creates the Jacobian to convert quantities defined in cartesian
+        coordinates to spherical coordinates. This is a very large array of 9 x shape
+        which will be stored in memory. It is defined as the "physics" spherical coordinates
+        so the array has rhat, theta-hat, phi-hat -> xhat, yhat, zhat
+        '''
+
+        if not self.__jacobian_exists:
+
+            # get a big block of memory
+            self.__jacobian = np.zeros((9,self.__xc.shape[0],self.__xc.shape[1],self.__xc.shape[2]),dtype='float32')
+
+            # we can easily construct all of these with x,y,z and r. Probably more accurate
+
+            # need the cylindrical radius
+            rcyl = np.sqrt(np.power(self.__xc_view,2.0)+np.power(self.__yc_view,2.0))
+
+            # rhat -> xhat, yhat, zhat
+            np.divide(self.__xc_view,self.__radius_view,out=self.__jacobian[0])
+            np.divide(self.__yc_view,self.__radius_view,out=self.__jacobian[1])
+            np.divide(self.__zc_view,self.__radius_view,out=self.__jacobian[2])
+
+            # theta-hat -> xhat, yhat, zhat
+            # we use "placeholders" of jacobian slots to not make new memory
+            np.divide(np.multiply(self.__xc_view,self.__zc_view,out=self.__jacobian[3]),
+                      np.multiply(self.__radius_view,rcyl,out=self.__jacobian[4]),
+                      out = self.__jacobian[3])
+            np.divide(np.mulitply(self.__yc_view,self.__zc_view,out=self.__jacobian[4]),
+                      np.multiply(self.__radius_view,rcyl,out=self.__jacobian[5]),
+                      out = self.__jacobian[4])
+            np.divide(-rcyl,self.__radius_view,out=self.__jacobian[5])
+
+            # phi-hat -> xhat, yhat, zhat
+            np.divide(-self.__yc_view,rcyl,out=self.__jacobian[6])
+            np.divide(self.__xc_view,rcyl,out=self.__jacobian[7])
+            # phi-hat dot z-hat = 0
+
+            # alright it exists
+            self.__jacobian_exists = True
+
+    def __get(self,varloc,fname=None):
         '''
         Returns variable var at a specific point in the simulation's time
         evolution. This is used internally for data claims that will be references
@@ -10297,16 +10295,20 @@ class MomsDataSet:
         ----------
         varloc: int
             Index location of the variable you want
-        fname: integer/float
-            Dump number or time in seconds depending on the value of
-            num_type.            
-            
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
         Returns
         -------
         numpy.ndarray
             Variable in index varloc as given by MomsData.get() if the MomsData
         corresponding to fname exists.
         '''
+
+        # if fname is None, use current dump
+        if fname == None:
+            fname = self.what_dump_am_i
 
         # quick check if we already have the momsdata in memory
         if str(fname) in self.__many_momsdata:
@@ -10361,7 +10363,7 @@ class MomsDataSet:
         
         return list(self.__dumps)
     
-    def get_rprof(self,varloc,fname):
+    def get_rprof(self,varloc,fname=None):
         '''
         Returns a 1d radial profile of the variable that is defined at
         whatever(varloc) and the radial axis values
@@ -10371,32 +10373,39 @@ class MomsDataSet:
         varloc: int or np.ndarray
             integer index of the quantity that is defined under whatever(varloc)
             OR you can supply an array that contains data. This will be flattened
-        fname: int
-            Dump number
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
         Returns
         -------
         rad_prof, radial_axis: np.ndarray
             Radial profile of whatever(varloc) and the Radial axis which
             whatever(varloc) is averaged on
-        counts: np.ndarray
-            The number of cells used in the radial bins averaging can be returned
-            if return_counts=True      
         '''
 
-        # check if we have array or not
-        if type(varloc) == np.ndarray:
-            quantity = np.ravel(varloc)
-        else:
-            # get the grid from a momsdata cube
-            # because we need a flattened array, ravel will create a new array
-            quantity = np.ravel(self.__get(varloc,fname))
+        # we basically just call interpolation over self.radial_axis
+        quantity = self.get_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
 
-        # This will apply a "mean" to the quantity that is binned by radialbins
-        # using the self.__radius values
-        average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',self.radial_bins)
+        # for an rprof we average all of those quantities at each radius
+        quantity = np.mean(quantity,axis=1)
+        
+        return quantity, self.radial_axis
 
-        # return the radprof and radial_axis
-        return average_quantity, self.radial_axis
+        # DS: We will hold onto the old method, it uses binning which is not a bad way of doing it
+        # # check if we have array or not
+        # if type(varloc) == np.ndarray:
+        #     quantity = np.ravel(varloc)
+        # else:
+        #     # get the grid from a momsdata cube
+        #     # because we need a flattened array, ravel will create a new array
+        #     quantity = np.ravel(self.__get(varloc,fname))
+
+        # # This will apply a "mean" to the quantity that is binned by radialbins
+        # # using the self.__radius values
+        # average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',self.radial_bins)
+
+        # # return the radprof and radial_axis
+        # return average_quantity, self.radial_axis
 
     def get_cgrid(self):
         '''
@@ -10449,25 +10458,27 @@ class MomsDataSet:
 
         return self.__mollweide_theta_view, self.__mollweide_phi_view
 
-    def get_interpolation(self, varloc, fname, radius, perturbation=False, npoints=5000, plot_mollweide=True):
+    def get_interpolation(self, varloc, radius, fname=None, plot_mollweide=True, npoints=5000, perturbation=False):
         '''
         Returns the trillinear interpolated array of values of 'varloc' at a radius of
         'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
 
         Parameters
         ----------
-        varloc: str, int
+        varloc: str, int, np.ndarray
             String: for the variable you want if defined on instantiation
             Int: index location of the variable you want
-        fname: int
-            Dump number
+            np.ndarray: quantity you want to have interpolated on the grid
         radius: float or np.ndarray
             The radius of the sphere you want 'varloc' to be interpolated to
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+        npoints: int
+            The number of 'theta and phi' points you want for a projection plot
         perturbation: bool
             Do we subtract off the average (on a sphere) from 'varloc' being interpolated and
             then scale it by that average (on a sphere)? i.e varloc_interpolated = (varloc - <varloc>)/<varloc>
-        npoints: int
-            The number of 'theta and phi' points you want for a projection plot
 
         Returns
         -------
@@ -10479,16 +10490,27 @@ class MomsDataSet:
         '''
 
         # create an interpolation object, order is z,y,x
-        # are we going to get a key error?
-        try:
+        # first check if we have a np.ndarray or not
+        if type(varloc) == np.ndarray:
+
+            # check if it is the same shape as self.__xc_view
+            if varloc.shape != self.__xc_view.shape:
+
+                # we can try reshaping
+                try:
+                    varloc.reshape(self.__xc_view.shape)
+                except ValueError as e:
+                    err = 'The varloc given cannot be reshaped into ' + str(self.__xc_view.shape)
+                    self.__messenger.error(err)
+                    raise e
+
+            # we passed the try, except, we should be good
+            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),varloc)
+
+        else:
+
             # We can use the values in memory
-            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]))
-
-        except KeyError as e:
-            err = 'Invalid key for varloc. A list of keys: \n'
-            err += ', '.join(map(str,self.__varloc.keys()))
-            self.__messenger.error(err)
-
+            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__get(varloc,fname))
 
         # now we loop through every radius
         try:
@@ -10498,11 +10520,9 @@ class MomsDataSet:
             radius = [radius]
 
         # we only need the spherical grid once. We can update zyx_grid easily!
-        zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius[i], npoints)
+        zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius[0], npoints)
+
         for i in range(len(radius)):
-
-            # First we get the spherical grid
-
 
             # if we only go once, varloc_vals is a np.ndarray
             if len(radius) == 1:
@@ -10520,7 +10540,7 @@ class MomsDataSet:
                 if i == 0:
                     varloc_vals = []
                 else:
-                    zyx_grid = zyx_grid * radius[i] / radius[i-1]
+                    np.multiply(zyx_grid, radius[i] / radius[i-1], out=zyx_grid)
 
                 # we have interpolation object, get interpolated values
                 varloc_vals.append(varloc_interp(zyx_grid))
@@ -10537,8 +10557,39 @@ class MomsDataSet:
         else:
             return varloc_vals
 
+    def get_rhat_component(self,ux,uy,uz,fname=None):
+        '''
+        Most calculations are done in cartesian coordinates but we can transform them to
+        spherical coordinates using unit vectors. This can also be used to take derivatives
+        of a function in spherical coordinates. This returns the r component of vector u
 
-    def get(self, varloc, fname):
+        Parameters
+        ----------
+        ux, uy, uz: int, str, np.ndarray
+            int: integer referring to varloc
+            str: string referring to quantity varloc
+            np.ndarray: array with quantities
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
+        Returns
+        -------
+        ur: np.ndarray
+            The radial component of the vector u
+        '''
+
+        # first grab quantities if we need to
+        if type(ux) != np.ndarray:
+            ux = self.__get(ux,fname)
+        if type(uy) != np.ndarray:
+            uy = self.__get(uy,fname)
+        if type(uz) != np.ndarray:
+            uz = self.__get(uz,fname)
+
+        return ux * self.__jacobian[0] + uy * self.__jacobian[1] + uz * self.__jacobian[2]
+
+    def get(self, varloc, fname=None):
         '''
         Returns variable var at a specific point in the simulation's time
         evolution. IMPORTANT NOTE: This is a copy of the actual data. This
@@ -10550,8 +10601,9 @@ class MomsDataSet:
         varloc: str, int
             String: for the variable you want if defined on instantiation
             Int: index location of the variable you want
-        fname: int
-            Dump number
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
 
         Returns
         -------
@@ -10559,6 +10611,10 @@ class MomsDataSet:
             Variable in index varloc as given by MomsData.get() if the MomsData
             corresponding to fname exists.
         '''
+
+        # if fname is not specified use current dump
+        if fname == None:
+            fname = self.what_dump_am_i
 
         # quick check if we already have the momsdata in memory
         if str(fname) in self.__many_momsdata:
@@ -10589,3 +10645,53 @@ class MomsDataSet:
                 err += ', '.join(sorted(map(str,self.__varloc.keys())))
                 self.__messenger.error(err)
                 raise e
+
+
+    def norm(self,ux,uy,uz,fname=None):
+        '''
+        Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
+        the definition |u| = sqrt(ux**2 + uy**2 + uz**2). The vector must be defined in an
+        orthogonal basis. i.e we can also do |u| = sqrt(ur**2 + uphi**2 + utheta**2)
+
+        Parameters
+        ----------
+        ux, uy, uz: int, str, np.ndarray
+            int: integer referring to varloc
+            str: string referring to quantity varloc
+            np.ndarray: array with quantities
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
+        Returns
+        -------
+        |u|: np.ndarray
+        '''
+
+        if type(ux) != np.ndarray:
+            ux = self.__get(ux,fname)
+        if type(uy) != np.ndarray:
+            uy = self.__get(uy,fname)
+        if type(uz) != np.ndarray:
+            uz = self.__get(uz,fname)
+
+        return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
+
+    # def gradient(self,f,fname=None):
+    #     '''
+    #     Take the gradient of a scalar field in CARTESIAN coordinates. This uses central
+    #     differences using points directly on the grid (no interpolation).
+
+    #     Parameters
+    #     ----------
+    #     f: np.ndarray
+    #         scalar field defined on the grid
+    #     fname: None,int
+    #         None: default option, will grab current dump
+    #         int: Dump number
+
+    #     Returns
+    #     -------
+    #     grad f: list
+    #         list containing fx,fy and fz
+    #     '''
