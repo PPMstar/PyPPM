@@ -9827,10 +9827,6 @@ class MomsDataSet:
         # we also check if we have our unit vectors
         self.__jacobian_exists = False
 
-        # On instantiation we create cartesian ALWAYS
-        if not self.__cgrid_exists:
-            self.__get_cgrid()
-
         # setup some useful dictionaries, there is also a list implemented
         self.__varloc = {}
         self.__number_of_whatevers = 10
@@ -9856,6 +9852,10 @@ class MomsDataSet:
         # these are deep copies to ensure no reference back on momsdata
         self.moms_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].resolution)
         self.run_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_resolution)
+
+        # On instantiation we create cartesian ALWAYS
+        if not self.__cgrid_exists:
+            self.__get_cgrid()
 
         # alright we are now a valid instance
         self.__is_valid = True
@@ -10422,14 +10422,15 @@ class MomsDataSet:
         xc,yc,zc: np.ndarray
         '''
 
-        # we can send the real deal as this is static
-        return self.__xc_view, self.__yc_view, self.__zc_view
+        # we use these internally, so we give copies
+        return self.__xc_view.copy(), self.__yc_view.copy(), self.__zc_view.copy()
 
     def get_sgrid(self):
         '''
         Returns the central values of the grid for r,theta and phi of the moments data cube currently held
         in memory. This is of course the physics version where theta is defined as the angle from the z axis
         and phi is the cylindrical angle. it is formatted as phi[z,y,x] and so phi[0,0,:] will give a plane of constant x
+        IMPORTANT: This is NOT a copy of the array in memory
 
         Returns
         -------
@@ -10440,13 +10441,15 @@ class MomsDataSet:
         if not self.__sgrid_exists:
             self.__get_sgrid()
 
-        return self.__radius_view, self.__theta_view, self.__phi_view
+        # these are not used internally and so we can give them the real grid (except for radius!)
+        return self.__radius_view.copy(), self.__theta_view, self.__phi_view
     
     def get_mollweide(self):
         '''
         Returns the central values of the grid for r,theta and phi of the moments data cube currently held
         in memory. This is the mollweide projection so theta runs from pi/2 -> -pi/2 going down from the z axis
-        and 0 -> pi from quadrants 1->2 and then -0 -> -pi from quadrants 4->3. Useful for plotting projections
+        and 0 -> pi from quadrants 1->2 and then -0 -> -pi from quadrants 4->3. Useful for plotting projections.
+        IMPORTANT: This is NOT a copy of the array in memory
 
         Returns
         -------
@@ -10457,6 +10460,7 @@ class MomsDataSet:
         if not self.__mollweide_exists:
             self.__get_mollweide()
 
+        # these are not used internally and so we can give them the real grid
         return self.__mollweide_theta_view, self.__mollweide_phi_view
 
     def get_interpolation(self, varloc, radius, fname=None, plot_mollweide=True, npoints=5000, perturbation=False):
