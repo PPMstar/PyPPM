@@ -9827,6 +9827,10 @@ class MomsDataSet:
         # we also check if we have our unit vectors
         self.__jacobian_exists = False
 
+        # On instantiation we create cartesian ALWAYS
+        if not self.__cgrid_exists:
+            self.__get_cgrid()
+
         # setup some useful dictionaries, there is also a list implemented
         self.__varloc = {}
         self.__number_of_whatevers = 10
@@ -9852,10 +9856,6 @@ class MomsDataSet:
         # these are deep copies to ensure no reference back on momsdata
         self.moms_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].resolution)
         self.run_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_resolution)
-
-        # On instantiation we create cartesian ALWAYS
-        if not self.__cgrid_exists():
-            self.__get_cgrid()
 
         # alright we are now a valid instance
         self.__is_valid = True
@@ -10132,9 +10132,14 @@ class MomsDataSet:
             self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
                                     np.power(self.__zc,2.0))
 
+            # get the spacing of the grid
+            self.__dx = abs(self.__xc[1] - self.__xc[0])
+
             # from this, I will always setup vars for a rprof
+            # we need a slight offset from the lowest value and highest value of grid for interpolation!
             delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
-            self.__radial_boundary = np.linspace(delta_r,delta_r*(self.moms_resolution/2.),int(np.ceil(self.moms_resolution/2.)))
+            eps = 0.000001
+            self.__radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_resolution/2.)-eps*delta_r*(self.moms_resolution/2.),int(np.ceil(self.moms_resolution/2.)))
 
             # these are the boundaries, now I need what is my "actual" r value
             self.radial_axis = self.__radial_boundary - delta_r/2.
@@ -10254,7 +10259,7 @@ class MomsDataSet:
         if not self.__jacobian_exists:
 
             # get a big block of memory
-            self.__jacobian = np.zeros((9,self.__xc.shape[0],self.__xc.shape[1],self.__xc.shape[2]),dtype='float32')
+            self.__jacobian = np.zeros((9,self.__xc_view.shape[0],self.__xc_view.shape[1],self.__xc_view.shape[2]),dtype='float32')
 
             # we can easily construct all of these with x,y,z and r. Probably more accurate
 
@@ -10271,7 +10276,7 @@ class MomsDataSet:
             np.divide(np.multiply(self.__xc_view,self.__zc_view,out=self.__jacobian[3]),
                       np.multiply(self.__radius_view,rcyl,out=self.__jacobian[4]),
                       out = self.__jacobian[3])
-            np.divide(np.mulitply(self.__yc_view,self.__zc_view,out=self.__jacobian[4]),
+            np.divide(np.multiply(self.__yc_view,self.__zc_view,out=self.__jacobian[4]),
                       np.multiply(self.__radius_view,rcyl,out=self.__jacobian[5]),
                       out = self.__jacobian[4])
             np.divide(-rcyl,self.__radius_view,out=self.__jacobian[5])
@@ -10417,10 +10422,6 @@ class MomsDataSet:
         xc,yc,zc: np.ndarray
         '''
 
-        # does this exist?
-        if not self.__cgrid_exists():
-            self.__get_cgrid()
-
         # we can send the real deal as this is static
         return self.__xc_view, self.__yc_view, self.__zc_view
 
@@ -10436,7 +10437,7 @@ class MomsDataSet:
         '''
 
         # does this exist yet?
-        if not self.__sgrid_exists():
+        if not self.__sgrid_exists:
             self.__get_sgrid()
 
         return self.__radius_view, self.__theta_view, self.__phi_view
@@ -10453,7 +10454,7 @@ class MomsDataSet:
         '''
 
         # DOES this exist yet?
-        if not self.__mollweide_exists():
+        if not self.__mollweide_exists:
             self.__get_mollweide()
 
         return self.__mollweide_theta_view, self.__mollweide_phi_view
@@ -10557,11 +10558,11 @@ class MomsDataSet:
         else:
             return varloc_vals
 
-    def get_rhat_component(self,ux,uy,uz,fname=None):
+    def get_spherical_components(self,ux,uy,uz,fname=None):
         '''
         Most calculations are done in cartesian coordinates but we can transform them to
         spherical coordinates using unit vectors. This can also be used to take derivatives
-        of a function in spherical coordinates. This returns the r component of vector u
+        of a function in spherical coordinates. This returns the spherical components of u
 
         Parameters
         ----------
@@ -10575,9 +10576,13 @@ class MomsDataSet:
 
         Returns
         -------
-        ur: np.ndarray
-            The radial component of the vector u
+        ur, utheta, uphi: list of np.ndarray
+            The spherical components of u
         '''
+
+        # first check if we have the jacobian or not
+        if not self.__jacobian_exists:
+            self.__get_jacobian()
 
         # first grab quantities if we need to
         if type(ux) != np.ndarray:
@@ -10587,7 +10592,11 @@ class MomsDataSet:
         if type(uz) != np.ndarray:
             uz = self.__get(uz,fname)
 
-        return ux * self.__jacobian[0] + uy * self.__jacobian[1] + uz * self.__jacobian[2]
+        ur = ux * self.__jacobian[0] + uy * self.__jacobian[1] + uz * self.__jacobian[2]
+        utheta = ux * self.__jacobian[3] + uy * self.__jacobian[4] + uz * self.__jacobian[5]
+        uphi = ux * self.__jacobian[6] + uy * self.__jacobian[7]
+
+        return [ur, utheta, uphi]
 
     def get(self, varloc, fname=None):
         '''
@@ -10677,21 +10686,36 @@ class MomsDataSet:
 
         return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
 
-    # def gradient(self,f,fname=None):
-    #     '''
-    #     Take the gradient of a scalar field in CARTESIAN coordinates. This uses central
-    #     differences using points directly on the grid (no interpolation).
+    def gradient(self,f,fname=None):
+        '''
+        Take the gradient of a scalar field in CARTESIAN coordinates. This uses central
+        differences using points directly on the grid (no interpolation).
 
-    #     Parameters
-    #     ----------
-    #     f: np.ndarray
-    #         scalar field defined on the grid
-    #     fname: None,int
-    #         None: default option, will grab current dump
-    #         int: Dump number
+        Parameters
+        ----------
+        f: np.ndarray
+            scalar field defined on the grid
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
 
-    #     Returns
-    #     -------
-    #     grad f: list
-    #         list containing fx,fy and fz
-    #     '''
+        Returns
+        -------
+        grad f: list of np.ndarray
+            list containing fx,fy and fz
+        '''
+
+        if type(f) != np.ndarray:
+            f = self.__get(f,fname)
+        else:
+            # check len of shape of f
+            if len(f.shape) != 3:
+                err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'.format(self.moms_resolution)
+
+        # we use the spacing between grid points as our dx,dy,dz
+        gradf = np.gradient(f,self.__dx,self.__dx,self.__dx)
+
+        # we get fz, fy and then fx, rearrange
+        gradf.reverse()
+
+        return gradf
