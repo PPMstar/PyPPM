@@ -10067,7 +10067,7 @@ class MomsDataSet:
             associated x,y,z
         '''
 
-        indices = np.arange(0, num_points, dtype=np.float32) + 0.5
+        indices = np.arange(0, npoints, dtype=np.float32) + 0.5
 
         # Based on equal amount of points in equal area on a sphere...
         phi = np.arccos(1. - 2.*indices/float(npoints))
@@ -10481,7 +10481,7 @@ class MomsDataSet:
         # create an interpolation object, order is z,y,x
         # are we going to get a key error?
         try:
-            # We can use the values in memory 
+            # We can use the values in memory
             varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]))
 
         except KeyError as e:
@@ -10491,13 +10491,18 @@ class MomsDataSet:
 
 
         # now we loop through every radius
-        if type(radius) == float:
+        try:
+            first_r = radius[0]
+        except TypeError as e:
+            # ok, we have an error, it is not a single float or int
             radius = [radius]
 
+        # we only need the spherical grid once. We can update zyx_grid easily!
+        zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius[i], npoints)
         for i in range(len(radius)):
 
             # First we get the spherical grid
-            zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius[i], npoints)
+
 
             # if we only go once, varloc_vals is a np.ndarray
             if len(radius) == 1:
@@ -10514,6 +10519,8 @@ class MomsDataSet:
             else:
                 if i == 0:
                     varloc_vals = []
+                else:
+                    zyx_grid = zyx_grid * radius[i] / radius[i-1]
 
                 # we have interpolation object, get interpolated values
                 varloc_vals.append(varloc_interp(zyx_grid))
