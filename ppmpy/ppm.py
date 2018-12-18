@@ -10070,14 +10070,14 @@ class MomsDataSet:
         indices = np.arange(0, num_points, dtype=np.float32) + 0.5
 
         # Based on equal amount of points in equal area on a sphere...
-        theta = np.arccos(1. - 2.*indices/float(num_points))
-        phi = np.pi * (1 + 5**0.5) * indices  - 2*np.pi*np.floor(np.pi * (1 + 5**0.5) * indices / (2 * np.pi))
+        phi = np.arccos(1. - 2.*indices/float(npoints))
+        theta = np.pi * (1 + 5**0.5) * indices  - 2*np.pi*np.floor(np.pi * (1 + 5**0.5) * indices / (2 * np.pi))
 
         # create the interp_grid. It is written in this fashion to work with interpolation, z,y,x
-        igrid = np.zeros((num_points,3))
+        igrid = np.zeros((npoints,3))
         igrid[:,0] = radius * np.cos(theta)
         igrid[:,1] = radius * np.sin(theta) * np.sin(phi)
-        igrid[:,2] = radius * np.cos(theta) * np.sin(phi)
+        igrid[:,2] = radius * np.sin(theta) * np.cos(phi)
 
         return igrid, theta, phi
 
@@ -10449,7 +10449,7 @@ class MomsDataSet:
 
         return self.__mollweide_theta_view, self.__mollweide_phi_view
 
-    def get_interpolation(self, varloc, fname, radius, perturbation=False, num_points=5000, plot_mollweide=True):
+    def get_interpolation(self, varloc, fname, radius, perturbation=False, npoints=5000, plot_mollweide=True):
         '''
         Returns the trillinear interpolated array of values of 'varloc' at a radius of
         'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
@@ -10461,46 +10461,69 @@ class MomsDataSet:
             Int: index location of the variable you want
         fname: int
             Dump number
-        radius: float
+        radius: float or np.ndarray
             The radius of the sphere you want 'varloc' to be interpolated to
         perturbation: bool
             Do we subtract off the average (on a sphere) from 'varloc' being interpolated and
             then scale it by that average (on a sphere)? i.e varloc_interpolated = (varloc - <varloc>)/<varloc>
-        num_points: int
+        npoints: int
             The number of 'theta and phi' points you want for a projection plot
 
         Returns
         -------
         plot_mollweide: True
-            varloc_interpolated,theta,phi: np.ndarray
+            varloc_interpolated,theta,phi: np.ndarray or list
 
         plot_mollweide: False
-            varloc_interpolated
+            varloc_interpolated: np.ndarray or list
         '''
-
-        # First we get the spherical grid
-        zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius, npoints)
 
         # create an interpolation object, order is z,y,x
         # are we going to get a key error?
         try:
-            # I need to flatten varloc!
-            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),np.ravel(self.__many_momsdata[str(fname)].__get(self.__varloc[str(varloc)])))
+            # We can use the values in memory 
+            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]))
 
         except KeyError as e:
             err = 'Invalid key for varloc. A list of keys: \n'
             err += ', '.join(map(str,self.__varloc.keys()))
             self.__messenger.error(err)
 
-        # we have interpolation object, get interpolated values
-        varloc_vals = varloc_interp(zyx_grid)
 
-        # do we subtract off the mean?
-        if perturbation:
-            # these can be large arrays, dont make a million copies, do in place
-            mean_vals = np.mean(varloc_vals)
-            np.subtract(varloc_vals,mean_vals,out=varloc_vals)
-            np.divide(varloc_vals,mean_vals,out=varloc_vals)
+        # now we loop through every radius
+        if type(radius) == float:
+            radius = [radius]
+
+        for i in range(len(radius)):
+
+            # First we get the spherical grid
+            zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius[i], npoints)
+
+            # if we only go once, varloc_vals is a np.ndarray
+            if len(radius) == 1:
+                # we have interpolation object, get interpolated values
+                varloc_vals = varloc_interp(zyx_grid)
+
+                # do we subtract off the mean?
+                if perturbation:
+                    # these can be large arrays, dont make a million copies, do in place
+                    mean_vals = np.mean(varloc_vals)
+                    np.subtract(varloc_vals,mean_vals,out=varloc_vals)
+                    np.divide(varloc_vals,mean_vals,out=varloc_vals)
+
+            else:
+                if i == 0:
+                    varloc_vals = []
+
+                # we have interpolation object, get interpolated values
+                varloc_vals.append(varloc_interp(zyx_grid))
+
+                # do we subtract off the mean?
+                if perturbation:
+                    # these can be large arrays, dont make a million copies, do in place
+                    mean_vals = np.mean(varloc_vals[i])
+                    np.subtract(varloc_vals[i],mean_vals,out=varloc_vals[i])
+                    np.divide(varloc_vals[i],mean_vals,out=varloc_vals[i])
 
         if plot_mollweide:
             return varloc_vals, theta_grid, phi_grid
