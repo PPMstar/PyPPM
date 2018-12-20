@@ -9676,7 +9676,8 @@ class MomsData():
     MomsData reads in a single briquette averaged data cube which contains up
     to 10 user-defined variables. It is assumed that whatever(0) = xc
     '''
-    
+
+    # we have a couple of "constant" class variables
     def __init__(self, file_path, verbose=3):
         '''
         Init method.
@@ -9695,12 +9696,20 @@ class MomsData():
         # how many extra "ghost" indices are there for each dimension?
         self.__ghost = 2
 
-        if self.__read_moms_cube(file_path) != 0:
+        # number of whatevers, probably won't change anytime soon
+        self.__number_of_whatevers = 10
+
+        # set blanks for these at the start
+        self.resolution = 0
+        self.run_resolution = 0
+
+        if not self.read_moms_cube(file_path):
             return
 
+        # all is good, initialize bools
         self.__is_valid = True
         
-    def __read_moms_cube(self, file_path):
+    def read_moms_cube(self, file_path):
         '''
         Reads a single .aaa uncompressed data cube file written by PPMstar 2.0.
         
@@ -9711,74 +9720,37 @@ class MomsData():
             
         Returns
         -------
-        int
-            0 on success.
-        NoneType
-            Something failed.
-        ''' 
-        
+        Boolean
+            True on success.
+            False on failure.
+        '''
+
+        # we need to first try out if we can read the data...
+        # if not self.__initialize:
+        #     del self.data
         try:
-            tempdata = np.fromfile(file_path,dtype='float32',count=-1,sep="")
-
-            # ok this is one large array with 10 variables of some length with
-            # some amount of ghost values. What's the resolution?
-            self.run_resolution = int(np.ceil(4. * (np.power(np.shape(tempdata)[0] / 10.,1/3.) - self.__ghost)))
-            self.resolution = int(np.ceil(self.run_resolution/4.))
-
-            # Now I can reshape this data array in 10 flattened arrays
-            ghostdata = tempdata.reshape((10,int(np.ceil((self.resolution + self.__ghost)**3))))
-            del tempdata
-
-            # I have ghosts... lets construct a bool array for what values to keep
-            bool_array = np.ones(np.shape(ghostdata)[1])
-
-            # now x repeats every length of the cube
-            x_ghost = int(np.ceil(self.resolution + self.__ghost))
-            x_loop = int(np.ceil(np.shape(ghostdata)[1]/x_ghost))
-
-            for i in range(x_loop):
-                # for the negative ghost values
-                bool_array[i*x_ghost] = 0
-
-                # for the positive ghost values
-                bool_array[(x_ghost-1) + i*x_ghost] = 0
-
-            # now y goes a length per value and repeats that pattern
-            y_ghost = int(np.ceil(self.resolution + self.__ghost))
-            y_loop = int(np.ceil(np.shape(ghostdata)[1]/y_ghost))
-
-            for i in range(y_loop):
-                # for the negative ghost values
-                bool_array[y_ghost*(i*y_ghost):(y_ghost*i*y_ghost)+y_ghost] = 0
-
-                # for the positive ghost values
-                bool_array[(((y_ghost-1) + y_ghost*i)*y_ghost):(((y_ghost-1)+y_ghost*i)*y_ghost + y_ghost)] = 0
-
-            # now z iterates through a single length in two nested loops
-            z_ghost = int(np.ceil(np.power(self.resolution + self.__ghost,2.0)))
-
-            # for the negative ghost values
-            bool_array[0:z_ghost] = 0
-
-            # for the positive ghost values
-            bool_array[-z_ghost:-1] = 0
-            
-            # collect the actual moms data
-            self.__data = np.zeros((np.shape(ghostdata)[0],int(np.ceil(np.power(self.resolution,3.0)))))
-
-            for i in range(np.shape(self.__data)[0]):
-                self.__data[i] = ghostdata[i][np.where(bool_array > 0)]
-
-            # save the file path
-            self.__file_path = file_path
+            ghostdata = np.fromfile(file_path,dtype='float32',count=-1,sep="")
 
         except IOError as e:
             err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
             self.__messenger.error(err)
-            return None
-        
-        
-        return 0
+            return False
+
+
+        # DS: testing new way of doing things
+        self.run_resolution = int(np.ceil(4. * (np.power(np.shape(ghostdata)[0] / 10.,1/3.) - self.__ghost)))
+        self.resolution = int(np.ceil(self.run_resolution/4.))
+
+        # ok, I can reshape without reallocating an array
+        ghostview = ghostdata.view()
+        size = int(np.ceil(self.resolution+self.__ghost))
+        ghostview.shape = (self.__number_of_whatevers,size,size,size)
+
+        # my removed "ghost" values is quite easy! Now in an intuitive format
+        # self.data[z,y,x]
+        self.data = ghostview[0:,(self.__ghost-1):(self.resolution+self.__ghost-1),                            (self.__ghost-1):(self.resolution+self.__ghost-1),(self.__ghost-1):(self.resolution+self.__ghost-1)]
+
+        return True
 
     def is_valid(self):
         '''
@@ -9796,7 +9768,6 @@ class MomsData():
     def get(self, varloc):
         '''
         Returns a 3d array of the variable that is defined at whatever(varloc).
-        The shape is (3,resolution/4) with ordering x,y,z on first index
 
         Parameters
         ----------
@@ -9809,24 +9780,30 @@ class MomsData():
             Variable at whatever(varloc)
         '''
 
-        # self.data contains flattened arrays that have ghost values
-        return self.__data[varloc]
+        # self.data contains a shaped array that has no ghosts
+        return self.data[varloc]
 
 class MomsDataSet:
     '''
     MomsDataSet contains a set of dumps of MomsData from a single run of the
     Moments reader from PPMstar 2.0.
     '''
-    
-    def __init__(self, dir_name, init_dump_read=0, verbose=3):
+
+    def __init__(self, dir_name, init_dump_read=0, dumps_in_mem=2, var_list=[], verbose=3):
         '''
         Init method.
         
         Parameters
         ----------
         dir_name: string
-            Name of the directory to be searched for .aaa uncompressed moms data
-        cubes
+            Name of the directory to be searched for .aaa uncompressed moms datacubes
+        init_dump_read: integer
+            The initial dump to read into memory when object is initialized
+        dumps_in_mem: integer
+            The number of dumps to be held into memory. These datacubes can be large (~2Gb for 384^3)
+        var_list: list
+            This is a list that can be filled with strings that will reference data. E.g element 0 is 'xc'
+            which will refer to the variable location data[0] in the large array of data
         verbose: integer
             Verbosity level as defined in class Messenger.
         '''        
@@ -9841,13 +9818,46 @@ class MomsDataSet:
         if not self.__find_dumps(dir_name):
             return
 
-        # ok, there is an initial dump that is read to get the grid
-        self.__init_dump_read = init_dump_read
+        # we do not create the grid, we only do that if it is needed
+        # bools track what has happened
+        self.__cgrid_exists = False
+        self.__sgrid_exists = False
+        self.__mollweide_exists = False
 
-        # Now create the grid
-        if self.__get_grid() != 0:
+        # we also check if we have our unit vectors
+        self.__jacobian_exists = False
+
+        # setup some useful dictionaries, there is also a list implemented
+        self.__varloc = {}
+        self.__number_of_whatevers = 10
+
+        # For storing multiple momsdata we use a dictionary so that it can be referenced
+        # I will store in a list the dumps that are in there
+        self.__many_momsdata = {}
+        self.__many_momsdata_keys = []
+        self.__dumps_in_mem = dumps_in_mem
+
+        # initialize the dictionaries if needed
+        if not self.__set_dictionaries(var_list):
             return
-        
+
+        # get the initial dump momsdata
+        self.__momsdata = None
+        self.__get_dump(init_dump_read)
+
+        # hold the initial dump in attribute
+        self.what_dump_am_i = init_dump_read
+
+        # set objects resolution and original run resolution
+        # these are deep copies to ensure no reference back on momsdata
+        self.moms_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].resolution)
+        self.run_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_resolution)
+
+        # On instantiation we create cartesian ALWAYS
+        if not self.__cgrid_exists:
+            self.__get_cgrid()
+
+        # alright we are now a valid instance
         self.__is_valid = True
 
     def __find_dumps(self, dir_name):
@@ -9928,45 +9938,411 @@ class MomsDataSet:
 
         return True
 
-    def __get_grid(self):
+    def __get_dump(self, dump):
         '''
-        Constructs the PPMStar grid from the saved xc in whatever(0)
+        Gets a new dump for MomsData or instantiates MomsData
         
+        Parameters
+        ----------
+        dump: integer
+        '''
+        
+        if dump not in self.__dumps:
+            err = 'Dump {:d} is not available.'.format(dump)
+            self.__messenger.error(err)
+            return None
+        
+        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
+                                                             dump, self.__run_id, dump)
+
+        # we first check if we can add a new moments data to memory
+        # without removing another
+        if len(self.__many_momsdata) < self.__dumps_in_mem:
+
+            # add it to our dictionary!
+            self.__many_momsdata.update(zip([str(dump)],[MomsData(file_path)]))
+
+            # append the key. This keeps track of order of read in
+            self.__many_momsdata_keys.append(str(dump))
+
+        else:
+
+            # we gotta remove one of them, this will be index 0 of a list
+            del self.__many_momsdata[str(self.__many_momsdata_keys[0])]
+            self.__many_momsdata_keys.remove(self.__many_momsdata_keys[0])
+
+            # now add a new momsdata object to our dict
+            self.__many_momsdata.update(zip([str(dump)],[MomsData(file_path)]))
+
+            # append the key. This keeps track of order of read in
+            self.__many_momsdata_keys.append(str(dump))
+
+        # all is good. update what_dump_am_i
+        self.what_dump_am_i = dump
+
+    def __set_dictionaries(self,var_list):
+        '''
+        This function will setup the dictionaries that will house multiple moments data objects and
+        a convenience dictionary to refer to variables by a string
+
         Returns
         -------
-        int
-            0 on success.
-        NoneType
-            Something failed.
+        Boolean
+            True if successful
+            False if failure
         '''
 
-        # lets send a message to the user about this
-        msg = "The PPMstar grid is being constructed, this can take a moment"
-        self.__messenger.message(msg)
+        # check if the list is empty
+        if not var_list:
 
-        # we have self.data, assume that self.data[0] is a coordinate
-        self.momsdata = self.get_dump(self.__init_dump_read)
-        coord = np.unique(self.momsdata.get(0))
+            # ok it is empty, construct default dictionary
+            var_keys = [str(i) for i in range(self.__number_of_whatevers)]
+            var_vals = [i for i in range(self.__number_of_whatevers)]
 
-        # there is all of the unique values, construct self.xc, self.yc, self.zc
-        self.__xc = np.tile(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
-        self.__yc = np.tile(np.repeat(coord,int(np.ceil(self.momsdata.resolution))),int(np.ceil(self.momsdata.resolution)))
-        self.__zc = np.repeat(coord,int(np.ceil(self.momsdata.resolution*self.momsdata.resolution)))
-        self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
-                                np.power(self.__zc,2.0))
+        else:
 
-        # from this, I will always setup vars for a rprof
-        delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
-        self.__radial_boundary = np.linspace(delta_r,delta_r*(self.momsdata.resolution/2.),int(np.ceil(self.momsdata.resolution/2.)))
-    
-        # these are the boundaries, now I need what is my "actual" r value
-        self.radial_axis = self.__radial_boundary - delta_r/2.
+            # first we check that var_list is the correct length
+            if len(var_list) != self.__number_of_whatevers:
 
-        # might as well store the resolution of this MomsDataSet
-        # self.resolution = int(np.ceil(momsdata.resolution))
-        # self.run_resolution = int(np.ceil(momsdata.resolution*4.))
+                # we use the default
+                var_keys = [str(i) for i in range(self.__number_of_whatevers)]
+                var_vals = [i for i in range(self.__number_of_whatevers)]
 
-        return 0
+            else:
+
+                # ok we are in the clear
+                var_keys = [str(i) for i in var_list]
+                var_vals = [i for i in range(self.__number_of_whatevers)]
+
+                # I will also allow for known internal varloc to point to the same things
+                # with this dictionary, i.e xc: varloc = 0 ALWAYS
+                var_keys2 = [str(i) for i in range(self.__number_of_whatevers)]
+
+                self.__varloc.update(zip(var_keys2,var_vals))
+
+        # construct the variable dictionary
+        self.__varloc.update(zip(var_keys,var_vals))
+
+        return True
+
+    def __transform_mollweide(self,theta,phi):
+        '''
+        Transforms a "physics" spherical coordinates array into the spherical coordinates
+        that matplotlib uses for projection plots
+
+        Parameters
+        ----------
+        theta, phi: np.array
+            The "physics" theta and phi arrays
+
+        Returns
+        -------
+        theta, phi numpy.ndarray
+            theta and phi transformed
+        '''
+
+        # phi instead goes from -pi to pi with -pi/2 being the -y axis and
+        # the x axis defines phi = 0
+
+        phi[np.where(phi > np.pi)] = phi[np.where(phi > np.pi)] - 2*np.pi
+
+        # theta instead goes from -pi/2 to pi/2 with pi/2 being the positive
+        # z axis and the xy plane defines theta = 0
+        theta[np.where(theta <= np.pi/2.)] = abs(theta[np.where(theta <= np.pi/2.)] - np.pi/2.)
+        theta[np.where(theta > np.pi/2.)] = -(theta[np.where(theta > np.pi/2.)] - np.pi/2.)
+
+        return theta, phi
+
+    def __uniform_spherical_grid(self,radius,npoints):
+        '''
+        Create a uniformly spaced (in spherical coordinates) grid of points in which
+        the interpolation is done on to get a value of quantity at radius r
+
+        Parameters
+        ----------
+        npoints: int
+            The number of points on the uniform grid. 5000 is plenty for most images
+
+        Returns
+        -------
+        xyz_grid,theta_interp,phi_interp: np.ndarray
+            The spherical coordinates (physics) of the points on the sphere with their
+            associated x,y,z
+        '''
+
+        indices = np.arange(0, npoints, dtype=np.float32) + 0.5
+
+        # Based on equal amount of points in equal area on a sphere...
+        theta = np.arccos(1. - 2.*indices/float(npoints))
+        phi = np.pi * (1 + 5**0.5) * indices  - 2*np.pi*np.floor(np.pi * (1 + 5**0.5) * indices / (2 * np.pi))
+
+        # create the interp_grid. It is written in this fashion to work with interpolation, z,y,x
+        igrid = np.zeros((npoints,3))
+        igrid[:,0] = radius * np.cos(theta)
+        igrid[:,1] = radius * np.sin(theta) * np.sin(phi)
+        igrid[:,2] = radius * np.sin(theta) * np.cos(phi)
+
+        # for mollweide we have to transform these
+        theta, phi = self.__transform_mollweide(theta,phi)
+
+        return igrid, theta, phi
+
+    def __get_cgrid(self):
+        '''
+        Constructs the PPMStar cartesian grid from the saved xc in whatever(0) as well as a radial coordinate
+
+        Returns
+        -------
+        Boolean
+            True on success.
+            False on failure.
+        '''
+
+        # check, do we already have this?
+        if not self.__cgrid_exists:
+
+            # Ok, we will always have a dump in memory so carry on!
+
+            # We assume that x is always the zero varloc
+            # We also make sure it is a copy and separated from self.__momsdata.data
+            xc_array = self.__get(self.__varloc['0'],self.__many_momsdata_keys[0]).copy()
+
+            # x contains all the info for y and z, just different order. I figured this out
+            # and lets use strides so that we don't allocate new wasteful arrays (~230Mb for 1536!)
+            xc_strides = xc_array.strides
+            xorder = [i for i in xc_strides]
+
+            yc_array = np.lib.stride_tricks.as_strided(xc_array,shape=(self.moms_resolution,
+                                                                         self.moms_resolution,
+                                                                         self.moms_resolution),
+                                                        strides=(xorder[1],xorder[2],xorder[0]))
+
+            zc_array = np.lib.stride_tricks.as_strided(xc_array,shape=(self.moms_resolution,
+                                                                         self.moms_resolution,
+                                                                         self.moms_resolution),
+                                                        strides=(xorder[2],xorder[0],xorder[1]))
+
+            # unfortunately we have to flatten these. This creates copies as
+            # they are not contiguous memory chunks... (data is a portion of ghostdata)
+            self.__xc = np.ravel(xc_array)
+            self.__yc = np.ravel(yc_array)
+            self.__zc = np.ravel(zc_array)
+
+            # might as well grab unique values
+            self.__unique_coord = xc_array[0,0,:].copy()
+
+            # creating a new array, radius
+            self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
+                                    np.power(self.__zc,2.0))
+
+            # get the spacing of the grid
+            self.__dx = abs(self.__xc[1] - self.__xc[0])
+
+            # from this, I will always setup vars for a rprof
+            # we need a slight offset from the lowest value and highest value of grid for interpolation!
+            delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
+            eps = 0.000001
+            self.__radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_resolution/2.)-eps*delta_r*(self.moms_resolution/2.),int(np.ceil(self.moms_resolution/2.)))
+
+            # these are the boundaries, now I need what is my "actual" r value
+            self.radial_axis = self.__radial_boundary - delta_r/2.
+
+            # construct the bins for computing averages ON radial_axis, these are "right edges"
+            delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+            radialbins = self.radial_axis + delta_r
+            self.radial_bins = np.insert(radialbins,0,0)
+
+            # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
+            self.__xc_view = self.__xc.view()
+            self.__xc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__yc_view = self.__yc.view()
+            self.__yc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__zc_view = self.__zc.view()
+            self.__zc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
+            self.__radius_view = self.__radius.view()
+            self.__radius_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
+            # all is good, set that we have made our grid
+            self.__cgrid_exists = True
+
+            return True
+
+        else:
+            return True
+
+    def __get_sgrid(self):
+        '''
+        Constructs the PPMStar spherical coordinates grid
+
+        Returns
+        -------
+        Boolean
+            True on success.
+            False on failure.
+        '''
+
+        # check if we already have this in memory or not
+        if not self.__sgrid_exists:
+
+            # ok we are good to go for the spherical coordinates
+
+            # we have the radius already, need theta and phi
+            self.__theta = np.arctan2(np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0)),self.__zc)
+
+            # with phi we have a problem with the way np.arctan2 works, we get negative
+            # angles in quadrants 3 and 4. we can fix this by adding 2pi to the negative values
+            self.__phi = np.arctan2(self.__yc,self.__xc)
+            self.__phi[self.__phi < 0] += 2. * np.pi
+
+            # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
+            self.__theta_view = self.__theta.view()
+            self.__theta_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__phi_view = self.__phi.view()
+            self.__phi_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
+            # ok all is good, set our flag that everything is good
+            self.__sgrid_exists = True
+
+            return True
+
+        else:
+            return True
+
+    def __get_mollweide(self):
+        '''
+        Constructs the PPMStar spherical coordinates grid
+
+        Returns
+        -------
+        Boolean
+            True on success.
+            False on failure.
+        '''
+
+        # check if we already have this in memory or not
+        if not self.__mollweide_exists:
+
+            # ok we are good to go for the spherical coordinates
+
+            # we have a transform method, let's use it
+            self.__mollweide_theta, self.__mollweide_phi = self.__transform_mollweide(self.__theta.copy(),self.__phi.copy())
+
+            # DS: I will save this code, it may be used in the future
+            # and is a nice way of calculating this directly
+            # # we have the radius already, need theta and phi
+            # self.__mollweide_theta = np.arctan2(self.__zc,np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0)))
+
+            # # with phi we have a problem with the way np.arctan2 works, we get negative
+            # # angles in quadrants 3 and 4. This is what we want
+            # self.__mollweide_phi = np.arctan2(self.__yc,self.__xc)
+
+            # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
+            self.__mollweide_theta_view = self.__mollweide_theta.view()
+            self.__mollweide_theta_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__mollweide_phi_view = self.__mollweide_phi.view()
+            self.__mollweide_phi_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
+            # ok all is good, set our flag that everything is good
+            self.__mollweide_exists = True
+
+            return True
+
+        else:
+            return True
+
+    def __get_jacobian(self):
+        '''
+        This function creates the Jacobian to convert quantities defined in cartesian
+        coordinates to spherical coordinates. This is a very large array of 9 x shape
+        which will be stored in memory. It is defined as the "physics" spherical coordinates
+        so the array has rhat, theta-hat, phi-hat -> xhat, yhat, zhat
+        '''
+
+        if not self.__jacobian_exists:
+
+            # get a big block of memory
+            self.__jacobian = np.zeros((9,self.__xc_view.shape[0],self.__xc_view.shape[1],self.__xc_view.shape[2]),dtype='float32')
+
+            # we can easily construct all of these with x,y,z and r. Probably more accurate
+
+            # need the cylindrical radius
+            rcyl = np.sqrt(np.power(self.__xc_view,2.0)+np.power(self.__yc_view,2.0))
+
+            # rhat -> xhat, yhat, zhat
+            np.divide(self.__xc_view,self.__radius_view,out=self.__jacobian[0])
+            np.divide(self.__yc_view,self.__radius_view,out=self.__jacobian[1])
+            np.divide(self.__zc_view,self.__radius_view,out=self.__jacobian[2])
+
+            # theta-hat -> xhat, yhat, zhat
+            # we use "placeholders" of jacobian slots to not make new memory
+            np.divide(np.multiply(self.__xc_view,self.__zc_view,out=self.__jacobian[3]),
+                      np.multiply(self.__radius_view,rcyl,out=self.__jacobian[4]),
+                      out = self.__jacobian[3])
+            np.divide(np.multiply(self.__yc_view,self.__zc_view,out=self.__jacobian[4]),
+                      np.multiply(self.__radius_view,rcyl,out=self.__jacobian[5]),
+                      out = self.__jacobian[4])
+            np.divide(-rcyl,self.__radius_view,out=self.__jacobian[5])
+
+            # phi-hat -> xhat, yhat, zhat
+            np.divide(-self.__yc_view,rcyl,out=self.__jacobian[6])
+            np.divide(self.__xc_view,rcyl,out=self.__jacobian[7])
+            # phi-hat dot z-hat = 0
+
+            # alright it exists
+            self.__jacobian_exists = True
+
+    def __get(self,varloc,fname=None):
+        '''
+        Returns variable var at a specific point in the simulation's time
+        evolution. This is used internally for data claims that will be references
+        that die in a method. IMPORTANT: The arrays are NOT flattened but if they need
+        to be a NEW array must be made
+        
+        Parameters
+        ----------
+        varloc: int
+            Index location of the variable you want
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
+        Returns
+        -------
+        numpy.ndarray
+            Variable in index varloc as given by MomsData.get() if the MomsData
+        corresponding to fname exists.
+        '''
+
+        # if fname is None, use current dump
+        if fname == None:
+            fname = self.what_dump_am_i
+
+        # quick check if we already have the momsdata in memory
+        if str(fname) in self.__many_momsdata:
+
+            try:
+                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
+
+            except KeyError as e:
+                err = 'Invalid key for varloc. A list of keys: \n'
+                err += ', '.join(sorted(map(str,self.__varloc.keys())))
+                self.__messenger.error(err)
+                raise e
+
+        else:
+
+            # grab a new datacube. This updates self.__momsdata.data
+            self.__get_dump(fname)
+
+            try:
+                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
+
+            except KeyError as e:
+                err = 'Invalid key for varloc. A list of keys: \n'
+                err += ', '.join(sorted(map(str,self.__varloc.keys())))
+                self.__messenger.error(err)
+                raise e
 
     def is_valid(self):
         '''
@@ -9995,123 +10371,358 @@ class MomsDataSet:
         
         return list(self.__dumps)
     
-    def get_dump(self, dump):
-        '''
-        Returns a single dump.
-        
-        Parameters
-        ----------
-        dump: integer
-            
-        Returns
-        -------
-        MomsData
-            MomsData object corresponding to the selected dump.
-        '''
-        
-        if dump not in self.__dumps:
-            err = 'Dump {:d} is not available.'.format(dump)
-            self.__messenger.error(err)
-            return None
-        
-        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
-                                                             dump, self.__run_id, dump)
-
-        # dump tracker
-        self.__what_dump_am_i = dump
-
-        return MomsData(file_path)
-
-    def get_rprof(self,varloc,fname):
+    def get_rprof(self,varloc,fname=None):
         '''
         Returns a 1d radial profile of the variable that is defined at
         whatever(varloc) and the radial axis values
 
         Parameters
         ----------
-        varloc: integer or np.ndarray
+        varloc: int or np.ndarray
             integer index of the quantity that is defined under whatever(varloc)
             OR you can supply an array that contains data. This will be flattened
-        fname: integer
-            The dump number that you want a MomsData rprof for
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
         Returns
         -------
         rad_prof, radial_axis: np.ndarray
             Radial profile of whatever(varloc) and the Radial axis which
             whatever(varloc) is averaged on
-        counts: np.ndarray
-            The number of cells used in the radial bins averaging can be returned
-            if return_counts=True      
         '''
 
-        # check if we have array or not
-        if type(varloc) != int:
-            quantity = np.ravel(varloc)
-        else:
-            # get the grid from a momsdata cube
-            quantity = self.get(varloc,fname)
+        # we basically just call interpolation over self.radial_axis
+        quantity = self.get_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
 
-        # ok, we have our radial_axis, we can count how many radius values
-        # fall into each bin
+        # for an rprof we average all of those quantities at each radius
+        quantity = np.mean(quantity,axis=1)
+        
+        return quantity, self.radial_axis
 
-        # first get the construct array of the "right edge"
-        delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
-        radialbins = self.radial_axis + delta_r
-        radialbins = np.insert(radialbins,0,0)
+        # DS: We will hold onto the old method, it uses binning which is not a bad way of doing it
+        # # check if we have array or not
+        # if type(varloc) == np.ndarray:
+        #     quantity = np.ravel(varloc)
+        # else:
+        #     # get the grid from a momsdata cube
+        #     # because we need a flattened array, ravel will create a new array
+        #     quantity = np.ravel(self.__get(varloc,fname))
 
-        # This will apply a "mean" to the quantity that is binned by radialbins
-        # using the self.__radius values
-        average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',radialbins)
+        # # This will apply a "mean" to the quantity that is binned by radialbins
+        # # using the self.__radius values
+        # average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',self.radial_bins)
 
-        # return the radprof and radial_axis
-        return average_quantity, self.radial_axis
+        # # return the radprof and radial_axis
+        # return average_quantity, self.radial_axis
 
-    def get_grid(self):
+    def get_cgrid(self):
         '''
-        Returns the xc, yc, zc and radius of the moments data cube currently held
-        in memory
+        Returns the central values of the grid for x,y and z of the moments data cube currently held
+        in memory. This is the cartesian grid and it is formatted as xc[z,y,x] and so
 
         Returns
         -------
-        xc,yc,zc,radius: np.ndarray
-             
+        xc,yc,zc: np.ndarray
         '''
-        return self.__xc,self.__yc,self.__zc,self.__radius
 
-    def get(self, varloc, fname):
+        # we use these internally, so we give copies
+        return self.__xc_view.copy(), self.__yc_view.copy(), self.__zc_view.copy()
+
+    def get_sgrid(self):
         '''
-        Returns variable var at a specific point in the simulation's time
-        evolution.
-        
+        Returns the central values of the grid for r,theta and phi of the moments data cube currently held
+        in memory. This is of course the physics version where theta is defined as the angle from the z axis
+        and phi is the cylindrical angle. it is formatted as phi[z,y,x] and so phi[0,0,:] will give a plane of constant x
+        IMPORTANT: This is NOT a copy of the array in memory
+
+        Returns
+        -------
+        radius,theta,phi: np.ndarray
+        '''
+
+        # does this exist yet?
+        if not self.__sgrid_exists:
+            self.__get_sgrid()
+
+        # these are not used internally and so we can give them the real grid (except for radius!)
+        return self.__radius_view.copy(), self.__theta_view, self.__phi_view
+    
+    def get_mollweide(self):
+        '''
+        Returns the central values of the grid for r,theta and phi of the moments data cube currently held
+        in memory. This is the mollweide projection so theta runs from pi/2 -> -pi/2 going down from the z axis
+        and 0 -> pi from quadrants 1->2 and then -0 -> -pi from quadrants 4->3. Useful for plotting projections.
+        IMPORTANT: This is NOT a copy of the array in memory
+
+        Returns
+        -------
+        theta,phi: np.ndarray
+        '''
+
+        # DOES this exist yet?
+        if not self.__mollweide_exists:
+            self.__get_mollweide()
+
+        # these are not used internally and so we can give them the real grid
+        return self.__mollweide_theta_view, self.__mollweide_phi_view
+
+    def get_interpolation(self, varloc, radius, fname=None, plot_mollweide=True, npoints=5000, perturbation=False):
+        '''
+        Returns the trillinear interpolated array of values of 'varloc' at a radius of
+        'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
+
         Parameters
         ----------
-        varloc: int
-            Index location of the variable you want
-        fname: integer/float
-            Dump number or time in seconds depending on the value of
-            num_type.            
-            
+        varloc: str, int, np.ndarray
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
+            np.ndarray: quantity you want to have interpolated on the grid
+        radius: float or np.ndarray
+            The radius of the sphere you want 'varloc' to be interpolated to
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+        npoints: int
+            The number of 'theta and phi' points you want for a projection plot
+        perturbation: bool
+            Do we subtract off the average (on a sphere) from 'varloc' being interpolated and
+            then scale it by that average (on a sphere)? i.e varloc_interpolated = (varloc - <varloc>)/<varloc>
+
+        Returns
+        -------
+        plot_mollweide: True
+            varloc_interpolated,theta,phi: np.ndarray or list
+
+        plot_mollweide: False
+            varloc_interpolated: np.ndarray or list
+        '''
+
+        # create an interpolation object, order is z,y,x
+        # first check if we have a np.ndarray or not
+        if type(varloc) == np.ndarray:
+
+            # check if it is the same shape as self.__xc_view
+            if varloc.shape != self.__xc_view.shape:
+
+                # we can try reshaping
+                try:
+                    varloc.reshape(self.__xc_view.shape)
+                except ValueError as e:
+                    err = 'The varloc given cannot be reshaped into ' + str(self.__xc_view.shape)
+                    self.__messenger.error(err)
+                    raise e
+
+            # we passed the try, except, we should be good
+            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),varloc)
+
+        else:
+
+            # We can use the values in memory
+            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__get(varloc,fname))
+
+        # now we loop through every radius
+        try:
+            first_r = radius[0]
+        except TypeError as e:
+            # ok, we have an error, it is not a single float or int
+            radius = [radius]
+
+        # we only need the spherical grid once. We can update zyx_grid easily!
+        zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius[0], npoints)
+
+        for i in range(len(radius)):
+
+            # if we only go once, varloc_vals is a np.ndarray
+            if len(radius) == 1:
+                # we have interpolation object, get interpolated values
+                varloc_vals = varloc_interp(zyx_grid)
+
+                # do we subtract off the mean?
+                if perturbation:
+                    # these can be large arrays, dont make a million copies, do in place
+                    mean_vals = np.mean(varloc_vals)
+                    np.subtract(varloc_vals,mean_vals,out=varloc_vals)
+                    np.divide(varloc_vals,mean_vals,out=varloc_vals)
+
+            else:
+                if i == 0:
+                    varloc_vals = []
+                else:
+                    np.multiply(zyx_grid, radius[i] / radius[i-1], out=zyx_grid)
+
+                # we have interpolation object, get interpolated values
+                varloc_vals.append(varloc_interp(zyx_grid))
+
+                # do we subtract off the mean?
+                if perturbation:
+                    # these can be large arrays, dont make a million copies, do in place
+                    mean_vals = np.mean(varloc_vals[i])
+                    np.subtract(varloc_vals[i],mean_vals,out=varloc_vals[i])
+                    np.divide(varloc_vals[i],mean_vals,out=varloc_vals[i])
+
+        if plot_mollweide:
+            return varloc_vals, theta_grid, phi_grid
+        else:
+            return varloc_vals
+
+    def get_spherical_components(self,ux,uy,uz,fname=None):
+        '''
+        Most calculations are done in cartesian coordinates but we can transform them to
+        spherical coordinates using unit vectors. This can also be used to take derivatives
+        of a function in spherical coordinates. This returns the spherical components of u
+
+        Parameters
+        ----------
+        ux, uy, uz: int, str, np.ndarray
+            int: integer referring to varloc
+            str: string referring to quantity varloc
+            np.ndarray: array with quantities
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
+        Returns
+        -------
+        ur, utheta, uphi: list of np.ndarray
+            The spherical components of u
+        '''
+
+        # first check if we have the jacobian or not
+        if not self.__jacobian_exists:
+            self.__get_jacobian()
+
+        # first grab quantities if we need to
+        if type(ux) != np.ndarray:
+            ux = self.__get(ux,fname)
+        if type(uy) != np.ndarray:
+            uy = self.__get(uy,fname)
+        if type(uz) != np.ndarray:
+            uz = self.__get(uz,fname)
+
+        ur = ux * self.__jacobian[0] + uy * self.__jacobian[1] + uz * self.__jacobian[2]
+        utheta = ux * self.__jacobian[3] + uy * self.__jacobian[4] + uz * self.__jacobian[5]
+        uphi = ux * self.__jacobian[6] + uy * self.__jacobian[7]
+
+        return [ur, utheta, uphi]
+
+    def get(self, varloc, fname=None):
+        '''
+        Returns variable var at a specific point in the simulation's time
+        evolution. IMPORTANT NOTE: This is a copy of the actual data. This
+        is to ensure that a dump's data will be deleted when new data is deleted
+        i.e we are preserving that there will be no references!
+
+        Parameters
+        ----------
+        varloc: str, int
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
         Returns
         -------
         numpy.ndarray
             Variable in index varloc as given by MomsData.get() if the MomsData
-        corresponding to fname exists.
-        NoneType
-            If the MomsData corresponding to fname does not exist.
+            corresponding to fname exists.
         '''
 
+        # if fname is not specified use current dump
+        if fname == None:
+            fname = self.what_dump_am_i
+
         # quick check if we already have the momsdata in memory
-        if self.__what_dump_am_i == fname:
-            self.momsdata.get(varloc)
-        else:
-            # we need to delete the old momsdata, it could live in memory through
-            # some other reference
-            del self.momsdata
+        if str(fname) in self.__many_momsdata:
 
-            # assign a new momsdata
-            self.momsdata = self.get_dump(fname)
+            # This is public, we must give a copy
+            # let's try this, if we get key error then obviously...
+            try:
+                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
 
-        if self.momsdata is not None:
-            return self.momsdata.get(varloc)
+            except KeyError as e:
+                err = 'Invalid key for varloc. A list of keys: \n'
+                err += ', '.join(sorted(map(str,self.__varloc.keys())))
+                self.__messenger.error(err)
+                raise e
+
         else:
-            return None
+
+            # grab a new datacube. This updates self.__momsdata.data
+            self.__get_dump(fname)
+
+            # This is public, we must give a copy
+            # let's try this, if we get key error then obviously...
+            try:
+                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
+
+            except KeyError as e:
+                err = 'Invalid key for varloc. A list of keys: \n'
+                err += ', '.join(sorted(map(str,self.__varloc.keys())))
+                self.__messenger.error(err)
+                raise e
+
+
+    def norm(self,ux,uy,uz,fname=None):
+        '''
+        Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
+        the definition |u| = sqrt(ux**2 + uy**2 + uz**2). The vector must be defined in an
+        orthogonal basis. i.e we can also do |u| = sqrt(ur**2 + uphi**2 + utheta**2)
+
+        Parameters
+        ----------
+        ux, uy, uz: int, str, np.ndarray
+            int: integer referring to varloc
+            str: string referring to quantity varloc
+            np.ndarray: array with quantities
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
+        Returns
+        -------
+        |u|: np.ndarray
+        '''
+
+        if type(ux) != np.ndarray:
+            ux = self.__get(ux,fname)
+        if type(uy) != np.ndarray:
+            uy = self.__get(uy,fname)
+        if type(uz) != np.ndarray:
+            uz = self.__get(uz,fname)
+
+        return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
+
+    def gradient(self,f,fname=None):
+        '''
+        Take the gradient of a scalar field in CARTESIAN coordinates. This uses central
+        differences using points directly on the grid (no interpolation).
+
+        Parameters
+        ----------
+        f: np.ndarray
+            scalar field defined on the grid
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
+        Returns
+        -------
+        grad f: list of np.ndarray
+            list containing fx,fy and fz
+        '''
+
+        if type(f) != np.ndarray:
+            f = self.__get(f,fname)
+        else:
+            # check len of shape of f
+            if len(f.shape) != 3:
+                err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'.format(self.moms_resolution)
+
+        # we use the spacing between grid points as our dx,dy,dz
+        gradf = np.gradient(f,self.__dx,self.__dx,self.__dx)
+
+        # we get fz, fy and then fx, rearrange
+        gradf.reverse()
+
+        return gradf
