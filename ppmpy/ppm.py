@@ -10073,14 +10073,17 @@ class MomsDataSet:
         indices = np.arange(0, npoints, dtype=np.float32) + 0.5
 
         # Based on equal amount of points in equal area on a sphere...
-        phi = np.arccos(1. - 2.*indices/float(npoints))
-        theta = np.pi * (1 + 5**0.5) * indices  - 2*np.pi*np.floor(np.pi * (1 + 5**0.5) * indices / (2 * np.pi))
+        theta = np.arccos(1. - 2.*indices/float(npoints))
+        phi = np.pi * (1 + 5**0.5) * indices  - 2*np.pi*np.floor(np.pi * (1 + 5**0.5) * indices / (2 * np.pi))
 
         # create the interp_grid. It is written in this fashion to work with interpolation, z,y,x
         igrid = np.zeros((npoints,3))
         igrid[:,0] = radius * np.cos(theta)
         igrid[:,1] = radius * np.sin(theta) * np.sin(phi)
         igrid[:,2] = radius * np.sin(theta) * np.cos(phi)
+
+        # for mollweide we have to transform these
+        theta, phi = self.__transform_mollweide(theta,phi)
 
         return igrid, theta, phi
 
