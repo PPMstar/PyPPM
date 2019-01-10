@@ -10223,7 +10223,9 @@ class MomsDataSet:
         # check if we already have this in memory or not
         if not self.__mollweide_exists:
 
-            # ok we are good to go for the spherical coordinates
+            # ok we now check to see if spherical coordinates has been made or not
+            if not self.__sgrid_exists:
+                self.__get_sgrid()
 
             # we have a transform method, let's use it
             self.__mollweide_theta, self.__mollweide_phi = self.__transform_mollweide(self.__theta.copy(),self.__phi.copy())
@@ -10662,37 +10664,6 @@ class MomsDataSet:
                 self.__messenger.error(err)
                 raise e
 
-
-    def norm(self,ux,uy,uz,fname=None):
-        '''
-        Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
-        the definition |u| = sqrt(ux**2 + uy**2 + uz**2). The vector must be defined in an
-        orthogonal basis. i.e we can also do |u| = sqrt(ur**2 + uphi**2 + utheta**2)
-
-        Parameters
-        ----------
-        ux, uy, uz: int, str, np.ndarray
-            int: integer referring to varloc
-            str: string referring to quantity varloc
-            np.ndarray: array with quantities
-        fname: None,int
-            None: default option, will grab current dump
-            int: Dump number
-
-        Returns
-        -------
-        |u|: np.ndarray
-        '''
-
-        if type(ux) != np.ndarray:
-            ux = self.__get(ux,fname)
-        if type(uy) != np.ndarray:
-            uy = self.__get(uy,fname)
-        if type(uz) != np.ndarray:
-            uz = self.__get(uz,fname)
-
-        return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
-
     def gradient(self,f,fname=None):
         '''
         Take the gradient of a scalar field in CARTESIAN coordinates. This uses central
@@ -10726,3 +10697,33 @@ class MomsDataSet:
         gradf.reverse()
 
         return gradf
+
+    def norm(self,ux,uy,uz,fname=None):
+        '''
+        Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
+        the definition |u| = sqrt(ux**2 + uy**2 + uz**2). The vector must be defined in an
+        orthogonal basis. i.e we can also do |u| = sqrt(ur**2 + uphi**2 + utheta**2)
+
+        Parameters
+        ----------
+        ux, uy, uz: int, str, np.ndarray
+            int: integer referring to varloc
+            str: string referring to quantity varloc
+            np.ndarray: array with quantities
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+
+        Returns
+        -------
+        |u|: np.ndarray
+        '''
+
+        if type(ux) != np.ndarray:
+            ux = self.__get(ux,fname)
+        if type(uy) != np.ndarray:
+            uy = self.__get(uy,fname)
+        if type(uz) != np.ndarray:
+            uz = self.__get(uz,fname)
+
+        return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
