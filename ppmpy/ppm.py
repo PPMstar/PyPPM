@@ -10128,15 +10128,9 @@ class MomsDataSet:
             self.__yc = np.ravel(yc_array)
             self.__zc = np.ravel(zc_array)
 
-            # might as well grab unique values
-            self.__unique_coord = xc_array[0,0,:].copy()
-
             # creating a new array, radius
             self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
                                     np.power(self.__zc,2.0))
-
-            # get the spacing of the grid
-            self.__dx = abs(self.__xc[1] - self.__xc[0])
 
             # from this, I will always setup vars for a rprof
             # we need a slight offset from the lowest value and highest value of grid for interpolation!
@@ -10162,6 +10156,9 @@ class MomsDataSet:
 
             self.__radius_view = self.__radius.view()
             self.__radius_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+
+            # we have uneven spacing in general... grab unique values along x-axis
+            self.__unique_coord = self.__xc_view[0,0,:]
 
             # all is good, set that we have made our grid
             self.__cgrid_exists = True
@@ -10704,8 +10701,8 @@ class MomsDataSet:
             if len(f.shape) != 3:
                 err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'.format(self.moms_resolution)
 
-        # we use the spacing between grid points as our dx,dy,dz
-        gradf = np.gradient(f,self.__dx,self.__dx,self.__dx)
+        # we use the unique coordinates as the values on the grid (these should have had uniform spacing but don't...)
+        gradf = np.gradient(f,self.__unique_coord,self.__unique_coord,self.__unique_coord)
 
         # we get fz, fy and then fx, rearrange
         gradf.reverse()
