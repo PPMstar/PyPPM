@@ -10373,7 +10373,7 @@ class MomsDataSet:
         
         return list(self.__dumps)
     
-    def get_rprof(self,varloc,fname=None):
+    def get_rprof(self,varloc,radial_axis=None,fname=None):
         '''
         Returns a 1d radial profile of the variable that is defined at
         whatever(varloc) and the radial axis values
@@ -10383,6 +10383,9 @@ class MomsDataSet:
         varloc: int or np.ndarray
             integer index of the quantity that is defined under whatever(varloc)
             OR you can supply an array that contains data. This will be flattened
+        radial_axis: None, np.ndarray
+             None: default option, will use the internal radial_axis (every cell width)
+             np.ndarray: array for the radial values to calculate the profile on
         fname: None,int
             None: default option, will grab current dump
             int: Dump number
@@ -10393,8 +10396,19 @@ class MomsDataSet:
             whatever(varloc) is averaged on
         '''
 
-        # we basically just call interpolation over self.radial_axis
-        quantity = self.get_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
+        # are we using self.radial_axis?
+        if type(radial_axis) == None:
+            # we basically just call interpolation over self.radial_axis
+            quantity = self.get_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
+
+        elif type(radial_axis) == np.ndarray:
+            # we basically just call interpolation over self.radial_axis
+            quantity = self.get_interpolation(varloc,radial_axis,fname,plot_mollweide=False)
+
+        else:
+            err = 'radial_axis is not the default nor is it a np.ndarray, exiting'
+            self.__messenger.error(err)
+            return None
 
         # for an rprof we average all of those quantities at each radius
         quantity = np.mean(quantity,axis=1)
