@@ -10394,26 +10394,21 @@ class MomsDataSet:
         '''
 
         # are we using self.radial_axis?
-        if radial_axis == None:
-            # we basically just call interpolation over self.radial_axis
-            quantity = self.get_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
-
-        elif type(radial_axis) == np.ndarray:
-            # we basically just call interpolation over self.radial_axis
+        if type(radial_axis) == np.ndarray:
+            # we basically just call interpolation over radial_axis
             quantity = self.get_interpolation(varloc,radial_axis,fname,plot_mollweide=False)
 
         else:
-            err = 'radial_axis is not the default nor is it a np.ndarray, exiting'
-            self.__messenger.error(err)
-            return None
+            # we basically just call interpolation over self.radial_axis
+            quantity = self.get_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
 
         # for an rprof we average all of those quantities at each radius
         quantity = np.mean(quantity,axis=1)
 
-        if radial_axis == None:
-            return quantity, self.radial_axis
-        else:
+        if type(radial_axis) == np.ndarray:
             return quantity, radial_axis
+        else:
+            return quantity, self.radial_axis
 
         # DS: We will hold onto the old method, it uses binning which is not a bad way of doing it
         # # check if we have array or not
