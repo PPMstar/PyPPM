@@ -10477,7 +10477,8 @@ class MomsDataSet:
         # these are not used internally and so we can give them the real grid
         return self.__mollweide_theta_view, self.__mollweide_phi_view
 
-    def get_interpolation(self, varloc, radius, fname=None, plot_mollweide=True, npoints=5000, perturbation=False):
+    def get_interpolation(self, varloc, radius, fname=None, plot_mollweide=True, npoints=5000, perturbation=False,
+                          rbff='cubic'):
         '''
         Returns the trillinear interpolated array of values of 'varloc' at a radius of
         'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
@@ -10524,12 +10525,13 @@ class MomsDataSet:
                     raise e
 
             # we passed the try, except, we should be good
-            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),varloc)
+            # instead we use rbf
+            varloc_interp = scipy.interpolate.Rbf(self.__xc_view,self.__yc_view,self.__zc_view,varloc,funcion=rbff)
 
         else:
 
             # We can use the values in memory
-            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__get(varloc,fname))
+            varloc_interp = scipy.interpolate.Rbf(self.__xc_view,self.__yc_view,self.__zc_view,varloc,funcion=rbff)
 
         # now we loop through every radius
         try:
@@ -10546,7 +10548,7 @@ class MomsDataSet:
             # if we only go once, varloc_vals is a np.ndarray
             if len(radius) == 1:
                 # we have interpolation object, get interpolated values
-                varloc_vals = varloc_interp(zyx_grid)
+                varloc_vals = varloc_interp(zyx_grid[:,2],zyx_grid[:,1],zyx_grid[:,0])
 
                 # do we subtract off the mean?
                 if perturbation:
@@ -10562,7 +10564,7 @@ class MomsDataSet:
                     np.multiply(zyx_grid, radius[i] / radius[i-1], out=zyx_grid)
 
                 # we have interpolation object, get interpolated values
-                varloc_vals.append(varloc_interp(zyx_grid))
+                varloc_vals.append(varloc_interp(zyx_grid[:,2],zyx_grid[:,1],zyx_grid[:,0]))
 
                 # do we subtract off the mean?
                 if perturbation:
