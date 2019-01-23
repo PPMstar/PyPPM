@@ -10509,6 +10509,13 @@ class MomsDataSet:
             varloc_interpolated: np.ndarray or list
         '''
 
+        # is radius a list or a float?
+        try:
+            first_r = radius[0]
+        except TypeError as e:
+            # ok, we have an error, it is not a single float or int
+            radius = [radius]
+
         # create an interpolation object, order is z,y,x
         # first check if we have a np.ndarray or not
         if type(varloc) == np.ndarray:
@@ -10526,19 +10533,21 @@ class MomsDataSet:
 
             # we passed the try, except, we should be good
             # instead we use rbf
-            varloc_interp = scipy.interpolate.Rbf(self.__xc_view,self.__yc_view,self.__zc_view,varloc,funcion=rbff)
+
+            # there is too much memory for using the whole grid... get a subsection based on radius
+            min_rad = min(radius)
+            max_rad = max(radius)
+            bool_array = np.where(self.__radius_view > min_rad-15) & np.where(self.__radius_view < max_rad+15)
+            varloc_interp = scipy.interpolate.Rbf(self.__xc_view[bool_array],self.__yc_view[bool_array],self.__zc_view[bool_array],varloc,funcion=rbff)
 
         else:
 
             # We can use the values in memory
-            varloc_interp = scipy.interpolate.Rbf(self.__xc_view,self.__yc_view,self.__zc_view,varloc,funcion=rbff)
-
-        # now we loop through every radius
-        try:
-            first_r = radius[0]
-        except TypeError as e:
-            # ok, we have an error, it is not a single float or int
-            radius = [radius]
+            # there is too much memory for using the whole grid... get a subsection based on radius
+            min_rad = min(radius)
+            max_rad = max(radius)
+            bool_array = np.where(self.__radius_view > min_rad-15) & np.where(self.__radius_view < max_rad+15)
+            varloc_interp = scipy.interpolate.Rbf(self.__xc_view[bool_array],self.__yc_view[bool_array],self.__zc_view[bool_array],varloc,funcion=rbff)
 
         # we only need the spherical grid once. We can update zyx_grid easily!
         zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius[0], npoints)
