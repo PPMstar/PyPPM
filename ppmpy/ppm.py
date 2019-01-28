@@ -10028,7 +10028,7 @@ class MomsDataSet:
     def __transform_mollweide(self,theta,phi):
         '''
         Transforms a "physics" spherical coordinates array into the spherical coordinates
-        that matplotlib uses for projection plots
+        that matplotlib uses for projection plots. This creates a copy of the input arrays
 
         Parameters
         ----------
@@ -10041,17 +10041,54 @@ class MomsDataSet:
             theta and phi transformed
         '''
 
+        # create a copy
+        phi_copy = phi.copy()
+        theta_copy = theta.copy()
+
         # phi instead goes from -pi to pi with -pi/2 being the -y axis and
         # the x axis defines phi = 0
 
-        phi[np.where(phi > np.pi)] = phi[np.where(phi > np.pi)] - 2*np.pi
+        phi_copy[np.where(phi_copy > np.pi)] = phi_copy[np.where(phi_copy > np.pi)] - 2*np.pi
 
         # theta instead goes from -pi/2 to pi/2 with pi/2 being the positive
         # z axis and the xy plane defines theta = 0
-        theta[np.where(theta <= np.pi/2.)] = abs(theta[np.where(theta <= np.pi/2.)] - np.pi/2.)
-        theta[np.where(theta > np.pi/2.)] = -(theta[np.where(theta > np.pi/2.)] - np.pi/2.)
+        theta_copy[np.where(theta_copy <= np.pi/2.)] = abs(theta_copy[np.where(theta_copy <= np.pi/2.)] - np.pi/2.)
+        theta_copy[np.where(theta_copy > np.pi/2.)] = -(theta_copy[np.where(theta_copy > np.pi/2.)] - np.pi/2.)
 
-        return theta, phi
+        return theta_copy, phi_copy
+
+    def __transform_spherical(self,theta,phi):
+        '''
+        Transforms a "mollweide" spherical coordinates array into the "physics" spherical coordinates.
+        This creates a copy of the input arrays
+
+        Parameters
+        ----------
+        theta, phi: np.array
+            The "mollweide" theta and phi arrays
+
+        Returns
+        -------
+        theta, phi numpy.ndarray
+            theta and phi transformed
+        '''
+
+        # create a copy
+        phi_copy = phi.copy()
+        theta_copy = theta.copy()
+
+        # mollweide arrays have the following which we will invert!:
+        # phi instead goes from -pi to pi with -pi/2 being the -y axis and
+        # the x axis defines phi = 0
+
+        phi_copy[np.where(phi_copy < 0)] = phi_copy[np.where(phi_copy < 0)] + 2*np.pi
+
+        # theta instead goes from -pi/2 to pi/2 with pi/2 being the positive
+        # z axis and the xy plane defines theta = 0
+        theta_copy[np.where(theta_copy >= 0)] = abs(theta_copy[np.where(theta_copy >= 0)] - np.pi/2.)
+        theta_copy[np.where(theta_copy < 0)] = abs(theta_copy[np.where(theta_copy < 0)]) + np.pi/2.
+
+        return theta_copy, phi_copy
 
     def __uniform_spherical_grid(self,radius,npoints):
         '''
@@ -10206,9 +10243,9 @@ class MomsDataSet:
         else:
             return True
 
-    def __get_mollweide(self):
+    def __get_mgrid(self):
         '''
-        Constructs the PPMStar spherical coordinates grid
+        Constructs the PPMStar mollweide spherical coordinates grid
 
         Returns
         -------
@@ -10394,7 +10431,7 @@ class MomsDataSet:
         '''
 
         # are we using self.radial_axis?
-        if type(radial_axis) == np.ndarray:
+        if isinstance(radial_axis,np.ndarray):
             # we basically just call interpolation over radial_axis
             quantity = self.get_interpolation(varloc,radial_axis,fname,plot_mollweide=False)
 
@@ -10405,7 +10442,7 @@ class MomsDataSet:
         # for an rprof we average all of those quantities at each radius
         quantity = np.mean(quantity,axis=1)
 
-        if type(radial_axis) == np.ndarray:
+        if isinstance(radial_axis,np.ndarray):
             return quantity, radial_axis
         else:
             return quantity, self.radial_axis
@@ -10457,25 +10494,87 @@ class MomsDataSet:
 
         # these are not used internally and so we can give them the real grid (except for radius!)
         return self.__radius_view.copy(), self.__theta_view, self.__phi_view
-    
-    def get_mollweide(self):
+
+    def get_mgrid(self):
         '''
         Returns the central values of the grid for r,theta and phi of the moments data cube currently held
-        in memory. This is the mollweide projection so theta runs from pi/2 -> -pi/2 going down from the z axis
-        and 0 -> pi from quadrants 1->2 and then -0 -> -pi from quadrants 4->3. Useful for plotting projections.
-        IMPORTANT: This is NOT a copy of the array in memory
+        in memory. This is the mollweide definition of the theta and phi coordinates which are defined as:
+
+        Theta runs from pi/2 -> -pi/2 going down from the z axis while phi goes from 0 -> pi from quadrants 1->2 and then
+        0 -> -pi from quadrants 4->3. Useful for plotting projections.
+
+        Returns
+        -------
+        radius,theta,phi: np.ndarray
+        '''
+
+        # DOES this exist yet?
+        if not self.__mollweide_exists:
+            self.__get_mgrid()
+
+        # these are not used internally and so we can give them the real grid
+        return self.__mollweide_theta_view, self.__mollweide_phi_view
+
+    def get_mollweide_coordinates(self,theta=None,phi=None):
+        '''
+        Returns the "mollweide" definition of theta and phi coordinates of the input arrays.
+        The mollweide coordinates are defined as:
+
+        Theta runs from pi/2 -> -pi/2 going down from the z axis while phi goes from 0 -> pi from quadrants 1->2 and then
+        0 -> -pi from quadrants 4->3. Useful for plotting projections.
+
+        Parameters
+        ----------
+        theta: np.ndarray
+            np.ndarray: Convert this theta from "physics" to "mollweide" definitions
+        phi: np.ndarray
+            np.ndarray: Convert this phi from "physics" to "mollweide" definitions
 
         Returns
         -------
         theta,phi: np.ndarray
         '''
 
-        # DOES this exist yet?
-        if not self.__mollweide_exists:
-            self.__get_mollweide()
+        # am I converting?
+        if isinstance(theta,np.ndarray) and isinstance(phi,np.ndarray):
 
-        # these are not used internally and so we can give them the real grid
-        return self.__mollweide_theta_view, self.__mollweide_phi_view
+            # I want to convert this array
+            theta_copy, phi_copy = self.__transform_mollweide(theta,phi)
+
+            return theta_copy, phi_copy
+
+        else:
+            return None
+
+    def get_spherical_coordinates(self,theta=None,phi=None):
+        '''
+        Returns the "physics" definition of theta and phi coordinates of the grid or input arrays.
+        The spherical coordinates are defined as:
+
+        Theta is defined as the angle from the positive z-axis while phi is the cylindrical angle
+
+        Parameters
+        ----------
+        theta: np.ndarray
+            np.ndarray: Convert this theta from "physics" to "mollweide" definitions
+        phi: np.ndarray
+            np.ndarray: Convert this phi from "physics" to "mollweide" definitions
+
+        Returns
+        -------
+        theta,phi: np.ndarray
+        '''
+
+        # am I converting?
+        if isinstance(theta,np.ndarray) and isinstance(phi,np.ndarray):
+
+            # I want to convert this array
+            theta_copy, phi_copy = self.__transform_spherical(theta,phi)
+
+            return theta_copy, phi_copy
+
+        else:
+            return None
 
     def get_interpolation(self, varloc, radius, fname=None, plot_mollweide=True, npoints=5000, perturbation=False):
         '''
@@ -10510,7 +10609,7 @@ class MomsDataSet:
 
         # create an interpolation object, order is z,y,x
         # first check if we have a np.ndarray or not
-        if type(varloc) == np.ndarray:
+        if isinstance(varloc,np.ndarray):
 
             # check if it is the same shape as self.__xc_view
             if varloc.shape != self.__xc_view.shape:
@@ -10603,11 +10702,11 @@ class MomsDataSet:
             self.__get_jacobian()
 
         # first grab quantities if we need to
-        if type(ux) != np.ndarray:
+        if not isinstance(ux,np.ndarray):
             ux = self.__get(ux,fname)
-        if type(uy) != np.ndarray:
+        if not isinstance(uy,np.ndarray):
             uy = self.__get(uy,fname)
-        if type(uz) != np.ndarray:
+        if not isinstance(uz,np.ndarray):
             uz = self.__get(uz,fname)
 
         ur = ux * self.__jacobian[0] + uy * self.__jacobian[1] + uz * self.__jacobian[2]
@@ -10692,7 +10791,7 @@ class MomsDataSet:
             list containing fx,fy and fz
         '''
 
-        if type(f) != np.ndarray:
+        if not isinstance(f,np.ndarray):
             f = self.__get(f,fname)
         else:
             # check len of shape of f
@@ -10728,11 +10827,11 @@ class MomsDataSet:
         |u|: np.ndarray
         '''
 
-        if type(ux) != np.ndarray:
+        if not isinstance(ux,np.ndarray):
             ux = self.__get(ux,fname)
-        if type(uy) != np.ndarray:
+        if not isinstance(uy,np.ndarray):
             uy = self.__get(uy,fname)
-        if type(uz) != np.ndarray:
+        if not isinstance(uz,np.ndarray):
             uz = self.__get(uz,fname)
 
         return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
