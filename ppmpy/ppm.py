@@ -9700,8 +9700,8 @@ class MomsData():
         self.__number_of_whatevers = 10
 
         # set blanks for these at the start
-        self.resolution = 0
-        self.run_resolution = 0
+        self.ngridpoints = 0
+        self.run_ngridpoints = 0
 
         if not self.read_moms_cube(file_path):
             return
@@ -9738,17 +9738,17 @@ class MomsData():
 
 
         # DS: testing new way of doing things
-        self.run_resolution = int(np.ceil(4. * (np.power(np.shape(ghostdata)[0] / 10.,1/3.) - self.__ghost)))
-        self.resolution = int(np.ceil(self.run_resolution/4.))
+        self.run_ngridpoints = int(np.ceil(4. * (np.power(np.shape(ghostdata)[0] / 10.,1/3.) - self.__ghost)))
+        self.ngridpoints = int(np.ceil(self.run_ngridpoints/4.))
 
         # ok, I can reshape without reallocating an array
         ghostview = ghostdata.view()
-        size = int(np.ceil(self.resolution+self.__ghost))
+        size = int(np.ceil(self.ngridpoints+self.__ghost))
         ghostview.shape = (self.__number_of_whatevers,size,size,size)
 
         # my removed "ghost" values is quite easy! Now in an intuitive format
         # self.data[z,y,x]
-        self.data = ghostview[0:,(self.__ghost-1):(self.resolution+self.__ghost-1),                            (self.__ghost-1):(self.resolution+self.__ghost-1),(self.__ghost-1):(self.resolution+self.__ghost-1)]
+        self.data = ghostview[0:,(self.__ghost-1):(self.ngridpoints+self.__ghost-1),                            (self.__ghost-1):(self.ngridpoints+self.__ghost-1),(self.__ghost-1):(self.ngridpoints+self.__ghost-1)]
 
         return True
 
@@ -9848,14 +9848,18 @@ class MomsDataSet:
         # hold the initial dump in attribute
         self.what_dump_am_i = init_dump_read
 
-        # set objects resolution and original run resolution
+        # set objects ngridpoints and original run ngridpoints
         # these are deep copies to ensure no reference back on momsdata
-        self.moms_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].resolution)
-        self.run_resolution = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_resolution)
+        self.moms_ngridpoints = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].ngridpoints)
+        self.run_ngridpoints = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_ngridpoints)
 
         # On instantiation we create cartesian ALWAYS
         if not self.__cgrid_exists:
             self.__get_cgrid()
+
+        # we now have grid, can easily get the following
+        self.moms_gridresolution = np.mean(np.diff(self.__unique_coord))
+        self.run_gridresolution = np.mean(np.diff(self.__unique_coord))/4.
 
         # alright we are now a valid instance
         self.__is_valid = True
@@ -10149,14 +10153,14 @@ class MomsDataSet:
             xc_strides = xc_array.strides
             xorder = [i for i in xc_strides]
 
-            yc_array = np.lib.stride_tricks.as_strided(xc_array,shape=(self.moms_resolution,
-                                                                         self.moms_resolution,
-                                                                         self.moms_resolution),
+            yc_array = np.lib.stride_tricks.as_strided(xc_array,shape=(self.moms_ngridpoints,
+                                                                         self.moms_ngridpoints,
+                                                                         self.moms_ngridpoints),
                                                         strides=(xorder[1],xorder[2],xorder[0]))
 
-            zc_array = np.lib.stride_tricks.as_strided(xc_array,shape=(self.moms_resolution,
-                                                                         self.moms_resolution,
-                                                                         self.moms_resolution),
+            zc_array = np.lib.stride_tricks.as_strided(xc_array,shape=(self.moms_ngridpoints,
+                                                                         self.moms_ngridpoints,
+                                                                         self.moms_ngridpoints),
                                                         strides=(xorder[2],xorder[0],xorder[1]))
 
             # unfortunately we have to flatten these. This creates copies as
@@ -10173,7 +10177,7 @@ class MomsDataSet:
             # we need a slight offset from the lowest value and highest value of grid for interpolation!
             delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
             eps = 0.000001
-            self.__radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_resolution/2.)-eps*delta_r*(self.moms_resolution/2.),int(np.ceil(self.moms_resolution/2.)))
+            self.__radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_ngridpoints/2.)-eps*delta_r*(self.moms_ngridpoints/2.),int(np.ceil(self.moms_ngridpoints/2.)))
 
             # these are the boundaries, now I need what is my "actual" r value
             self.radial_axis = self.__radial_boundary - delta_r/2.
@@ -10185,14 +10189,14 @@ class MomsDataSet:
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self.__xc_view = self.__xc.view()
-            self.__xc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__xc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
             self.__yc_view = self.__yc.view()
-            self.__yc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__yc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
             self.__zc_view = self.__zc.view()
-            self.__zc_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__zc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
             self.__radius_view = self.__radius.view()
-            self.__radius_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__radius_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
             # we have uneven spacing in general... grab unique values along x-axis
             self.__unique_coord = self.__xc_view[0,0,:]
@@ -10231,9 +10235,9 @@ class MomsDataSet:
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self.__theta_view = self.__theta.view()
-            self.__theta_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__theta_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
             self.__phi_view = self.__phi.view()
-            self.__phi_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__phi_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
             # ok all is good, set our flag that everything is good
             self.__sgrid_exists = True
@@ -10275,9 +10279,9 @@ class MomsDataSet:
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self.__mollweide_theta_view = self.__mollweide_theta.view()
-            self.__mollweide_theta_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__mollweide_theta_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
             self.__mollweide_phi_view = self.__mollweide_phi.view()
-            self.__mollweide_phi_view.shape = (self.moms_resolution,self.moms_resolution,self.moms_resolution)
+            self.__mollweide_phi_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
             # ok all is good, set our flag that everything is good
             self.__mollweide_exists = True
@@ -10796,7 +10800,7 @@ class MomsDataSet:
         else:
             # check len of shape of f
             if len(f.shape) != 3:
-                err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'.format(self.moms_resolution)
+                err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'.format(self.moms_ngridpoints)
 
         # we use the unique coordinates as the values on the grid (these should have had uniform spacing but don't...)
         gradf = np.gradient(f,self.__unique_coord,self.__unique_coord,self.__unique_coord)
