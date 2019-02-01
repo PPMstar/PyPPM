@@ -10866,7 +10866,7 @@ def add_plot(celln, ifig, ptrack):
             ptrack[str(celln)] = ifig
 
     # if this failed, we are not tracking unique figure celln
-    except IndexError:
+    except KeyError:
         ptrack[str(celln)] = ifig
 
 def close_plot(celln, ifig, ptrack):
@@ -10902,6 +10902,6 @@ def close_plot(celln, ifig, ptrack):
             # how did this happen!?
             return (0,ifig)
 
-    except IndexError:
+    except KeyError:
         # plot is not added, make sure we dont close
         return (0,ifig)
