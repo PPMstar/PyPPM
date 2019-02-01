@@ -10839,3 +10839,69 @@ class MomsDataSet:
             uz = self.__get(uz,fname)
 
         return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
+
+
+# DS: my convenient plot figure handling functions
+def add_plot(celln, ifig, ptrack):
+    '''
+    Add a plot to be tracked in ptrack. This ensures that it will be tracked and
+    closed when needed with close_plot.
+
+    Parameters
+    ----------
+    celln: integer
+        This is an integer to track unique plots in a notebook
+    ifig: integer
+        This is the current ifig for the unique plot corresponding to celln
+    ptrack: list
+        This list holds ifig corresponding to index celln
+    '''
+
+    # can we update our stored ifig for celln?
+    try:
+        stored_ifig = ptrack[celln]
+
+        # if stored isnt equal to what we have, lets update!
+        if stored_ifg != ifig:
+            ptrack[celln] = ifig
+
+    # if this failed, we are not tracking unique figure celln
+    except IndexError:
+        ptrack.append(ifig)
+
+def close_plot(celln, ifig, ptrack):
+    '''
+    Continuously close a unique figure plot celln or create a new figure
+
+    Parameters
+    ----------
+    celln: integer
+        This is an integer to track unique plots in a notebook
+    ifig: integer
+        This is the current ifig for the unique plot corresponding to celln
+    ptrack: list
+        This list holds ifig corresponding to index celln
+
+    Returns
+    -------
+    tuple (int,int):
+        first integer is whether to open or close figure
+        second integer is the current ifig
+    '''
+
+    # check if we already have this plot added to ptrack?
+    try:
+        if ifig == ptrack[celln]:
+            # ifig matches, we are re-running a celln
+            return (1,ifig)
+        else:
+            # do we already have this cells figure open? Itll be in ptrack
+            for i in range(len(plt.get_fignums())):
+                if i == ptrack[celln]:
+                    return (1,ifig)
+            # how did this happen!?
+            return (0,ifig)
+
+    except IndexError:
+        # plot is not added, make sure we dont close
+        return (0,ifig)
