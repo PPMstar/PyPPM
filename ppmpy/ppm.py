@@ -10853,21 +10853,21 @@ def add_plot(celln, ifig, ptrack):
         This is an integer to track unique plots in a notebook
     ifig: integer
         This is the current ifig for the unique plot corresponding to celln
-    ptrack: list
-        This list holds ifig corresponding to index celln
+    ptrack: dict
+        This dict that holds ifigs corresponding to key celln
     '''
 
     # can we update our stored ifig for celln?
     try:
-        stored_ifig = ptrack[celln]
+        stored_ifig = ptrack[str(celln)]
 
         # if stored isnt equal to what we have, lets update!
         if stored_ifg != ifig:
-            ptrack[celln] = ifig
+            ptrack[str(celln)] = ifig
 
     # if this failed, we are not tracking unique figure celln
     except IndexError:
-        ptrack.append(ifig)
+        ptrack[str(celln)] = ifig
 
 def close_plot(celln, ifig, ptrack):
     '''
@@ -10879,8 +10879,8 @@ def close_plot(celln, ifig, ptrack):
         This is an integer to track unique plots in a notebook
     ifig: integer
         This is the current ifig for the unique plot corresponding to celln
-    ptrack: list
-        This list holds ifig corresponding to index celln
+    ptrack: dict
+        This dict that holds ifigs corresponding to key celln
 
     Returns
     -------
@@ -10891,13 +10891,13 @@ def close_plot(celln, ifig, ptrack):
 
     # check if we already have this plot added to ptrack?
     try:
-        if ifig == ptrack[celln]:
+        if ifig == ptrack[str(celln)]:
             # ifig matches, we are re-running a celln
             return (1,ifig)
         else:
             # do we already have this cells figure open? Itll be in ptrack
             for i in range(len(plt.get_fignums())):
-                if i == ptrack[celln]:
+                if i == ptrack[str(celln)]:
                     return (1,ifig)
             # how did this happen!?
             return (0,ifig)
