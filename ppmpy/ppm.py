@@ -10896,7 +10896,7 @@ def close_plot(celln, ifig, ptrack):
             return (1,ifig)
         else:
             # do we already have this cells figure open? Itll be in ptrack
-            for i in range(len(plt.get_fignums())):
+            for i in range(len(pl.get_fignums())):
                 if i == ptrack[str(celln)]:
                     return (1,ifig)
             # how did this happen!?
