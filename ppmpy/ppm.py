@@ -10862,7 +10862,7 @@ def add_plot(celln, ifig, ptrack):
         stored_ifig = ptrack[str(celln)]
 
         # if stored isnt equal to what we have, lets update!
-        if stored_ifg != ifig:
+        if stored_ifig != ifig:
             ptrack[str(celln)] = ifig
 
     # if this failed, we are not tracking unique figure celln
