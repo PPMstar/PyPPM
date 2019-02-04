@@ -10430,8 +10430,8 @@ class MomsDataSet:
             # I will count zeros
             out_of_bounds = np.logical_or((igrid > upper_bound),(igrid < lower_bound))
 
-            if out_of_bounds > 0:
-                err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'.format(out_of_bounds)
+            if np.count_nonzero(out_of_bounds.flatten()) > 0:
+                err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'.format(np.count_nonzero(out_of_bounds.flatten()))
                 self.__messenger.error(err)
                 raise
 
