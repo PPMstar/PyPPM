@@ -9827,8 +9827,9 @@ class MomsDataSet:
         # we also check if we have our unit vectors
         self.__jacobian_exists = False
 
-        # setup some useful dictionaries, there is also a list implemented
+        # setup some useful dictionaries/lists
         self.__varloc = {}
+        self.__interpolation_methods = ['trilinear','moments']
         self.__number_of_whatevers = 10
 
         # For storing multiple momsdata we use a dictionary so that it can be referenced
@@ -9983,6 +9984,89 @@ class MomsDataSet:
 
         # all is good. update what_dump_am_i
         self.what_dump_am_i = dump
+
+    def __interpolation_moments(self,varloc,igrid,x_idx,y_idx,z_idx,derivative):
+        '''
+        f(xi,yi,zi) = a000 + a100x + a010y + a001z + a200x^2 + a110xy + a101xz + a020y^2 + a011yz + a002z^2
+
+        Through moments averaging, we can determine these coefficients based on the value of f at various points.
+        Similar to the convention above, the subscripts for coefficients below refer to a displacement of central cell points
+        from our closest central cell to where our interpolation is actually happening in an (x,y,z) format. So...
+
+        a000 = 5/4c000 - 1/24(c100 + c-100 + c010 + c0-10 + c001 + c00-1)
+        a100 = 1/2(c100 - c-100)
+        a010 = 1/2(c010 - c0-10)
+        a001 = 1/2(c001 - c00-1)
+        a110 = 1/4(c110 + c-1-10 - c-110 - c1-10)
+        a101 = 1/4(c101 + c-10-1 - c-101 - c10-1)
+        a011 = 1/4(c011 + c0-1-1 - c0-11 - c01-1)
+        a200 = 1/2(c100 + c-100) - c000
+        a020 = 1/2(c010 + c0-10) - c000
+        a002 = 1/2(c001 + c00-1) - c000
+        '''
+
+        # now the idx's and could be for multiple radii, I will flatten which is a copy
+        xfl = x_idx.flatten()
+        yfl = y_idx.flatten()
+        zfl = z_idx.flatten()
+
+        # igrid could be multiple radii, flatten. In this case iflat[::3] is z, iflat[1::3] is y and iflat[2::3] is x
+        iflat = igrid.flatten()
+
+        # Grab all of the c values needed to get the a coefficients. Note varloc[z,y,x]
+
+        # a000, a100, a010, a001
+        c000 = varloc[zfl,yfl,xfl]
+        c100 = varloc[zfl,yfl,xfl+1]
+        c_100 = varloc[zfl,yfl,xfl-1]
+        c010 = varloc[zfl,yfl+1,xfl]
+        c0_10 = varloc[zfl,yfl-1,xfl]
+        c001 = varloc[zfl+1,yfl,xfl]
+        c00_1 = varloc[zfl-1,yfl,xfl]
+
+        # a110
+        c110 = varloc[zfl,yfl+1,xfl+1]
+        c_1_10 = varloc[zfl,yfl-1,xfl-1]
+        c1_10 = varloc[zfl,yfl-1,xfl+1]
+        c_110 = varloc[zfl,yfl+1,xfl-1]
+
+        # a101
+        c101 = varloc[zfl+1,yfl,xfl+1]
+        c_10_1 = varloc[zfl-1,yfl,xfl-1]
+        c_101 = varloc[zfl+1,yfl,xfl-1]
+        c10_1 = varloc[zfl-1,yfl,xfl+1]
+
+        # a011
+        c011 = varloc[zfl+1,yfl+1,xfl]
+        c0_1_1 = varloc[zfl-1,yfl-1,xfl]
+        c0_11 = varloc[zfl+1,yfl-1,xfl]
+        c01_1 = varloc[zfl-1,yfl+1,xfl]
+
+        # now compute a's with my c values
+        a000 = 5./4. * c000 - 1/24. * (c100 + c_100 + c010 + c0_10 + c001 + c00_1)
+        a100 = 1/2. * (c100 - c_100)
+        a010 = 1/2. * (c010 - c0_10)
+        a001 = 1/2. * (c001 - c00_1)
+        a110 = 1/4. * (c110 + c_1_10 - c_110 - c1_10)
+        a101 = 1/4. * (c101 + c_10_1 - c_101 - c10_1)
+        a011 = 1/4. * (c011 + c0_1_1 - c0_11 - c01_1)
+        a200 = 1/2. * (c100 + c_100) - c000
+        a020 = 1/2. * (c010 + c0_10) - c000
+        a002 = 1/2. * (c001 + c00_1) - c000
+
+        # using the flattened igrid...
+        xiflat = iflat[2::3]
+        yiflat = iflat[1::3]
+        ziflat = iflat[::3]
+
+        # Are we taking derivatives?
+
+
+        # ok, just regular interpolation
+        varloc_interp = (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat + a101*xiflat*ziflat + a011*yiflat*ziflat
+                         + a200*xiflat*xiflat + a020*yiflat*yiflat + a002*ziflat*ziflat)
+
+        return varloc_interp
 
     def __set_dictionaries(self,var_list):
         '''
@@ -10291,6 +10375,85 @@ class MomsDataSet:
         else:
             return True
 
+    def __get_interpolation(self,varloc, igrid, method, derivative):
+        '''
+        This function controls the which method of interpolation is done and how it is done.
+
+        Parameters
+        ----------
+        varloc: np.ndarray
+           The variable grid has already been chosen, this is the size of the simulation box
+        igrid: np.ndarray
+           The array that contains all of the points that are to be interpolated to
+           igrid.shape = [nset,ninterpolation_points,3]
+           igrid[nset,:,0] = z, igrid[nset,:,1] = y, igrid[nset,:,2] = z
+        method: str
+            'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
+            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
+        derivative: str
+            What derivatives am I taking for 'varloc'?
+
+        Returns
+        -------
+        varloc_interp
+        '''
+
+        # what method?
+
+        # trilinear
+        if method == self.__interpolation_methods[0]:
+
+            # first we create interpolation object from scipy
+            linear_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord,
+                                                                       self.__unique_coord),varloc)
+
+            # check if igrid requires multiple loops for a spherical grid
+            if len(igrid.shape) == 3:
+
+                # instantiate an array to hold interpolated values
+                varloc_interp = np.zeros((igrid.shape[0],igrid.shape[1]))
+
+                # I need to loop
+                for i in range(igrid.shape[0]):
+                    varloc_interp[i] = linear_interp(igrid[i])
+
+            else:
+                varloc_interp = linear_interp(igrid)
+
+        # moments
+        else:
+
+            # first find the indices that have the closest igrid to our unique coordinates
+            # are there multiple radii?
+            if len(igrid.shape) == 3:
+
+                # store the indexes
+                x_idx = np.zeros((np.shape(igrid)[0],np.shape(igrid)[1]),dtype=np.intp)
+                y_idx = np.zeros((np.shape(igrid)[0],np.shape(igrid)[1]),dtype=np.intp)
+                z_idx = np.zeros((np.shape(igrid)[0],np.shape(igrid)[1]),dtype=np.intp)
+
+                # I must loop and find the index of unique coord that is closest to igrid values in each radii
+                for i in range(igrid.shape[0]):
+                    x_idx[i,:] = np.argmin(np.abs(igrid[i,:,2,np.newaxis] - self.__unique_coord),axis=1)
+                    y_idx[i,:] = np.argmin(np.abs(igrid[i,:,1,np.newaxis] - self.__unique_coord),axis=1)
+                    z_idx[i,:] = np.argmin(np.abs(igrid[i,:,0,np.newaxis] - self.__unique_coord),axis=1)
+
+            else:
+
+                # store the indexes
+                x_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
+                y_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
+                z_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
+
+                # find the index of unique coord that is closest to igrid values
+                x_idx[:] = np.argmin(np.abs(igrid[:,2,np.newaxis] - self.__unique_coord),axis=1)
+                y_idx[:] = np.argmin(np.abs(igrid[:,1,np.newaxis] - self.__unique_coord),axis=1)
+                z_idx[:] = np.argmin(np.abs(igrid[:,0,np.newaxis] - self.__unique_coord),axis=1)
+
+            # now we call the actual interpolation
+            varloc_interp = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative)
+
+
     def __get_jacobian(self):
         '''
         This function creates the Jacobian to convert quantities defined in cartesian
@@ -10410,7 +10573,76 @@ class MomsDataSet:
         '''
         
         return list(self.__dumps)
-    
+
+    def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', derivative=''):
+        '''
+        Returns the trilinear interpolated array of values of 'varloc' at a radius of
+        'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
+
+        Parameters
+        ----------
+        varloc: str, int, np.ndarray
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
+            np.ndarray: quantity you want to have interpolated on the grid
+        igrid: np.ndarray
+            The radius of the sphere you want 'varloc' to be interpolated to
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
+        method: str
+            'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
+            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
+        derivative: str
+            The default is NO derivative, i.e an empty string.
+
+            Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
+            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments' method
+               method = 'moments': Use the analytic derivative of the moments quadratic function
+
+        Returns
+        -------
+        varloc_interpolated: np.ndarray
+        '''
+
+        # first check if we have a np.ndarray or not
+        if isinstance(varloc,np.ndarray):
+
+            # check if it is the same shape as self.__xc_view
+            if varloc.shape != self.__xc_view.shape:
+
+                # we can try reshaping
+                try:
+                    varloc.reshape(self.__xc_view.shape)
+                except ValueError as e:
+                    err = 'The varloc given cannot be reshaped into ' + str(self.__xc_view.shape)
+                    self.__messenger.error(err)
+                    raise e
+
+        else:
+
+            # varloc is a reference for a get method
+            varloc = self.__get(varloc,fname)
+
+        # varloc is good
+
+        # make sure that our method string is actually a real method
+        if not any(method in search for search in self.__interpolation_methods):
+            err = 'The inputted method, '+method+' is not any of the known methods, '.join(self.__interpolation_methods)
+            self.__messenger.error(err)
+            raise
+
+        # make sure that igrid is the correct shape
+        if not len(igrid.shape()) == 2 and igrid.shape()[1] == 3:
+            err = 'The igrid is not the correct shape. It must be [npoints,3] but it is '.join(igrid.shape())
+            self.__messenger.error(err)
+            raise
+
+        # Now all of the hard work is done in other methods for the interpolation
+        varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative)
+
+        return varloc_interp
+
     def get_rprof(self,varloc,radial_axis=None,fname=None):
         '''
         Returns a 1d radial profile of the variable that is defined at
@@ -10580,10 +10812,10 @@ class MomsDataSet:
         else:
             return None
 
-    def get_interpolation(self, varloc, radius, fname=None, plot_mollweide=True, npoints=5000, perturbation=False):
+    def get_spherical_interpolation(self, varloc, radius, fname=None, method='trilinear', derivative='', plot_mollweide=True, npoints=5000):
         '''
-        Returns the trillinear interpolated array of values of 'varloc' at a radius of
-        'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
+        Returns the interpolated array of values of 'varloc' at a radius of 'radius' for a computed uniform distribution of points,
+        'npoints', on that sphere(s). It can return the 'theta,phi' (mollweide) coordinates of the 'varloc' values as well.
 
         Parameters
         ----------
@@ -10596,11 +10828,17 @@ class MomsDataSet:
         fname: None,int
             None: default option, will grab current dump
             int: Dump number
+        method: str
+            'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
+            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
+        derivative: str
+            The default is NO derivative, i.e an empty string.
+
+            Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
+            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments' method
+               method = 'moments': Use the analytic derivative of the moments quadratic function
         npoints: int
             The number of 'theta and phi' points you want for a projection plot
-        perturbation: bool
-            Do we subtract off the average (on a sphere) from 'varloc' being interpolated and
-            then scale it by that average (on a sphere)? i.e varloc_interpolated = (varloc - <varloc>)/<varloc>
 
         Returns
         -------
@@ -10611,7 +10849,6 @@ class MomsDataSet:
             varloc_interpolated: np.ndarray or list
         '''
 
-        # create an interpolation object, order is z,y,x
         # first check if we have a np.ndarray or not
         if isinstance(varloc,np.ndarray):
 
@@ -10626,58 +10863,46 @@ class MomsDataSet:
                     self.__messenger.error(err)
                     raise e
 
-            # we passed the try, except, we should be good
-            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),varloc)
-
         else:
 
-            # We can use the values in memory
-            varloc_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord, self.__unique_coord),self.__get(varloc,fname))
+            # varloc is a reference for a get method
+            varloc = self.__get(varloc,fname)
 
-        # now we loop through every radius
+        # varloc is good, now we get the igrid points
+        # do we have many radii?
         try:
             first_r = radius[0]
         except TypeError as e:
-            # ok, we have an error, it is not a single float or int
+            # ok, we have an error, it is a single float or int
             radius = [radius]
 
+        # make sure that our method string is actually a real method
+        if not any(method in search for search in self.__interpolation_methods):
+            err = 'The inputted method, '+method+' is not any of the known methods, '.join(self.__interpolation_methods)
+            self.__messenger.error(err)
+            raise
+
+        # we need to hold our coordinate values
+        igrid = np.zeros((len(radius)*npoints,3))
+
         # we only need the spherical grid once. We can update zyx_grid easily!
-        zyx_grid, theta_grid, phi_grid = self.__uniform_spherical_grid(radius[0], npoints)
+        igrid[:npoints], theta_grid, phi_grid = self.__uniform_spherical_grid(radius[0], npoints)
 
-        for i in range(len(radius)):
+        # now to get the rest of the coordinates if needed
+        if len(radius) > 1:
+            for i in range(len(radius)-1):
 
-            # if we only go once, varloc_vals is a np.ndarray
-            if len(radius) == 1:
-                # we have interpolation object, get interpolated values
-                varloc_vals = varloc_interp(zyx_grid)
+                # since x = r * const, y = r * const, z = r * const for any ray we can...
+                igrid[npoints*(i+1):(npoints*(i+2) + 1)] = igrid[:npoints] * radius[i] / radius[0]
 
-                # do we subtract off the mean?
-                if perturbation:
-                    # these can be large arrays, dont make a million copies, do in place
-                    mean_vals = np.mean(varloc_vals)
-                    np.subtract(varloc_vals,mean_vals,out=varloc_vals)
-                    np.divide(varloc_vals,mean_vals,out=varloc_vals)
+        # Now all of the hard work is done in other methods for the interpolation
+        varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative)
 
-            else:
-                if i == 0:
-                    varloc_vals = []
-                else:
-                    np.multiply(zyx_grid, radius[i] / radius[i-1], out=zyx_grid)
-
-                # we have interpolation object, get interpolated values
-                varloc_vals.append(varloc_interp(zyx_grid))
-
-                # do we subtract off the mean?
-                if perturbation:
-                    # these can be large arrays, dont make a million copies, do in place
-                    mean_vals = np.mean(varloc_vals[i])
-                    np.subtract(varloc_vals[i],mean_vals,out=varloc_vals[i])
-                    np.divide(varloc_vals[i],mean_vals,out=varloc_vals[i])
-
+        # If we are plot mollweide then...
         if plot_mollweide:
-            return varloc_vals, theta_grid, phi_grid
+            return varloc_interp, theta_grid, phi_grid
         else:
-            return varloc_vals
+            return varloc_interp
 
     def get_spherical_components(self,ux,uy,uz,fname=None):
         '''
