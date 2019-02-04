@@ -10059,6 +10059,11 @@ class MomsDataSet:
         yiflat = iflat[1::3]
         ziflat = iflat[::3]
 
+        # the formula uses CELL CENTERED COORDINATES, I will have to subtract off the cell centered x,y,z from the "flats"
+        xiflat = xiflat - self.__unique_coord[xfl]
+        yiflat = yiflat - self.__unique_coord[yfl]
+        ziflat = ziflat - self.__unique_coord[zfl]
+        
         # Are we taking derivatives?
 
 
