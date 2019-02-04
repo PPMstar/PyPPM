@@ -10423,6 +10423,18 @@ class MomsDataSet:
         # moments
         else:
 
+            # before I begin, are there any igrid values that are on the boundary or outside of it
+            upper_bound = np.max(self.__unique_coord) - 1/2. * np.mean(np.abs(np.diff(self.__unique_coord)))
+            lower_bound = np.min(self.__unique_coord) + 1/2. * np.mean(np.abs(np.diff(self.__unique_coord)))
+
+            # I will count zeros
+            out_of_bounds = np.logical_or((igrid > upper_bound),(igrid < lower_bound))
+
+            if out_of_bounds > 0:
+                err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'.format(out_of_bounds)
+                self.__messenger.error(err)
+                raise
+
             # first find the indices that have the closest igrid to our unique coordinates
             # are there multiple radii?
             if len(igrid.shape) == 3:
@@ -10452,6 +10464,9 @@ class MomsDataSet:
 
             # now we call the actual interpolation
             varloc_interp = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative)
+
+        # one of the methods has been run, return the answer
+        return varloc_interp
 
 
     def __get_jacobian(self):
