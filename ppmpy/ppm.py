@@ -10060,9 +10060,10 @@ class MomsDataSet:
         ziflat = iflat[::3]
 
         # the formula uses CELL CENTERED COORDINATES, I will have to subtract off the cell centered x,y,z from the "flats"
-        xiflat = xiflat - self.__unique_coord[xfl]
-        yiflat = yiflat - self.__unique_coord[yfl]
-        ziflat = ziflat - self.__unique_coord[zfl]
+        # and then scale it with the fact that: 1 cell width = 1
+        xiflat = (xiflat - self.__unique_coord[xfl]) / np.mean(abs(np.diff(self.__unique_coord)))
+        yiflat = (yiflat - self.__unique_coord[yfl]) / np.mean(abs(np.diff(self.__unique_coord)))
+        ziflat = (ziflat - self.__unique_coord[zfl])  / np.mean(abs(np.diff(self.__unique_coord)))
         
         # Are we taking derivatives?
 
