@@ -10005,14 +10005,6 @@ class MomsDataSet:
         a002 = 1/2(c001 + c00-1) - c000
         '''
 
-        # now the idx's and could be for multiple radii, I will flatten which is a copy
-        xfl = x_idx.flatten()
-        yfl = y_idx.flatten()
-        zfl = z_idx.flatten()
-
-        # igrid could be multiple radii, flatten. In this case iflat[::3] is z, iflat[1::3] is y and iflat[2::3] is x
-        iflat = igrid.flatten()
-
         # Grab all of the c values needed to get the a coefficients. Note varloc[z,y,x]
 
         # a000, a100, a010, a001
@@ -10064,13 +10056,24 @@ class MomsDataSet:
         xiflat = (xiflat - self.__unique_coord[xfl]) / np.mean(abs(np.diff(self.__unique_coord)))
         yiflat = (yiflat - self.__unique_coord[yfl]) / np.mean(abs(np.diff(self.__unique_coord)))
         ziflat = (ziflat - self.__unique_coord[zfl])  / np.mean(abs(np.diff(self.__unique_coord)))
-        
+
         # Are we taking derivatives?
+        # Check if it is empty, if not then we return a list
+        if derivative:
+            # make a certain size so I can return it in the right order as specified in derivative string
+            varloc_interp = [i for i in derivative]
 
+            if 'x' in derivative:
+                varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat)
+            if 'y' in derivative:
+                varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*yiflat)
+            if 'z' in derivative:
+                varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*ziflat)
 
-        # ok, just regular interpolation
-        varloc_interp = (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat + a101*xiflat*ziflat + a011*yiflat*ziflat
-                         + a200*xiflat*xiflat + a020*yiflat*yiflat + a002*ziflat*ziflat)
+        else:
+            # ok, just regular interpolation
+            varloc_interp = (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat + a101*xiflat*ziflat +
+                             a011*yiflat*ziflat + a200*xiflat*xiflat + a020*yiflat*yiflat + a002*ziflat*ziflat)
 
         return varloc_interp
 
@@ -10401,7 +10404,7 @@ class MomsDataSet:
 
         Returns
         -------
-        varloc_interp
+        varloc_interp: np.ndarray or list
         '''
 
         # what method?
@@ -10413,18 +10416,8 @@ class MomsDataSet:
             linear_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord,
                                                                        self.__unique_coord),varloc)
 
-            # check if igrid requires multiple loops for a spherical grid
-            if len(igrid.shape) == 3:
-
-                # instantiate an array to hold interpolated values
-                varloc_interp = np.zeros((igrid.shape[0],igrid.shape[1]))
-
-                # I need to loop
-                for i in range(igrid.shape[0]):
-                    varloc_interp[i] = linear_interp(igrid[i])
-
-            else:
-                varloc_interp = linear_interp(igrid)
+            # we have a "flattened" in radii igrid, just pass all arguments to the interpolator
+            varloc_interp = linear_interp(igrid)
 
         # moments
         else:
@@ -10442,31 +10435,15 @@ class MomsDataSet:
                 raise
 
             # first find the indices that have the closest igrid to our unique coordinates
-            # are there multiple radii?
-            if len(igrid.shape) == 3:
+            # store the indexes
+            x_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
+            y_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
+            z_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
 
-                # store the indexes
-                x_idx = np.zeros((np.shape(igrid)[0],np.shape(igrid)[1]),dtype=np.intp)
-                y_idx = np.zeros((np.shape(igrid)[0],np.shape(igrid)[1]),dtype=np.intp)
-                z_idx = np.zeros((np.shape(igrid)[0],np.shape(igrid)[1]),dtype=np.intp)
-
-                # I must loop and find the index of unique coord that is closest to igrid values in each radii
-                for i in range(igrid.shape[0]):
-                    x_idx[i,:] = np.argmin(np.abs(igrid[i,:,2,np.newaxis] - self.__unique_coord),axis=1)
-                    y_idx[i,:] = np.argmin(np.abs(igrid[i,:,1,np.newaxis] - self.__unique_coord),axis=1)
-                    z_idx[i,:] = np.argmin(np.abs(igrid[i,:,0,np.newaxis] - self.__unique_coord),axis=1)
-
-            else:
-
-                # store the indexes
-                x_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
-                y_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
-                z_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
-
-                # find the index of unique coord that is closest to igrid values
-                x_idx[:] = np.argmin(np.abs(igrid[:,2,np.newaxis] - self.__unique_coord),axis=1)
-                y_idx[:] = np.argmin(np.abs(igrid[:,1,np.newaxis] - self.__unique_coord),axis=1)
-                z_idx[:] = np.argmin(np.abs(igrid[:,0,np.newaxis] - self.__unique_coord),axis=1)
+            # find the index of unique coord that is closest to igrid values
+            x_idx = np.argmin(np.abs(igrid[:,2,np.newaxis] - self.__unique_coord),axis=1)
+            y_idx = np.argmin(np.abs(igrid[:,1,np.newaxis] - self.__unique_coord),axis=1)
+            z_idx = np.argmin(np.abs(igrid[:,0,np.newaxis] - self.__unique_coord),axis=1)
 
             # now we call the actual interpolation
             varloc_interp = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative)
@@ -10624,6 +10601,9 @@ class MomsDataSet:
         Returns
         -------
         varloc_interpolated: np.ndarray
+
+        derivative: Not Empty
+            [varloc_interpolated]
         '''
 
         # first check if we have a np.ndarray or not
@@ -10868,6 +10848,9 @@ class MomsDataSet:
 
         plot_mollweide: False
             varloc_interpolated: np.ndarray or list
+
+        derivative: Not Empty
+            [varloc_interpolated]
         '''
 
         # first check if we have a np.ndarray or not
@@ -10914,10 +10897,27 @@ class MomsDataSet:
             for i in range(len(radius)-1):
 
                 # since x = r * const, y = r * const, z = r * const for any ray we can...
-                igrid[npoints*(i+1):(npoints*(i+2) + 1)] = igrid[:npoints] * radius[i] / radius[0]
+                igrid[npoints*(i+1):npoints*(i+2)] = igrid[:npoints] * radius[i+1] / radius[0]
+
+        # make sure derivative only has x,y or z in it
+        if derivative:
+            if not bool(re.match('^[xyz]+$', derivative)):
+                err = 'The derivative string, {0}, does not have x,y,z in it or contains other characters'.format(derivative)
+                self.__messenger.error(err)
+                raise
 
         # Now all of the hard work is done in other methods for the interpolation
         varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative)
+
+        # This COULD be a flattened array, let's reshape if so
+        if len(radius) > 1:
+
+            # did I take derivatives?
+            if derivative:
+                for i in range(len(varloc_interp)):
+                    varloc_interp[i] = varloc_interp[i].reshape(len(radius),npoints)
+            else:
+                varloc_interp = varloc_interp.reshape(len(radius),npoints)
 
         # If we are plot mollweide then...
         if plot_mollweide:
