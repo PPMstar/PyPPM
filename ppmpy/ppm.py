@@ -9843,7 +9843,6 @@ class MomsDataSet:
             return
 
         # get the initial dump momsdata
-        self.__momsdata = None
         self.__get_dump(init_dump_read)
 
         # hold the initial dump in attribute
@@ -9863,7 +9862,6 @@ class MomsDataSet:
         self.run_gridresolution = np.mean(np.diff(self.__unique_coord))/4.
 
         # alright we are now a valid instance
-        self.__is_valid = True
 
     def __find_dumps(self, dir_name):
         '''
@@ -10545,26 +10543,6 @@ class MomsDataSet:
                 self.__messenger.error(err)
                 raise e
 
-    def is_valid(self):
-        '''
-        Checks if the instance is valid, i.e. fully initialised.
-        
-        Returns
-        -------
-        boolean
-            True if the instance is valid. False otherwise.
-        '''
-        
-        return self.__is_valid
-    
-    def get_run_id(self):
-        '''
-        Returns the run identifier that precedes the dump number in the names
-        of .rprof files.
-        '''
-        
-        return str(self.__run_id)
-        
     def get_dump_list(self):
         '''
         Returns a list of dumps available.
@@ -10584,7 +10562,8 @@ class MomsDataSet:
             Int: index location of the variable you want
             np.ndarray: quantity you want to have interpolated on the grid
         igrid: np.ndarray
-            The radius of the sphere you want 'varloc' to be interpolated to
+            The array containing the x,y,z points you want interpolated values of. Must be shape igrid[len,3] and
+            igrid[:,0] = z, igrid[:,1] = y and igrid[:,2] = x
         fname: None,int
             None: default option, will grab current dump
             int: Dump number
@@ -10634,13 +10613,25 @@ class MomsDataSet:
             raise
 
         # make sure that igrid is the correct shape
-        if not len(igrid.shape()) == 2 and igrid.shape()[1] == 3:
+        if len(igrid.shape()) != 2 or igrid.shape()[1] != 3:
             err = 'The igrid is not the correct shape. It must be [npoints,3] but it is '.join(igrid.shape())
             self.__messenger.error(err)
             raise
 
+        # make sure derivative only has x,y or z in it
+        if derivative:
+            if not bool(re.match('^[xyz]+$', derivative)):
+                err = 'The derivative string, {0}, does not have x,y,z in it or contains other characters'.format(derivative)
+                self.__messenger.error(err)
+                raise
+
         # Now all of the hard work is done in other methods for the interpolation
         varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative)
+
+        # did I take derivatives?
+        if derivative:
+            for i in range(len(varloc_interp)):
+                varloc_interp[i] = varloc_interp[i].reshape(len(radius),npoints)
 
         return varloc_interp
 
@@ -10670,11 +10661,11 @@ class MomsDataSet:
         # are we using self.radial_axis?
         if isinstance(radial_axis,np.ndarray):
             # we basically just call interpolation over radial_axis
-            quantity = self.get_interpolation(varloc,radial_axis,fname,plot_mollweide=False)
+            quantity = self.get_spherical_interpolation(varloc,radial_axis,fname,plot_mollweide=False)
 
         else:
             # we basically just call interpolation over self.radial_axis
-            quantity = self.get_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
+            quantity = self.get_spherical_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
 
         # for an rprof we average all of those quantities at each radius
         quantity = np.mean(quantity,axis=1)
@@ -10718,7 +10709,6 @@ class MomsDataSet:
         Returns the central values of the grid for r,theta and phi of the moments data cube currently held
         in memory. This is of course the physics version where theta is defined as the angle from the z axis
         and phi is the cylindrical angle. it is formatted as phi[z,y,x] and so phi[0,0,:] will give a plane of constant x
-        IMPORTANT: This is NOT a copy of the array in memory
 
         Returns
         -------
@@ -10730,7 +10720,7 @@ class MomsDataSet:
             self.__get_sgrid()
 
         # these are not used internally and so we can give them the real grid (except for radius!)
-        return self.__radius_view.copy(), self.__theta_view, self.__phi_view
+        return self.__radius_view.copy(), self.__theta_view.copy(), self.__phi_view.copy()
 
     def get_mgrid(self):
         '''
@@ -10750,7 +10740,7 @@ class MomsDataSet:
             self.__get_mgrid()
 
         # these are not used internally and so we can give them the real grid
-        return self.__mollweide_theta_view, self.__mollweide_phi_view
+        return self.__mollweide_theta_view.copy(), self.__mollweide_phi_view()
 
     def get_mollweide_coordinates(self,theta=None,phi=None):
         '''
@@ -11008,7 +10998,7 @@ class MomsDataSet:
 
         else:
 
-            # grab a new datacube. This updates self.__momsdata.data
+            # grab a new datacube. If we don't have this in memory already (self.__many_momsdata) we grab a new datacube
             self.__get_dump(fname)
 
             # This is public, we must give a copy
