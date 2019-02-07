@@ -12,6 +12,11 @@ from nugridpy import astronomy as ast
 from ppmpy import ppm
 import numpy as np
 
+G_code = ast.grav_const*1000
+a_cgs  = ast.radiation_constant
+a_code = a_cgs * 10**17
+R_cgs  = ast.boltzmann_constant*ast.avogadro_constant
+R_code = R_cgs /1.0e7
 
 def reduce_h(r,r0=None):
     '''reduce double resolution array with error to single grid
@@ -157,12 +162,12 @@ def eosPS(rho, T, mu, units, tocompute='S', idealgas=False):
         f = 0
 
     if units == 'MESA':
-        Rgas = ast.boltzmann_constant*ast.avogadro_constant
-        ac = ast.radiation_constant
+        Rgas = R_cgs
+        ac   = a_cgs
 
     if units == 'PPM':
-        Rgas = ast.boltzmann_constant*ast.avogadro_constant / 1e7
-        ac = ast.radiation_constant/1e13
+        Rgas = R_code
+        ac   = a_code
 
     if tocompute == 'S':
         outarray = (3./2.)*(Rgas/mu)*np.log(T) - (Rgas/mu)*np.log(rho) + f*((4./3.)*(ac*T**3) / (rho))
@@ -170,3 +175,50 @@ def eosPS(rho, T, mu, units, tocompute='S', idealgas=False):
         outarray = (Rgas/mu)*rho*T + f*((ac/3)*T**4)
     return(outarray)
         
+def EOSgasrad(T,rho,mu,a,R):
+    '''S and P for rad and gas
+    Takes also a and R as input, so can be used for both
+    mesa and code units'''
+    Rbymu = R/mu
+    S = (3./2.)*Rbymu * np.log(T) - Rbymu*np.log(rho) + (4./3)*a*T**3/rho
+    P = Rbymu*rho*T +(1./3)*a*T**4
+    return np.array([S,P])
+
+def rhoTfromSP(T,rho,S,P,a,R,mu):
+    '''EOS inversion, S, P in, rho, T out
+
+    equations to solve
+    dG/dx * delta = -G(x)
+    here two equations: J(rhoT) * delta_rhoT = -GSP(rhoT) [=G]
+    where rhoT = (rho,T), and (G1,G2) = GSP(rhoT) 
+    J11 * drho + J21 * dT = -G1
+    J12 * drho + J22 * dT = -G2
+
+    Note: An easier solution would have been to solve P(rho,T) for 
+          rho and just insert into S(rho,T) and then solve for T
+          iteratively, as Huaqing pointed out ;-)
+    '''
+    eps_g = 1.e-7; eps = 1.
+    [G1,G2] = EOSgasrad(T,rho,mu,a,R)-np.array([S,P]) 
+    while eps > eps_g:
+        Rbymu = R/mu
+        J11 = -Rbymu/rho - (4./3.)*a*T**3./rho**2      #dG1/drho
+        J12 = Rbymu*T                                  #dG2/drho
+        J21 = 3./2.* Rbymu/T + 4*a*T**2/rho            #dG1/dT
+        J22 = Rbymu*rho + 4./3.*(a*T**3)               #dG2/dT
+        dT = (- G1*J12/J11 + G2) / (J12*J21/J11 - J22)
+        drho  = (-G2 - J22 * dT) / J12 
+        T = T + dT
+        rho = rho + drho
+        [G1,G2] = EOSgasrad(T,rho,mu,a,R)-array([S,P]) 
+        eps = max(array([G1,G2]+[drho,dT]))       
+    return rho, T
+
+def rhs4(x,r,T,rho,S,P,a_code,R_code,mu):
+    '''RHS of ODE dP/dr and dm/dr using rho, T fron NR.'''
+    m,P = x
+    rho,T = rhoTfromSP(T,rho,S,P,a_code,R_code,mu)
+    f1 = 4.*pi*r**2*rho
+    f2 = -G_code*m*rho/r**2
+    return [f1,f2]
+rhs3 = lambda x,r,S,mu: rhs4(x,r,T,rho,S,P,a_code,R_code,mu)
