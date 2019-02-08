@@ -9830,6 +9830,8 @@ class MomsDataSet:
         # setup some useful dictionaries/lists
         self.__varloc = {}
         self.__interpolation_methods = ['trilinear','moments']
+
+        # options for MomsData
         self.__number_of_whatevers = 10
 
         # For storing multiple momsdata we use a dictionary so that it can be referenced
@@ -9838,7 +9840,7 @@ class MomsDataSet:
         self.__many_momsdata_keys = []
         self.__dumps_in_mem = dumps_in_mem
 
-        # initialize the dictionaries if needed
+        # initialize the dictionaries 
         if not self.__set_dictionaries(var_list):
             return
 
@@ -9983,7 +9985,7 @@ class MomsDataSet:
         # all is good. update what_dump_am_i
         self.what_dump_am_i = dump
 
-    def __interpolation_moments(self,varloc,igrid,x_idx,y_idx,z_idx,derivative):
+    def __interpolation_moments(self,varloc,igrid,x_idx,y_idx,z_idx,derivative,logvarloc,coefficients):
         '''
         f(xi,yi,zi) = a000 + a100x + a010y + a001z + a200x^2 + a110xy + a101xz + a020y^2 + a011yz + a002z^2
 
@@ -10002,6 +10004,9 @@ class MomsDataSet:
         a020 = 1/2(c010 + c0-10) - c000
         a002 = 1/2(c001 + c00-1) - c000
         '''
+
+        # flatten igrid, now every 3 is either x,y or z values
+        iflat = igrid.flatten()
 
         # Grab all of the c values needed to get the a coefficients. Note varloc[z,y,x]
 
@@ -10062,18 +10067,63 @@ class MomsDataSet:
             varloc_interp = [i for i in derivative]
 
             if 'x' in derivative:
-                varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat)
+                # is varloc a log quantity?
+                if logvarloc:
+                    # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
+                    varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat)
+                    varloc_interp[derivative.find('x')] *= (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
+                                                            + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
+                                                            + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
+
+                    # I need to scale the derivative properly as the coordinates are scaled to 1!
+                    varloc_interp[derivative.find('x')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
+                else:
+                    # I need to scale the derivative properly as the coordinates are scaled to 1!
+                    varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat) * np.power(
+                        np.mean(np.diff(self.__unique_coord)),-1.)
+
             if 'y' in derivative:
-                varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*yiflat)
+                # is varloc a log quantity?
+                if logvarloc:
+                    # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
+                    varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*yiflat)
+                    varloc_interp[derivative.find('y')] *= (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
+                                                            + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
+                                                            + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
+
+                    # I need to scale the derivative properly as the coordinates are scaled to 1!
+                    varloc_interp[derivative.find('y')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
+                else:
+                    # I need to scale the derivative properly as the coordinates are scaled to 1!
+                    varloc_interp[derivative.find('y')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat) * np.power(
+                        np.mean(np.diff(self.__unique_coord)),-1.)
+
             if 'z' in derivative:
-                varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*ziflat)
+                # is varloc a log quantity?
+                if logvarloc:
+                    # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
+                    varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*ziflat)
+                    varloc_interp[derivative.find('z')] *= (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
+                                                            + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
+                                                            + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
+
+                    # I need to scale the derivative properly as the coordinates are scaled to 1!
+                    varloc_interp[derivative.find('z')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
+                else:
+                    # I need to scale the derivative properly as the coordinates are scaled to 1!
+                    varloc_interp[derivative.find('z')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat) * np.power(
+                        np.mean(np.diff(self.__unique_coord)),-1.)
 
         else:
             # ok, just regular interpolation
             varloc_interp = (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat + a101*xiflat*ziflat +
                              a011*yiflat*ziflat + a200*xiflat*xiflat + a020*yiflat*yiflat + a002*ziflat*ziflat)
 
-        return varloc_interp
+        if coefficients:
+            coefficients = [a000, a100, a010, a001, a110, a101, a011, a200, a020, a002]
+            return varloc_interp, coefficients
+        else:
+            return varloc_interp
 
     def __set_dictionaries(self,var_list):
         '''
@@ -10382,7 +10432,7 @@ class MomsDataSet:
         else:
             return True
 
-    def __get_interpolation(self,varloc, igrid, method, derivative):
+    def __get_interpolation(self,varloc, igrid, method, derivative, logvarloc, coefficients):
         '''
         This function controls the which method of interpolation is done and how it is done.
 
@@ -10399,10 +10449,18 @@ class MomsDataSet:
             'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
         derivative: str
             What derivatives am I taking for 'varloc'?
+        logvarloc: bool
+            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are handled for method='moments'
+            The returned varloc_interpolated will be scaled back
+        coefficients: bool
+            In some cases you may want the coefficients for a particular interpolation scheme
 
         Returns
         -------
-        varloc_interp: np.ndarray or list
+        coefficients: False
+            varloc_interp: np.ndarray or list
+        coefficients: True
+            varloc_interp, coefficients: np.ndarray or list, list
         '''
 
         # what method?
@@ -10416,6 +10474,9 @@ class MomsDataSet:
 
             # we have a "flattened" in radii igrid, just pass all arguments to the interpolator
             varloc_interp = linear_interp(igrid)
+
+            # we will exit here
+            return varloc_interp
 
         # moments
         else:
@@ -10444,11 +10505,12 @@ class MomsDataSet:
             z_idx = np.argmin(np.abs(igrid[:,0,np.newaxis] - self.__unique_coord),axis=1)
 
             # now we call the actual interpolation
-            varloc_interp = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative)
-
-        # one of the methods has been run, return the answer
-        return varloc_interp
-
+            if coefficients:
+                varloc_interp, a = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
+                return varloc_interp, a
+            else:
+                varloc_interp = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
+                return varloc_interp
 
     def __get_jacobian(self):
         '''
@@ -10550,7 +10612,7 @@ class MomsDataSet:
         
         return list(self.__dumps)
 
-    def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', derivative=''):
+    def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', derivative='', logvarloc=False, coefficients=False):
         '''
         Returns the trilinear interpolated array of values of 'varloc' at a radius of
         'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
@@ -10576,6 +10638,11 @@ class MomsDataSet:
             Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
             If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments' method
                method = 'moments': Use the analytic derivative of the moments quadratic function
+        logvarloc: bool
+            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are handled for method='moments'
+            The returned varloc_interpolated will be scaled back
+        coefficients: bool
+            In some cases you may want the coefficients for a particular interpolation scheme
 
         Returns
         -------
@@ -10604,7 +10671,9 @@ class MomsDataSet:
             # varloc is a reference for a get method
             varloc = self.__get(varloc,fname)
 
-        # varloc is good
+        # varloc is good, are we applying log10 to it?
+        if logvarloc:
+            varloc = np.log10(varloc.copy())
 
         # make sure that our method string is actually a real method
         if not any(method in search for search in self.__interpolation_methods):
@@ -10626,10 +10695,14 @@ class MomsDataSet:
                 raise
 
         # Now all of the hard work is done in other methods for the interpolation
-        varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative)
-
-        # we just return w.e varloc_interp is, a list or an array
-        return varloc_interp
+        if coefficients:
+            # we just return w.e varloc_interp is, a list or an array and the coefficients
+            varloc_interp, a = self.__get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
+            return varloc_interp, a
+        else:
+            # we just return w.e varloc_interp is, a list or an array
+            varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
+            return varloc_interp
 
     def get_rprof(self,varloc,radial_axis=None,fname=None):
         '''
@@ -10806,7 +10879,8 @@ class MomsDataSet:
         else:
             return None
 
-    def get_spherical_interpolation(self, varloc, radius, fname=None, method='trilinear', derivative='', plot_mollweide=True, npoints=5000):
+    def get_spherical_interpolation(self, varloc, radius, fname=None, method='trilinear', derivative='', logvarloc=False,
+                                    coefficients=False, plot_mollweide=True, npoints=5000):
         '''
         Returns the interpolated array of values of 'varloc' at a radius of 'radius' for a computed uniform distribution of points,
         'npoints', on that sphere(s). It can return the 'theta,phi' (mollweide) coordinates of the 'varloc' values as well.
@@ -10831,6 +10905,13 @@ class MomsDataSet:
             Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
             If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments' method
                method = 'moments': Use the analytic derivative of the moments quadratic function
+        logvarloc: bool
+            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are handled for method='moments'
+            The returned varloc_interpolated will be scaled back
+        coefficients: bool
+            In some cases you may want the coefficients for a particular interpolation scheme
+        plot_mollweide: bool
+            Typically you want the theta, phi coordinates of the interpolated values so that it can be plotted with a projection method
         npoints: int
             The number of 'theta and phi' points you want for a projection plot
 
@@ -10844,6 +10925,8 @@ class MomsDataSet:
 
         derivative: Not Empty
             [varloc_interpolated]
+        coefficients: True
+            varloc_interpolated, coefficients, ...
         '''
 
         # I will construct an appropriate igrid and let get_interpolation do the rest
@@ -10868,8 +10951,11 @@ class MomsDataSet:
                 # since x = r * const, y = r * const, z = r * const for any ray we can...
                 igrid[npoints*(i+1):npoints*(i+2)] = igrid[:npoints] * radius[i+1] / radius[0]
 
-        # More checks will be done with get_interpolation
-        varloc_interp = self.get_interpolation(varloc, igrid, fname, method, derivative)
+        # More checks will be done with get_interpolation, are we doing coefficients?
+        if coefficients:
+            varloc_interp, a = self.get_interpolation(varloc, igrid, fname, method, derivative, logvarloc, coefficients)
+        else:
+            varloc_interp = self.get_interpolation(varloc, igrid, fname, method, derivative, logvarloc, coefficients)
 
         # This COULD be a flattened array, let's reshape if so
         if len(radius) > 1:
@@ -10881,11 +10967,17 @@ class MomsDataSet:
             else:
                 varloc_interp = varloc_interp.reshape(len(radius),npoints)
 
-        # If we are plot mollweide then...
-        if plot_mollweide:
-            return varloc_interp, theta_grid, phi_grid
+        # Are we plotting mollweide or returning coefficients?
+        if coefficients:
+            if plot_mollweide:
+                return varloc_interp, coefficients, theta_grid, phi_grid
+            else:
+                return varloc_interp, coefficients
         else:
-            return varloc_interp
+            if plot_mollweide:
+                return varloc_interp, theta_grid, phi_grid
+            else:
+                return varloc_interp
 
     def get_spherical_components(self,ux,uy,uz,fname=None):
         '''
