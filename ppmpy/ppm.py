@@ -10628,11 +10628,7 @@ class MomsDataSet:
         # Now all of the hard work is done in other methods for the interpolation
         varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative)
 
-        # did I take derivatives?
-        if derivative:
-            for i in range(len(varloc_interp)):
-                varloc_interp[i] = varloc_interp[i].reshape(len(radius),npoints)
-
+        # we just return w.e varloc_interp is, a list or an array
         return varloc_interp
 
     def get_rprof(self,varloc,radial_axis=None,fname=None):
@@ -10660,11 +10656,18 @@ class MomsDataSet:
 
         # are we using self.radial_axis?
         if isinstance(radial_axis,np.ndarray):
-            # we basically just call interpolation over radial_axis
+
+            # make sure nothing is too large
+            if np.max(radial_axis) > np.max(self.__radial_axis):
+                err = 'The input radial_axis has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radial_axis),np.max(self.__radial_axis))
+                self.__messenger.error(err)
+                raise
+
+            # we basically just call interpolation over radial_axis, trilinear is default
             quantity = self.get_spherical_interpolation(varloc,radial_axis,fname,plot_mollweide=False)
 
         else:
-            # we basically just call interpolation over self.radial_axis
+            # we basically just call interpolation over self.radial_axis, trilinear is default
             quantity = self.get_spherical_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
 
         # for an rprof we average all of those quantities at each radius
@@ -10843,38 +10846,14 @@ class MomsDataSet:
             [varloc_interpolated]
         '''
 
-        # first check if we have a np.ndarray or not
-        if isinstance(varloc,np.ndarray):
+        # I will construct an appropriate igrid and let get_interpolation do the rest
 
-            # check if it is the same shape as self.__xc_view
-            if varloc.shape != self.__xc_view.shape:
-
-                # we can try reshaping
-                try:
-                    varloc.reshape(self.__xc_view.shape)
-                except ValueError as e:
-                    err = 'The varloc given cannot be reshaped into ' + str(self.__xc_view.shape)
-                    self.__messenger.error(err)
-                    raise e
-
-        else:
-
-            # varloc is a reference for a get method
-            varloc = self.__get(varloc,fname)
-
-        # varloc is good, now we get the igrid points
         # do we have many radii?
         try:
             first_r = radius[0]
         except TypeError as e:
             # ok, we have an error, it is a single float or int
             radius = [radius]
-
-        # make sure that our method string is actually a real method
-        if not any(method in search for search in self.__interpolation_methods):
-            err = 'The inputted method, '+method+' is not any of the known methods, '.join(self.__interpolation_methods)
-            self.__messenger.error(err)
-            raise
 
         # we need to hold our coordinate values
         igrid = np.zeros((len(radius)*npoints,3))
@@ -10889,15 +10868,8 @@ class MomsDataSet:
                 # since x = r * const, y = r * const, z = r * const for any ray we can...
                 igrid[npoints*(i+1):npoints*(i+2)] = igrid[:npoints] * radius[i+1] / radius[0]
 
-        # make sure derivative only has x,y or z in it
-        if derivative:
-            if not bool(re.match('^[xyz]+$', derivative)):
-                err = 'The derivative string, {0}, does not have x,y,z in it or contains other characters'.format(derivative)
-                self.__messenger.error(err)
-                raise
-
-        # Now all of the hard work is done in other methods for the interpolation
-        varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative)
+        # More checks will be done with get_interpolation
+        varloc_interp = self.get_interpolation(varloc, igrid, fname, method, derivative)
 
         # This COULD be a flattened array, let's reshape if so
         if len(radius) > 1:
