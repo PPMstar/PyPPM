@@ -1,10 +1,7 @@
 # ppmpy
 
+`ppmpy` is the python module to analyse PPMstar stellar hydrodynamics simulation output.
+
 ## installation
 
-**Required:** python2.7
-
-Do these two installations in sequence:
-
-* `pip install git+https://github.com/fherwig/nupy`
-* `pip install git+https://github.com/fherwig/ppmpy`
+* `pip install git+https://github.com/PPMstar/PyPPM`
