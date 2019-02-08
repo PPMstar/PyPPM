@@ -10006,31 +10006,31 @@ class MomsDataSet:
         # Grab all of the c values needed to get the a coefficients. Note varloc[z,y,x]
 
         # a000, a100, a010, a001
-        c000 = varloc[zfl,yfl,xfl]
-        c100 = varloc[zfl,yfl,xfl+1]
-        c_100 = varloc[zfl,yfl,xfl-1]
-        c010 = varloc[zfl,yfl+1,xfl]
-        c0_10 = varloc[zfl,yfl-1,xfl]
-        c001 = varloc[zfl+1,yfl,xfl]
-        c00_1 = varloc[zfl-1,yfl,xfl]
+        c000 = varloc[z_idx,y_idx,x_idx]
+        c100 = varloc[z_idx,y_idx,x_idx+1]
+        c_100 = varloc[z_idx,y_idx,x_idx-1]
+        c010 = varloc[z_idx,y_idx+1,x_idx]
+        c0_10 = varloc[z_idx,y_idx-1,x_idx]
+        c001 = varloc[z_idx+1,y_idx,x_idx]
+        c00_1 = varloc[z_idx-1,y_idx,x_idx]
 
         # a110
-        c110 = varloc[zfl,yfl+1,xfl+1]
-        c_1_10 = varloc[zfl,yfl-1,xfl-1]
-        c1_10 = varloc[zfl,yfl-1,xfl+1]
-        c_110 = varloc[zfl,yfl+1,xfl-1]
+        c110 = varloc[z_idx,y_idx+1,x_idx+1]
+        c_1_10 = varloc[z_idx,y_idx-1,x_idx-1]
+        c1_10 = varloc[z_idx,y_idx-1,x_idx+1]
+        c_110 = varloc[z_idx,y_idx+1,x_idx-1]
 
         # a101
-        c101 = varloc[zfl+1,yfl,xfl+1]
-        c_10_1 = varloc[zfl-1,yfl,xfl-1]
-        c_101 = varloc[zfl+1,yfl,xfl-1]
-        c10_1 = varloc[zfl-1,yfl,xfl+1]
+        c101 = varloc[z_idx+1,y_idx,x_idx+1]
+        c_10_1 = varloc[z_idx-1,y_idx,x_idx-1]
+        c_101 = varloc[z_idx+1,y_idx,x_idx-1]
+        c10_1 = varloc[z_idx-1,y_idx,x_idx+1]
 
         # a011
-        c011 = varloc[zfl+1,yfl+1,xfl]
-        c0_1_1 = varloc[zfl-1,yfl-1,xfl]
-        c0_11 = varloc[zfl+1,yfl-1,xfl]
-        c01_1 = varloc[zfl-1,yfl+1,xfl]
+        c011 = varloc[z_idx+1,y_idx+1,x_idx]
+        c0_1_1 = varloc[z_idx-1,y_idx-1,x_idx]
+        c0_11 = varloc[z_idx+1,y_idx-1,x_idx]
+        c01_1 = varloc[z_idx-1,y_idx+1,x_idx]
 
         # now compute a's with my c values
         a000 = 5./4. * c000 - 1/24. * (c100 + c_100 + c010 + c0_10 + c001 + c00_1)
@@ -10051,9 +10051,9 @@ class MomsDataSet:
 
         # the formula uses CELL CENTERED COORDINATES, I will have to subtract off the cell centered x,y,z from the "flats"
         # and then scale it with the fact that: 1 cell width = 1
-        xiflat = (xiflat - self.__unique_coord[xfl]) / np.mean(abs(np.diff(self.__unique_coord)))
-        yiflat = (yiflat - self.__unique_coord[yfl]) / np.mean(abs(np.diff(self.__unique_coord)))
-        ziflat = (ziflat - self.__unique_coord[zfl])  / np.mean(abs(np.diff(self.__unique_coord)))
+        xiflat = (xiflat - self.__unique_coord[x_idx]) / np.mean(abs(np.diff(self.__unique_coord)))
+        yiflat = (yiflat - self.__unique_coord[y_idx]) / np.mean(abs(np.diff(self.__unique_coord)))
+        ziflat = (ziflat - self.__unique_coord[z_idx])  / np.mean(abs(np.diff(self.__unique_coord)))
 
         # Are we taking derivatives?
         # Check if it is empty, if not then we return a list
