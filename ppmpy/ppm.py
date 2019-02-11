@@ -9825,7 +9825,7 @@ class MomsDataSet:
         self.__mollweide_exists = False
 
         # we also check if we have our unit vectors
-        self.__jacobian_exists = False
+        self.__grid_jacobian_exists = False
 
         # setup some useful dictionaries/lists
         self.__varloc = {}
@@ -10518,7 +10518,7 @@ class MomsDataSet:
                 varloc_interp = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
                 return varloc_interp
 
-    def __get_jacobian(self):
+    def __get_jacobian(self,x,y,z,r):
         '''
         This function creates the Jacobian to convert quantities defined in cartesian
         coordinates to spherical coordinates. This is a very large array of 9 x shape
@@ -10526,38 +10526,37 @@ class MomsDataSet:
         so the array has rhat, theta-hat, phi-hat -> xhat, yhat, zhat
         '''
 
-        if not self.__jacobian_exists:
+        # are we working with a flattened, (x,y,z) or a matrix?
+        if len(x.shape) > 1:
+            # since we work in spherical coordinates, the phi-hat dot z-hat component is zero, so it is 8x(nxnxn)
+            jacobian = np.zeros((8,x.shape[0],y.shape[0],z.shape[0]),dtype='float32')
+        else:
+            # since we work in spherical coordinates, the phi-hat dot z-hat component is zero, so it is 8x(n)
+            jacobian = np.zeros((8,x.shape[0]))
 
-            # get a big block of memory
-            self.__jacobian = np.zeros((9,self.__xc_view.shape[0],self.__xc_view.shape[1],self.__xc_view.shape[2]),dtype='float32')
+        # need the cylindrical radius
+        rcyl = np.sqrt(np.power(x,2.0) + np.power(y,2.0))
 
-            # we can easily construct all of these with x,y,z and r. Probably more accurate
+        # rhat -> xhat, yhat, zhat
+        np.divide(x,r,out=jacobian[0])
+        np.divide(y,r,out=jacobian[1])
+        np.divide(z,r,out=jacobian[2])
 
-            # need the cylindrical radius
-            rcyl = np.sqrt(np.power(self.__xc_view,2.0)+np.power(self.__yc_view,2.0))
+        # theta-hat -> xhat, yhat, zhat
+        # we use "placeholders" of jacobian slots to not make new memory
+        np.divide(np.multiply(x, z, out=jacobian[3]),  np.multiply(r, rcyl, out=jacobian[4]),
+                  out = jacobian[3])
+        np.divide(np.multiply(y, z, out=jacobian[4]), np.multiply(r, rcyl, out=jacobian[5]),
+                  out = jacobian[4])
+        np.divide(-rcyl, r, out=jacobian[5])
 
-            # rhat -> xhat, yhat, zhat
-            np.divide(self.__xc_view,self.__radius_view,out=self.__jacobian[0])
-            np.divide(self.__yc_view,self.__radius_view,out=self.__jacobian[1])
-            np.divide(self.__zc_view,self.__radius_view,out=self.__jacobian[2])
+        # phi-hat -> xhat, yhat, zhat
+        np.divide(-y, rcyl, out=jacobian[6])
+        np.divide(x, rcyl, out=jacobian[7])
+        # phi-hat dot z-hat = 0
 
-            # theta-hat -> xhat, yhat, zhat
-            # we use "placeholders" of jacobian slots to not make new memory
-            np.divide(np.multiply(self.__xc_view,self.__zc_view,out=self.__jacobian[3]),
-                      np.multiply(self.__radius_view,rcyl,out=self.__jacobian[4]),
-                      out = self.__jacobian[3])
-            np.divide(np.multiply(self.__yc_view,self.__zc_view,out=self.__jacobian[4]),
-                      np.multiply(self.__radius_view,rcyl,out=self.__jacobian[5]),
-                      out = self.__jacobian[4])
-            np.divide(-rcyl,self.__radius_view,out=self.__jacobian[5])
-
-            # phi-hat -> xhat, yhat, zhat
-            np.divide(-self.__yc_view,rcyl,out=self.__jacobian[6])
-            np.divide(self.__xc_view,rcyl,out=self.__jacobian[7])
-            # phi-hat dot z-hat = 0
-
-            # alright it exists
-            self.__jacobian_exists = True
+        # jacobian transformation matrix has been computed
+        return jacobian
 
     def __get(self,varloc,fname=None):
         '''
@@ -10682,8 +10681,9 @@ class MomsDataSet:
             varloc = np.log10(varloc.copy())
 
         # make sure that our method string is actually a real method
-        if list(filter(lambda x: method in x, self.__interpolation_methods)):
-            err = 'The inputted method, '+method+' is not any of the known methods, '.join(self.__interpolation_methods)
+        if not list(filter(lambda x: method in x, self.__interpolation_methods)):
+            err = 'The inputted method, '+method+' is not any of the known methods, '
+            err.join(self.__interpolation_methods)
             self.__messenger.error(err)
             raise
 
@@ -10890,7 +10890,7 @@ class MomsDataSet:
             return None
 
     def get_spherical_interpolation(self, varloc, radius, fname=None, method='trilinear', derivative='', logvarloc=False,
-                                    coefficients=False, plot_mollweide=True, npoints=5000):
+                                    coefficients=False, get_igrid=False, plot_mollweide=True, npoints=5000):
         '''
         Returns the interpolated array of values of 'varloc' at a radius of 'radius' for a computed uniform distribution of points,
         'npoints', on that sphere(s). It can return the 'theta,phi' (mollweide) coordinates of the 'varloc' values as well.
@@ -10920,6 +10920,8 @@ class MomsDataSet:
             The returned varloc_interpolated will be scaled back
         coefficients: bool
             In some cases you may want the coefficients for a particular interpolation scheme
+        get_igrid: bool
+            In some cases you may want the actual grid points used for the particular interpolation scheme
         plot_mollweide: bool
             Typically you want the theta, phi coordinates of the interpolated values so that it can be plotted with a projection method
         npoints: int
@@ -10928,15 +10930,19 @@ class MomsDataSet:
         Returns
         -------
         plot_mollweide: True
-            varloc_interpolated,theta,phi: np.ndarray or list
+            varloc_interpolated, theta, phi: np.ndarray or list
 
         plot_mollweide: False
             varloc_interpolated: np.ndarray or list
 
         derivative: Not Empty
             [varloc_interpolated]
+
         coefficients: True
             varloc_interpolated, coefficients, ...
+
+        get_igrid: True
+            varloc_interpolated, ..., igrid
         '''
 
         # I will construct an appropriate igrid and let get_interpolation do the rest
@@ -10977,19 +10983,31 @@ class MomsDataSet:
             else:
                 varloc_interp = varloc_interp.reshape(len(radius),npoints)
 
-        # Are we plotting mollweide or returning coefficients?
-        if coefficients:
-            if plot_mollweide:
-                return varloc_interp, coefficients, theta_grid, phi_grid
+        # Are we plotting mollweide, returning coefficients, and/or returning igrid?
+        if get_igrid:
+            if coefficients:
+                if plot_mollweide:
+                    return varloc_interp, coefficients, theta_grid, phi_grid, igrid
+                else:
+                    return varloc_interp, coefficients, igrid
             else:
-                return varloc_interp, coefficients
+                if plot_mollweide:
+                    return varloc_interp, theta_grid, phi_grid, igrid
+                else:
+                    return varloc_interp, igrid
         else:
-            if plot_mollweide:
-                return varloc_interp, theta_grid, phi_grid
+            if coefficients:
+                if plot_mollweide:
+                    return varloc_interp, coefficients, theta_grid, phi_grid
+                else:
+                    return varloc_interp, coefficients
             else:
-                return varloc_interp
+                if plot_mollweide:
+                    return varloc_interp, theta_grid, phi_grid
+                else:
+                    return varloc_interp
 
-    def get_spherical_components(self,ux,uy,uz,fname=None):
+    def get_spherical_components(self,ux,uy,uz,fname=None,igrid=None):
         '''
         Most calculations are done in cartesian coordinates but we can transform them to
         spherical coordinates using unit vectors. This can also be used to take derivatives
@@ -11004,6 +11022,9 @@ class MomsDataSet:
         fname: None,int
             None: default option, will grab current dump
             int: Dump number
+        igrid: np.ndarray
+            igrid.shape = (len(ux.flatten()),3)
+            igrid[:,0] = z, igrid[:,1] = y, igrid[:,2] = x
 
         Returns
         -------
@@ -11011,9 +11032,19 @@ class MomsDataSet:
             The spherical components of u
         '''
 
-        # first check if we have the jacobian or not
-        if not self.__jacobian_exists:
-            self.__get_jacobian()
+        # first check if we are using the grid or not
+        if igrid == None:
+            if not self.__grid_jacobian_exists:
+
+                # create the grid jacobian, keep this in memory
+                self.__grid_jacobian = self.__get_jacobian(self.__xc_view,self.__yc_view,self.__zc_view, self.__radius_view)
+                self.__grid_jacobian_exists = True
+
+            # local variable to reference internal jacobian
+            jacobian = self.__grid_jacobian
+        else:
+            radius = np.sqrt(np.power(igrid[:,2],2.0) + np.power(igrid[:,1],2.0) + np.power(igrid[:,0],2.0))
+            jacobian = self.__get_jacobian(igrid[:,2],igrid[:,1],igrid[:,0],radius)
 
         # first grab quantities if we need to
         if not isinstance(ux,np.ndarray):
@@ -11023,9 +11054,9 @@ class MomsDataSet:
         if not isinstance(uz,np.ndarray):
             uz = self.__get(uz,fname)
 
-        ur = ux * self.__jacobian[0] + uy * self.__jacobian[1] + uz * self.__jacobian[2]
-        utheta = ux * self.__jacobian[3] + uy * self.__jacobian[4] + uz * self.__jacobian[5]
-        uphi = ux * self.__jacobian[6] + uy * self.__jacobian[7]
+        ur = ux * jacobian[0] + uy * jacobian[1] + uz * jacobian[2]
+        utheta = ux * jacobian[3] + uy * jacobian[4] + uz * jacobian[5]
+        uphi = ux * jacobian[6] + uy * jacobian[7]
 
         return [ur, utheta, uphi]
 
