@@ -11,6 +11,8 @@ from nugridpy import mesa as ms
 from nugridpy import astronomy as ast
 from ppmpy import ppm
 import numpy as np
+import sys
+
 
 G_code = ast.grav_const*1000
 a_cgs  = ast.radiation_constant
@@ -168,7 +170,7 @@ def eosPS(rho, T, mu, units, tocompute='S', idealgas=False):
     if units == 'PPM':
         Rgas = R_code
         ac   = a_code
-
+    
     if tocompute == 'S':
         outarray = (3./2.)*(Rgas/mu)*np.log(T) - (Rgas/mu)*np.log(rho) + f*((4./3.)*(ac*T**3) / (rho))
     if tocompute == 'P':
@@ -210,15 +212,51 @@ def rhoTfromSP(T,rho,S,P,a,R,mu):
         drho  = (-G2 - J22 * dT) / J12 
         T = T + dT
         rho = rho + drho
-        [G1,G2] = EOSgasrad(T,rho,mu,a,R)-array([S,P]) 
-        eps = max(array([G1,G2]+[drho,dT]))       
+        [G1,G2] = EOSgasrad(T,rho,mu,a,R)-np.array([S,P]) 
+        eps = max(np.array([G1,G2]+[drho,dT]))       
     return rho, T
 
 def rhs4(x,r,T,rho,S,P,a_code,R_code,mu):
     '''RHS of ODE dP/dr and dm/dr using rho, T fron NR.'''
     m,P = x
     rho,T = rhoTfromSP(T,rho,S,P,a_code,R_code,mu)
-    f1 = 4.*pi*r**2*rho
+    f1 = 4.*np.pi*r**2*rho
     f2 = -G_code*m*rho/r**2
     return [f1,f2]
-rhs3 = lambda x,r,S,mu: rhs4(x,r,T,rho,S,P,a_code,R_code,mu)
+
+
+def get_prof_data(data_dir,model):
+    '''
+    This function returns the mesa profile data needed for a ppm setup. It must and only returns what is needed in the order specified. 
+    usage : log_conv_vel, radius_mesa, P_mesa, T_mesa, entropy_mesa, rho_mesa, mass_mesa, mu_mesa ,\
+pgas_div_ptotal = ps.get_prof_data(ddir,model)
+    '''
+    mprof=ms.mesa_profile(data_dir,num=model)
+    print("returning log_conv_vel, radius_mesa, P_mesa, T_mesa, entropy_mesa, rho_mesa, mass_mesa, mu_mesa and pgas_div_ptotal")
+    log_conv_vel=mprof.get('log_conv_vel')
+    radius_mesa = mprof.get('radius')
+    P_mesa = mprof.get('pressure')
+    T_mesa = mprof.get('temperature')
+    entropy_mesa = mprof.get('entropy')
+    rho_mesa = 10**mprof.get('logRho')
+    mass_mesa = mprof.get('mass')
+    mu_mesa = mprof.get('mu')
+    pgas_div_ptotal = mprof.get('pgas_div_ptotal')
+    return(log_conv_vel, radius_mesa, P_mesa, T_mesa, entropy_mesa, rho_mesa, mass_mesa, mu_mesa , pgas_div_ptotal)
+
+
+def onclick(event):
+    global ix, iy
+    ix, iy = event.xdata, event.ydata
+    print('x = %d, y = %d'%(ix, iy))
+
+    global coords
+    coords.append((ix, iy))
+
+    if len(coords) == npoints_select:
+        fig.canvas.mpl_disconnect(cid)
+
+    return coords
+    
+    
+    
