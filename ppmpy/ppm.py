@@ -10070,7 +10070,7 @@ class MomsDataSet:
                 # is varloc a log quantity?
                 if logvarloc:
                     # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
-                    varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat)
+                    varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*a200*xiflat)
                     varloc_interp[derivative.find('x')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
                                                             + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
@@ -10079,14 +10079,14 @@ class MomsDataSet:
                     varloc_interp[derivative.find('x')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
                 else:
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat) * np.power(
+                    varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*a200*xiflat) * np.power(
                         np.mean(np.diff(self.__unique_coord)),-1.)
 
             if 'y' in derivative:
                 # is varloc a log quantity?
                 if logvarloc:
                     # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
-                    varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*yiflat)
+                    varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*a020*yiflat)
                     varloc_interp[derivative.find('y')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
                                                             + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
@@ -10095,14 +10095,14 @@ class MomsDataSet:
                     varloc_interp[derivative.find('y')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
                 else:
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('y')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat) * np.power(
+                    varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*a020*yiflat) * np.power(
                         np.mean(np.diff(self.__unique_coord)),-1.)
 
             if 'z' in derivative:
                 # is varloc a log quantity?
                 if logvarloc:
                     # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
-                    varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*ziflat)
+                    varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*a002*ziflat)
                     varloc_interp[derivative.find('z')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
                                                             + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
@@ -10111,7 +10111,7 @@ class MomsDataSet:
                     varloc_interp[derivative.find('z')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
                 else:
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('z')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat) * np.power(
+                    varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*a002*ziflat) * np.power(
                         np.mean(np.diff(self.__unique_coord)),-1.)
 
         else:
@@ -10500,9 +10500,15 @@ class MomsDataSet:
             z_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
 
             # find the index of unique coord that is closest to igrid values
-            x_idx = np.argmin(np.abs(igrid[:,2,np.newaxis] - self.__unique_coord),axis=1)
-            y_idx = np.argmin(np.abs(igrid[:,1,np.newaxis] - self.__unique_coord),axis=1)
-            z_idx = np.argmin(np.abs(igrid[:,0,np.newaxis] - self.__unique_coord),axis=1)
+            x_idx = np.searchsorted(self.__unique_coord,igrid[:,2])
+            y_idx = np.searchsorted(self.__unique_coord,igrid[:,1])
+            z_idx = np.searchsorted(self.__unique_coord,igrid[:,0])
+
+            # search sorted finds index to the "right" in value from the igrid points. However, we need to find the index
+            # where igrid points are closest to for appropriate interpolation. This corrects for that
+            x_idx[np.where((self.__unique_coord[x_idx] - igrid[:,2]) > np.mean(np.abs(np.diff(self.__unique_coord)))/2.)] -= 1
+            y_idx[np.where((self.__unique_coord[y_idx] - igrid[:,1]) > np.mean(np.abs(np.diff(self.__unique_coord)))/2.)] -= 1
+            z_idx[np.where((self.__unique_coord[z_idx] - igrid[:,0]) > np.mean(np.abs(np.diff(self.__unique_coord)))/2.)] -= 1
 
             # now we call the actual interpolation
             if coefficients:
@@ -10676,7 +10682,7 @@ class MomsDataSet:
             varloc = np.log10(varloc.copy())
 
         # make sure that our method string is actually a real method
-        if not any(method in search for search in self.__interpolation_methods):
+        if list(filter(lambda x: method in x, self.__interpolation_methods)):
             err = 'The inputted method, '+method+' is not any of the known methods, '.join(self.__interpolation_methods)
             self.__messenger.error(err)
             raise
