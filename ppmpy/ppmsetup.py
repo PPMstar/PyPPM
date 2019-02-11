@@ -5,7 +5,7 @@ construction of a new setup for the PPMstar code.
 
 FH, 20140907
 
-OC, 20180414
+OC, 20180414 , 20190211
 '''
 from nugridpy import mesa as ms
 from nugridpy import astronomy as ast
@@ -246,6 +246,9 @@ pgas_div_ptotal = ps.get_prof_data(ddir,model)
 
 
 def onclick(event):
+    '''
+    This functions allows one to interactively click on a plot and store points
+    '''
     global ix, iy
     ix, iy = event.xdata, event.ydata
     print('x = %d, y = %d'%(ix, iy))
