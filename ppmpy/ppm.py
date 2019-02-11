@@ -10071,7 +10071,7 @@ class MomsDataSet:
                 if logvarloc:
                     # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
                     varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*xiflat)
-                    varloc_interp[derivative.find('x')] *= (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
+                    varloc_interp[derivative.find('x')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
                                                             + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
 
@@ -10087,7 +10087,7 @@ class MomsDataSet:
                 if logvarloc:
                     # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
                     varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*yiflat)
-                    varloc_interp[derivative.find('y')] *= (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
+                    varloc_interp[derivative.find('y')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
                                                             + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
 
@@ -10103,7 +10103,7 @@ class MomsDataSet:
                 if logvarloc:
                     # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
                     varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*ziflat)
-                    varloc_interp[derivative.find('z')] *= (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
+                    varloc_interp[derivative.find('z')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
                                                             + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
 
@@ -10681,8 +10681,12 @@ class MomsDataSet:
             self.__messenger.error(err)
             raise
 
+        # to make sure we dont break the code, coefficients must be False for trilinear
+        elif method == self.__interpolation_methods[0]:
+            coefficients = False
+
         # make sure that igrid is the correct shape
-        if len(igrid.shape()) != 2 or igrid.shape()[1] != 3:
+        if len(igrid.shape) != 2 or igrid.shape[1] != 3:
             err = 'The igrid is not the correct shape. It must be [npoints,3] but it is '.join(igrid.shape())
             self.__messenger.error(err)
             raise
