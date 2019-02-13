@@ -10714,7 +10714,7 @@ class MomsDataSet:
             varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
             return varloc_interp
 
-    def get_rprof(self,varloc,radial_axis=None,fname=None):
+    def get_rprof(self,varloc,radial_axis=None,fname=None,method='trilinear',derivative='',logvarloc=False):
         '''
         Returns a 1d radial profile of the variable that is defined at
         whatever(varloc) and the radial axis values
@@ -10730,6 +10730,19 @@ class MomsDataSet:
         fname: None,int
             None: default option, will grab current dump
             int: Dump number
+        method: str
+            'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
+            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
+        derivative: str
+            The default is NO derivative, i.e an empty string.
+
+            Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
+            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments' method
+               method = 'moments': Use the analytic derivative of the moments quadratic function
+        logvarloc: bool
+            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are handled for method='moments'
+            The returned varloc_interpolated will be scaled back
+
         Returns
         -------
         rad_prof, radial_axis: np.ndarray
@@ -10741,20 +10754,35 @@ class MomsDataSet:
         if isinstance(radial_axis,np.ndarray):
 
             # make sure nothing is too large
-            if np.max(radial_axis) > np.max(self.__radial_axis):
-                err = 'The input radial_axis has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radial_axis),np.max(self.__radial_axis))
+            if np.max(radial_axis) > (np.max(self.radial_axis) + 2.*np.mean(abs(np.diff(self.radial_axis)))):
+                err = 'The input radial_axis has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radial_axis),np.max(self.radial_axis))
                 self.__messenger.error(err)
                 raise
 
             # we basically just call interpolation over radial_axis, trilinear is default
-            quantity = self.get_spherical_interpolation(varloc,radial_axis,fname,plot_mollweide=False)
+            # now, if we do have a derivative, quantity is a list
+            quantity = self.get_spherical_interpolation(varloc,radial_axis,fname,method,derivative,logvarloc,plot_mollweide=False)
+
+            # i.e it is not empty
+            if derivative:
+                for i in range(len(quantity)):
+                    quantity[i] = np.mean(quantity[i],axis=1)
+            else:
+                # for an rprof we average all of those quantities at each radius
+                quantity = np.mean(quantity,axis=1)
 
         else:
             # we basically just call interpolation over self.radial_axis, trilinear is default
-            quantity = self.get_spherical_interpolation(varloc,self.radial_axis,fname,plot_mollweide=False)
+            # now, if we do have a derivative, quantity is a list
+            quantity = self.get_spherical_interpolation(varloc,self.radial_axis,fname,method,derivative,logvarloc,plot_mollweide=False)
 
-        # for an rprof we average all of those quantities at each radius
-        quantity = np.mean(quantity,axis=1)
+            # i.e it is not empty
+            if derivative:
+                for i in range(len(quantity)):
+                    quantity[i] = np.mean(quantity[i],axis=1)
+            else:
+                # for an rprof we average all of those quantities at each radius
+                quantity = np.mean(quantity,axis=1)
 
         if isinstance(radial_axis,np.ndarray):
             return quantity, radial_axis
@@ -10973,8 +11001,10 @@ class MomsDataSet:
         else:
             varloc_interp = self.get_interpolation(varloc, igrid, fname, method, derivative, logvarloc, coefficients)
 
-        # This COULD be a flattened array, let's reshape if so
+        # This varloc_interp and igrid COULD be a flattened array, let's reshape if so
         if len(radius) > 1:
+
+            igrid = igrid.reshape(len(radius),npoints)
 
             # did I take derivatives?
             if derivative:
@@ -11033,7 +11063,7 @@ class MomsDataSet:
         '''
 
         # first check if we are using the grid or not
-        if igrid == None:
+        if not isinstance(igrid,np.ndarray):
             if not self.__grid_jacobian_exists:
 
                 # create the grid jacobian, keep this in memory
