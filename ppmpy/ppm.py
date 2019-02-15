@@ -9789,7 +9789,7 @@ class MomsDataSet:
     Moments reader from PPMstar 2.0.
     '''
 
-    def __init__(self, dir_name, init_dump_read=0, dumps_in_mem=2, var_list=[], verbose=3):
+    def __init__(self, dir_name, init_dump_read=0, dumps_in_mem=2, var_list=[], rprofset=None, verbose=3):
         '''
         Init method.
         
@@ -9804,6 +9804,8 @@ class MomsDataSet:
         var_list: list
             This is a list that can be filled with strings that will reference data. E.g element 0 is 'xc'
             which will refer to the variable location data[0] in the large array of data
+        rprofset: RprofSet
+            Instead of constructing the grid with moments data, use the rprofset
         verbose: integer
             Verbosity level as defined in class Messenger.
         '''        
@@ -9854,6 +9856,9 @@ class MomsDataSet:
         # these are deep copies to ensure no reference back on momsdata
         self.moms_ngridpoints = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].ngridpoints)
         self.run_ngridpoints = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_ngridpoints)
+
+        # do we have an rprofset?
+        self.__rprofset = rprofset
 
         # On instantiation we create cartesian ALWAYS
         if not self.__cgrid_exists:
@@ -10271,7 +10276,8 @@ class MomsDataSet:
 
     def __get_cgrid(self):
         '''
-        Constructs the PPMStar cartesian grid from the saved xc in whatever(0) as well as a radial coordinate
+        Constructs the PPMStar cartesian grid from either the internal rprofset or the assumed xc saved in
+        whatever(0).
 
         Returns
         -------
@@ -10285,9 +10291,33 @@ class MomsDataSet:
 
             # Ok, we will always have a dump in memory so carry on!
 
-            # We assume that x is always the zero varloc
-            # We also make sure it is a copy and separated from self.__momsdata.data
-            xc_array = self.__get(self.__varloc['0'],self.__many_momsdata_keys[0]).copy()
+            if isinstance(self.__rprofset,RprofSet):
+
+                # we can construct the xc_array
+                rprof = self.__rprofset.get_dump(self.__rprofset.get_dump_list()[0])
+                dx = rprof.get('deex')
+
+                # 4 * dx * (ngridpoints/2.) gives me the right boundary but I want the central value so
+                right_xcbound = 4. * dx * (self.moms_ngridpoints/2.) - 4. * (dx/2.)
+                left_xcbound = -right_xcbound
+
+                grid_values = np.linspace(left_xcbound,right_xcbound,self.moms_ngridpoints)
+
+                xc_array = np.ones((self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)) * grid_values
+
+            else:
+                # We assume that x is always the zero varloc
+                # We also make sure it is a copy and separated from self.__momsdata.data
+                temp_array = self.__get(self.__varloc['0'],self.__many_momsdata_keys[0]).copy()
+
+                # now, this is NOT uniform and we really need it to be for interpolation. I will force it to be
+                unique_x = temp_array[0,0,:]
+                right_xcbound = np.mean(np.diff(unique_x)) * (self.moms_ngridpoints/2.) - np.mean(np.diff(unique_x))/2.
+                left_xcbound = -right_xcbound
+
+                grid_values = np.linspace(left_xcbound,right_xcbound,self.moms_ngridpoints)
+
+                xc_array = np.ones((self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)) * grid_values
 
             # x contains all the info for y and z, just different order. I figured this out
             # and lets use strides so that we don't allocate new wasteful arrays (~230Mb for 1536!)
@@ -10754,7 +10784,7 @@ class MomsDataSet:
         if isinstance(radial_axis,np.ndarray):
 
             # make sure nothing is too large
-            if np.max(radial_axis) > (np.max(self.radial_axis) + 2.*np.mean(abs(np.diff(self.radial_axis)))):
+            if np.max(radial_axis) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
                 err = 'The input radial_axis has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radial_axis),np.max(self.radial_axis))
                 self.__messenger.error(err)
                 raise
@@ -11004,7 +11034,7 @@ class MomsDataSet:
         # This varloc_interp and igrid COULD be a flattened array, let's reshape if so
         if len(radius) > 1:
 
-            igrid = igrid.reshape(len(radius),npoints)
+            igrid = igrid.reshape(len(radius),npoints,3)
 
             # did I take derivatives?
             if derivative:
