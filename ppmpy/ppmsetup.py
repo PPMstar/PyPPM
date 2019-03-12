@@ -12,13 +12,28 @@ from nugridpy import astronomy as ast
 from ppmpy import ppm
 import numpy as np
 import sys
-
+from nugridpy.ascii_table import ascii_table 
 
 G_code = ast.grav_const*1000
 a_cgs  = ast.radiation_constant
 a_code = a_cgs * 10**17
 R_cgs  = ast.boltzmann_constant*ast.avogadro_constant
 R_code = R_cgs /1.0e7
+
+
+def onclick(event):
+    global ix, iy
+    ix, iy = event.xdata, event.ydata
+    print('x = %d, y = %d'%(ix, iy))
+
+    global coords
+    coords.append((ix, iy))
+
+    if len(coords) == npoints_select:
+        fig.canvas.mpl_disconnect(cid)
+
+    return coords
+
 
 def reduce_h(r,r0=None):
     '''reduce double resolution array with error to single grid
@@ -80,17 +95,20 @@ def Pppm(T9,rho_ppm,mu):
     p_ppm = T9 *rho_ppm / mubyR 
     return p_ppm
 
-def UnitConvert(datadir, quantity, convertto='PPMUnits', modordump=1):
+def UnitConvert(datadir, quantity, convertto='PPMUnits', fromtype='mesaprof', modordump=1):
     '''
     Converts from units used in MESA(cgs and solar) to PPMStar code units and vice versa.
     
     
     datadir, str:   path to mesa profile or rprofile to be read
     
+    
     quantity, str : which quantity you want to convert. Options are density, radius, mass, 
                     pressure, temperature
     
     convertto, str: the unit system to convert to, default is PPMUnits but can choose MESAUnits.
+    
+    fromtype, str: what kind of data are you giving? Options are mesaprof, rprof or ppmsetup
     
     modndump, int : model number for mesa profile read if going fro mesa to ppm 
                     and ppm dump number if going from ppm to mesa.
@@ -107,7 +125,7 @@ def UnitConvert(datadir, quantity, convertto='PPMUnits', modordump=1):
     error_msg_quantity = "[%s] Quantity not recognized '%s'." % (convertto, quantity)
     error_msg_convertto = "Unrecognized unit system '%s'." % convertto
     
-    if convertto == 'PPMUnits':
+    if convertto == 'PPMUnits' and fromtype == 'mesaprof':
         m = ms.mesa_profile(datadir, modordump)
         if quantity == 'density':
             inarray = 10**m.get('logRho')
@@ -125,7 +143,9 @@ def UnitConvert(datadir, quantity, convertto='PPMUnits', modordump=1):
             raise NotImplementedError(error_msg_quantity)
     
         return(inarray / to_cgs[quantity])
-    elif convertto == 'MESAUnits':
+    
+    
+    elif convertto == 'MESAUnits' and fromtype == 'rprof' :
         l = ppm.RprofSet(datadir)
         if quantity == 'density':
             inarray = l.get('Rho0',fname=modordump, num_type='NDump', resolution='h')[::2]\
@@ -141,6 +161,27 @@ def UnitConvert(datadir, quantity, convertto='PPMUnits', modordump=1):
         elif quantity == 'radius':
             print("Converting from Mm to R_sun")
             inarray = l.get('R', fname=modordump, num_type='NDump', resolution='l')
+        else:
+            raise NotImplementedError(error_msg_quantity)
+            
+        return(inarray * to_cgs[quantity])
+        
+        
+    elif convertto == 'MESAUnits' and fromtype == 'ppmsetup' :
+        filename = input("Enter your filename (no '' needed)")
+        data = ascii_table(sldir=datadir, filename=filename)
+        if quantity == 'density':
+            inarray = data.get('rho')
+            print("Converting from kg/cm**3 to g/cm**3")  
+        elif quantity == 'pressure':
+            print("Converting from 10**19 barye to barye")
+            inarray = data.get('P')
+        elif quantity == 'temperature':
+            print("Converting from 10**9 K to K")
+            inarray = data.get('T')
+        elif quantity == 'radius':
+            print("Converting from Mm to R_sun")
+            inarray = data.get('radius')
         else:
             raise NotImplementedError(error_msg_quantity)
             
@@ -244,22 +285,5 @@ pgas_div_ptotal = ps.get_prof_data(ddir,model)
     pgas_div_ptotal = mprof.get('pgas_div_ptotal')
     return(log_conv_vel, radius_mesa, P_mesa, T_mesa, entropy_mesa, rho_mesa, mass_mesa, mu_mesa , pgas_div_ptotal)
 
-
-def onclick(event):
-    '''
-    This functions allows one to interactively click on a plot and store points
-    '''
-    global ix, iy
-    ix, iy = event.xdata, event.ydata
-    print('x = %d, y = %d'%(ix, iy))
-
-    global coords
-    coords.append((ix, iy))
-
-    if len(coords) == npoints_select:
-        fig.canvas.mpl_disconnect(cid)
-
-    return coords
-    
     
     
