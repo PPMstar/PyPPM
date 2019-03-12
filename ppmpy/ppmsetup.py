@@ -287,3 +287,20 @@ pgas_div_ptotal = ps.get_prof_data(ddir,model)
 
     
     
+def mufromX(X, A, Z):
+    ''' Input is list of list of abundances, list of mass numbers and list of charge numbers.
+    e.g. abus = [[0.75,0.75,0.75], [0.24,0.24,0.24], [0.01,0.01,0.01]]
+    A = [1, 4, 12] 
+    Z = [1, 2, 6] 
+    '''
+    
+    x = np.array(X).T
+    a = np.array(A)
+    z = np.array(Z)
+    mu_e_recip = np.zeros(len(x))
+    mu_i_recip = np.zeros(len(x))
+    for i in range(len(x)):
+        mu_e_recip[i] = 1/np.sum(x[i]*z/a)
+        mu_i_recip[i] = 1/np.sum(x[i]/a)   
+    mu_tot = 1/(1/mu_e_recip+ 1/mu_i_recip)
+    return(mu_tot)
