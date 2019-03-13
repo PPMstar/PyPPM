@@ -8969,7 +8969,6 @@ class RprofSet(PPMtools):
         boolean
             True when a set of .rprof files has been found. False otherwise.
         '''
-        
         if not os.path.isdir(dir_name):
             err = "Directory '{:s}' does not exist.".format(dir_name)
             self.__messenger.error(err)
@@ -8987,29 +8986,27 @@ class RprofSet(PPMtools):
         rprof_files = [os.path.basename(rprof_files[i]) \
                        for i in range(len(rprof_files))]
         
-        # run_id is always separated from the rest of the file name
-        # by a single dash.
-        self.__run_id = rprof_files[0].split('-')[0]
+        # run_id is what is before the last dash, check that it is
+        # followed by 4 numeric characters
+        _ind   = rprof_files[0].rindex('-')                # index of last dash
+        self.__run_id = rprof_files[0][0:_ind] 
+        if not rprof_files[0][_ind+1:_ind+5].isnumeric():
+            self.__messenger.error("rprof filename does not have 4 digits after last dash: "+\
+                                    rprof_files[0])
         for i in range(len(rprof_files)):
-            split1 = rprof_files[i].split('-')
-            if split1[0] != self.__run_id:
+            _ind   = rprof_files[i].rindex('-')   
+            if rprof_files[i][0:_ind] == self.__run_id:     # record dump number
+                dump_number = rprof_files[i][_ind+1:_ind+5]
+                if dump_number.isnumeric():
+                    self.__dumps.append(int(dump_number))
+                else:
+                    self.__messenger.error("rprof filename does not have 4 digits after last dash: "+\
+                                    rprof_files[i])
+            else:                                           # exclude files with non-matching runid
                 wrng = ("rprof files with multiple run ids found in '{:s}'."
                         "Using only those with run id '{:s}'.").\
                        format(self.__dir_name, self.__run_id)
                 self.__messenger.warning(wrng)
-                continue
-            
-            # Skip files that do not fit the rprof naming pattern.
-            if len(split1) < 2:
-                continue
-
-            # Get rid of the extension and try to parse the dump number.
-            # Skip files that do not fit the rprof naming pattern.
-            split2 = split1[1].split('.')
-            try:
-                dump_num = int(split2[0])
-                self.__dumps.append(dump_num)
-            except:
                 continue
         
         self.__dumps = sorted(self.__dumps)
