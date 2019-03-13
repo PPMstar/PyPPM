@@ -90,6 +90,8 @@ cb = utils.colourblind
 from dateutil.parser import parse
 import time
 import glob
+from ipywidgets import interact, interactive, fixed, interact_manual
+import ipywidgets as widgets
 
 # from rprofile import rprofile_reader
 
@@ -8787,8 +8789,8 @@ class RprofHistory:
         '''
         try:
             with open(file_path, 'r') as fin:
-                msg = "Reading history file '{:s}'.".format(file_path)
-                self.__messenger.message(msg)
+                #msg = "Reading history file '{:s}'.".format(file_path)
+                #self.__messenger.message(msg)
                 lines = fin.readlines()
             self.__file_path = file_path
         except FileNotFoundError as e:
@@ -9152,7 +9154,100 @@ class RprofSet(PPMtools):
             return rp.get(var, resolution=resolution)
         else:
             return None
+
+    def rprofgui(self):
+        def w_plot(dump1,dump2,ything,log10y=False):
+            self.rp_plot([dump1,dump2],ything,logy=log10y)
+        rp_hst = self.get_history()
+        dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
+        dumpmean = int((-dumpmin + dumpmax/2.))
+        things_list = self.get_dump(dumpmin).get_lr_variables()+\
+                          self.get_dump(dumpmin).get_hr_variables()
+        interact(w_plot,dump1=widgets.IntSlider(min=dumpmin,\
+                max=dumpmax,step=1,value=dumpmean),\
+                     dump2=widgets.IntSlider(min=dumpmin,\
+                                  max=dumpmax,step=1,value=dumpmean),\
+                     ything=things_list)
         
+        
+    def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
+                xxlim=None, yylim=None, legend='', logy=False):
+        '''
+        Plot one thing for a line profile
+
+        Parameters
+        ----------
+
+        ything : string
+            name of y quantity to plot, print(rp.get_hr_variables())
+            print(rp.get_lr_variables()) prints available options
+
+        dump : integer or list of integers
+            dump number or list of dump numbers
+
+        num_type : string
+            
+        xthing : string
+          name of x quantity to plot, default is 'R'
+
+        runlabel : str
+           label of this rp_set/case to appear in legend, defaults
+           to 'run1'
+
+        xxlim, yylim : float
+           x and y lims, tuple
+
+        legend : str
+           legend label
+
+        logy : boolean
+           log10 of ything for plotting; defaults to False
+        '''
+        if runlabel is None: runlabel = self.__run_id
+        # Ensure that dump is list type
+        if type(dump) is not list: 
+            dump=[dump]
+
+        # Get dump and assign it to a variable
+        rp = self.get_dump(dump[0])
+
+        # Define resolution and throw errors if they don't match;
+        # throw error if ything is not defined
+        if ything in rp.get_hr_variables(): 
+            if xthing not in rp.get_hr_variables():
+                print('ERROR: If ything is high resolution xthing must be too.')
+                return
+            res = 'h'    
+        if ything in rp.get_lr_variables(): 
+            if xthing not in rp.get_lr_variables():
+                print('ERROR: If ything is low resolution xthing must be too.')
+                return
+            res = 'l'
+        else:
+            print("ERROR: Don't know ything")
+            return
+
+        # Define x- and y-values to be plotted, determine if logy is
+        # necessary, generate plot
+        pl.close(ifig);pl.figure(ifig)
+        for i,thisdump in enumerate(dump):
+            xquantity = self.get(xthing,thisdump,resolution=res)
+            yquantity = self.get(ything,thisdump,resolution=res)
+            if logy: 
+                yquantity = np.log10(yquantity)
+            pl.plot(xquantity,yquantity,label=runlabel+" dump "+str(thisdump),\
+                 color=utils.linestylecb(i)[2],linestyle=utils.linestylecb(i)[0],\
+                 marker=utils.linestylecb(i)[1],markevery=utils.linestyle(i,a=25,b=7)[1])
+
+        # Plot detailing
+        pl.legend()
+        pl.xlabel(xthing)
+
+        if logy == False:
+            pl.ylabel(ything)
+        else:
+            pl.ylabel('log '+ything)
+
     def plot_FV(self, fname, num_type='NDump', resolution='l', idec=3, xxlim=None, \
                 yylim=None,legend='', ylog=True):
         np.warnings.filterwarnings('ignore')
