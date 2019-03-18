@@ -8992,9 +8992,7 @@ class RprofSet(PPMtools):
         # followed by 4 numeric characters
         _ind   = rprof_files[0].rindex('-')                # index of last dash
         self.__run_id = rprof_files[0][0:_ind] 
-        if not rprof_files[0][_ind+1:_ind+5].isnumeric():
-            self.__messenger.error("rprof filename does not have 4 digits after last dash: "+\
-                                    rprof_files[0])
+
         for i in range(len(rprof_files)):
             _ind   = rprof_files[i].rindex('-')   
             if rprof_files[i][0:_ind] == self.__run_id:     # record dump number
@@ -9004,6 +9002,7 @@ class RprofSet(PPMtools):
                 else:
                     self.__messenger.error("rprof filename does not have 4 digits after last dash: "+\
                                     rprof_files[i])
+                    return False
             else:                                           # exclude files with non-matching runid
                 wrng = ("rprof files with multiple run ids found in '{:s}'."
                         "Using only those with run id '{:s}'.").\
@@ -9172,7 +9171,7 @@ class RprofSet(PPMtools):
         
         
     def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
-                xxlim=None, yylim=None, legend='', logy=False):
+                xxlim=None, yylim=None, logy=False):
         '''
         Plot one thing for a line profile
 
@@ -9198,16 +9197,13 @@ class RprofSet(PPMtools):
         xxlim, yylim : float
            x and y lims, tuple
 
-        legend : str
-           legend label
-
         logy : boolean
            log10 of ything for plotting; defaults to False
         '''
         if runlabel is None: runlabel = self.__run_id
         # Ensure that dump is list type
         if type(dump) is not list: 
-            dump=[dump]
+            dump=list(dump)
 
         # Get dump and assign it to a variable
         rp = self.get_dump(dump[0])
@@ -9248,6 +9244,12 @@ class RprofSet(PPMtools):
             pl.ylabel(ything)
         else:
             pl.ylabel('log '+ything)
+
+        if xxlim is not None:
+            pl.xlim(xxlim)
+
+        if yylim is not None:
+            pl.ylim(yylim)
 
     def plot_FV(self, fname, num_type='NDump', resolution='l', idec=3, xxlim=None, \
                 yylim=None,legend='', ylog=True):
