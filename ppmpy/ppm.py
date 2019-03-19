@@ -10666,16 +10666,19 @@ class MomsDataSet:
             int: Dump number
         method: str
             'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
-            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
+            'moments' (fast): Use a moments averaging within a cell and using a quadratic function as the form
+                              for the interpolation
         derivative: str
             The default is NO derivative, i.e an empty string.
 
             Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
-            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments' method
-               method = 'moments': Use the analytic derivative of the moments quadratic function
+            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments'
+            method
+
+            method = 'moments': Use the analytic derivative of the moments quadratic function
         logvarloc: bool
-            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are handled for method='moments'
-            The returned varloc_interpolated will be scaled back
+            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are
+            handled for method='moments'. The returned varloc_interpolated will be scaled back
         coefficients: bool
             In some cases you may want the coefficients for a particular interpolation scheme
 
@@ -10723,7 +10726,7 @@ class MomsDataSet:
 
         # make sure that igrid is the correct shape
         if len(igrid.shape) != 2 or igrid.shape[1] != 3:
-            err = 'The igrid is not the correct shape. It must be [npoints,3] but it is '.join(igrid.shape())
+            err = 'The igrid is not the correct shape. It must be [npoints,3] but it is '.join(igrid.shape)
             self.__messenger.error(err)
             raise
 
@@ -10738,11 +10741,21 @@ class MomsDataSet:
         if coefficients:
             # we just return w.e varloc_interp is, a list or an array and the coefficients
             varloc_interp, a = self.__get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
-            return varloc_interp, a
+
+            # did we log it?
+            if logvarloc:
+                return np.power(10.,varloc_interp), a
+            else:
+                return varloc_interp, a
         else:
             # we just return w.e varloc_interp is, a list or an array
             varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
-            return varloc_interp
+
+            # did we log it?
+            if logvarloc:
+                return np.power(10., varloc_interp)
+            else:
+                return varloc_interp
 
     def get_rprof(self,varloc,radial_axis=None,fname=None,method='trilinear',derivative='',logvarloc=False):
         '''
@@ -10950,8 +10963,9 @@ class MomsDataSet:
     def get_spherical_interpolation(self, varloc, radius, fname=None, method='trilinear', derivative='', logvarloc=False,
                                     coefficients=False, get_igrid=False, plot_mollweide=True, npoints=5000):
         '''
-        Returns the interpolated array of values of 'varloc' at a radius of 'radius' for a computed uniform distribution of points,
-        'npoints', on that sphere(s). It can return the 'theta,phi' (mollweide) coordinates of the 'varloc' values as well.
+        Returns the interpolated array of values of 'varloc' at a radius of 'radius' for a computed uniform
+        distribution of points, 'npoints', on that sphere(s). It can return the 'theta,phi' (mollweide)
+        coordinates of the 'varloc' values as well.
 
         Parameters
         ----------
@@ -10966,22 +10980,26 @@ class MomsDataSet:
             int: Dump number
         method: str
             'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
-            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
+            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the
+                                form for the interpolation
         derivative: str
             The default is NO derivative, i.e an empty string.
 
             Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
-            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments' method
+            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments'
+            method
+
                method = 'moments': Use the analytic derivative of the moments quadratic function
         logvarloc: bool
-            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are handled for method='moments'
-            The returned varloc_interpolated will be scaled back
+            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are
+            handled for method='moments'. The returned varloc_interpolated will be scaled back
         coefficients: bool
             In some cases you may want the coefficients for a particular interpolation scheme
         get_igrid: bool
             In some cases you may want the actual grid points used for the particular interpolation scheme
         plot_mollweide: bool
-            Typically you want the theta, phi coordinates of the interpolated values so that it can be plotted with a projection method
+            Typically you want the theta, phi coordinates of the interpolated values so that it can be plotted
+            with a projection method
         npoints: int
             The number of 'theta and phi' points you want for a projection plot
 
