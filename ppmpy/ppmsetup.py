@@ -5,18 +5,35 @@ construction of a new setup for the PPMstar code.
 
 FH, 20140907
 
-OC, 20180414
+OC, 20180414 , 20190211
 '''
 from nugridpy import mesa as ms
 from nugridpy import astronomy as ast
 from ppmpy import ppm
 import numpy as np
+import sys
+from nugridpy.ascii_table import ascii_table 
 
 G_code = ast.grav_const*1000
 a_cgs  = ast.radiation_constant
 a_code = a_cgs * 10**17
 R_cgs  = ast.boltzmann_constant*ast.avogadro_constant
 R_code = R_cgs /1.0e7
+
+
+def onclick(event):
+    global ix, iy
+    ix, iy = event.xdata, event.ydata
+    print('x = %d, y = %d'%(ix, iy))
+
+    global coords
+    coords.append((ix, iy))
+
+    if len(coords) == npoints_select:
+        fig.canvas.mpl_disconnect(cid)
+
+    return coords
+
 
 def reduce_h(r,r0=None):
     '''reduce double resolution array with error to single grid
@@ -78,17 +95,20 @@ def Pppm(T9,rho_ppm,mu):
     p_ppm = T9 *rho_ppm / mubyR 
     return p_ppm
 
-def UnitConvert(datadir, quantity, convertto='PPMUnits', modordump=1):
+def UnitConvert(datadir, quantity, convertto='PPMUnits', fromtype='mesaprof', modordump=1):
     '''
     Converts from units used in MESA(cgs and solar) to PPMStar code units and vice versa.
     
     
     datadir, str:   path to mesa profile or rprofile to be read
     
+    
     quantity, str : which quantity you want to convert. Options are density, radius, mass, 
                     pressure, temperature
     
     convertto, str: the unit system to convert to, default is PPMUnits but can choose MESAUnits.
+    
+    fromtype, str: what kind of data are you giving? Options are mesaprof, rprof or ppmsetup
     
     modndump, int : model number for mesa profile read if going fro mesa to ppm 
                     and ppm dump number if going from ppm to mesa.
@@ -105,7 +125,7 @@ def UnitConvert(datadir, quantity, convertto='PPMUnits', modordump=1):
     error_msg_quantity = "[%s] Quantity not recognized '%s'." % (convertto, quantity)
     error_msg_convertto = "Unrecognized unit system '%s'." % convertto
     
-    if convertto == 'PPMUnits':
+    if convertto == 'PPMUnits' and fromtype == 'mesaprof':
         m = ms.mesa_profile(datadir, modordump)
         if quantity == 'density':
             inarray = 10**m.get('logRho')
@@ -123,7 +143,9 @@ def UnitConvert(datadir, quantity, convertto='PPMUnits', modordump=1):
             raise NotImplementedError(error_msg_quantity)
     
         return(inarray / to_cgs[quantity])
-    elif convertto == 'MESAUnits':
+    
+    
+    elif convertto == 'MESAUnits' and fromtype == 'rprof' :
         l = ppm.RprofSet(datadir)
         if quantity == 'density':
             inarray = l.get('Rho0',fname=modordump, num_type='NDump', resolution='h')[::2]\
@@ -139,6 +161,27 @@ def UnitConvert(datadir, quantity, convertto='PPMUnits', modordump=1):
         elif quantity == 'radius':
             print("Converting from Mm to R_sun")
             inarray = l.get('R', fname=modordump, num_type='NDump', resolution='l')
+        else:
+            raise NotImplementedError(error_msg_quantity)
+            
+        return(inarray * to_cgs[quantity])
+        
+        
+    elif convertto == 'MESAUnits' and fromtype == 'ppmsetup' :
+        filename = input("Enter your filename (no '' needed)")
+        data = ascii_table(sldir=datadir, filename=filename)
+        if quantity == 'density':
+            inarray = data.get('rho')
+            print("Converting from kg/cm**3 to g/cm**3")  
+        elif quantity == 'pressure':
+            print("Converting from 10**19 barye to barye")
+            inarray = data.get('P')
+        elif quantity == 'temperature':
+            print("Converting from 10**9 K to K")
+            inarray = data.get('T')
+        elif quantity == 'radius':
+            print("Converting from Mm to R_sun")
+            inarray = data.get('radius')
         else:
             raise NotImplementedError(error_msg_quantity)
             
@@ -168,7 +211,7 @@ def eosPS(rho, T, mu, units, tocompute='S', idealgas=False):
     if units == 'PPM':
         Rgas = R_code
         ac   = a_code
-
+    
     if tocompute == 'S':
         outarray = (3./2.)*(Rgas/mu)*np.log(T) - (Rgas/mu)*np.log(rho) + f*((4./3.)*(ac*T**3) / (rho))
     if tocompute == 'P':
@@ -210,15 +253,54 @@ def rhoTfromSP(T,rho,S,P,a,R,mu):
         drho  = (-G2 - J22 * dT) / J12 
         T = T + dT
         rho = rho + drho
-        [G1,G2] = EOSgasrad(T,rho,mu,a,R)-array([S,P]) 
-        eps = max(array([G1,G2]+[drho,dT]))       
+        [G1,G2] = EOSgasrad(T,rho,mu,a,R)-np.array([S,P]) 
+        eps = max(np.array([G1,G2]+[drho,dT]))       
     return rho, T
 
 def rhs4(x,r,T,rho,S,P,a_code,R_code,mu):
     '''RHS of ODE dP/dr and dm/dr using rho, T fron NR.'''
     m,P = x
     rho,T = rhoTfromSP(T,rho,S,P,a_code,R_code,mu)
-    f1 = 4.*pi*r**2*rho
+    f1 = 4.*np.pi*r**2*rho
     f2 = -G_code*m*rho/r**2
     return [f1,f2]
-rhs3 = lambda x,r,S,mu: rhs4(x,r,T,rho,S,P,a_code,R_code,mu)
+
+
+def get_prof_data(data_dir,model):
+    '''
+    This function returns the mesa profile data needed for a ppm setup. It must and only returns what is needed in the order specified. 
+    usage : log_conv_vel, radius_mesa, P_mesa, T_mesa, entropy_mesa, rho_mesa, mass_mesa, mu_mesa ,\
+pgas_div_ptotal = ps.get_prof_data(ddir,model)
+    '''
+    mprof=ms.mesa_profile(data_dir,num=model)
+    print("returning log_conv_vel, radius_mesa, P_mesa, T_mesa, entropy_mesa, rho_mesa, mass_mesa, mu_mesa and pgas_div_ptotal")
+    log_conv_vel=mprof.get('log_conv_vel')
+    radius_mesa = mprof.get('radius')
+    P_mesa = mprof.get('pressure')
+    T_mesa = mprof.get('temperature')
+    entropy_mesa = mprof.get('entropy')
+    rho_mesa = 10**mprof.get('logRho')
+    mass_mesa = mprof.get('mass')
+    mu_mesa = mprof.get('mu')
+    pgas_div_ptotal = mprof.get('pgas_div_ptotal')
+    return(log_conv_vel, radius_mesa, P_mesa, T_mesa, entropy_mesa, rho_mesa, mass_mesa, mu_mesa , pgas_div_ptotal)
+
+    
+    
+def mufromX(X, A, Z):
+    ''' Input is list of list of abundances, list of mass numbers and list of charge numbers.
+    e.g. abus = [[0.75,0.75,0.75], [0.24,0.24,0.24], [0.01,0.01,0.01]]
+    A = [1, 4, 12] 
+    Z = [1, 2, 6] 
+    '''
+    
+    x = np.array(X).T
+    a = np.array(A)
+    z = np.array(Z)
+    mu_e_recip = np.zeros(len(x))
+    mu_i_recip = np.zeros(len(x))
+    for i in range(len(x)):
+        mu_e_recip[i] = 1/np.sum(x[i]*z/a)
+        mu_i_recip[i] = 1/np.sum(x[i]/a)   
+    mu_tot = 1/(1/mu_e_recip+ 1/mu_i_recip)
+    return(mu_tot)
