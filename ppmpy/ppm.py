@@ -9171,7 +9171,7 @@ class RprofSet(PPMtools):
         
         
     def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
-                xxlim=None, yylim=None, logy=False):
+                xxlim=None, yylim=None, logy=False,newfig=True,idn=0):
         '''
         Plot one thing for a line profile
 
@@ -9199,12 +9199,18 @@ class RprofSet(PPMtools):
 
         logy : boolean
            log10 of ything for plotting; defaults to False
+
+        newfig : boolean
+           close and create new figure if True, this is the default
+
+        idn : integer
+           set to some value >0 to generate new series of line selection integers
         '''
         if runlabel is None: runlabel = self.__run_id
         # Ensure that dump is list type
         if type(dump) is not list: 
             dump=list(dump)
-
+        len_dump = len(dump)
         # Get dump and assign it to a variable
         rp = self.get_dump(dump[0])
 
@@ -9226,15 +9232,19 @@ class RprofSet(PPMtools):
 
         # Define x- and y-values to be plotted, determine if logy is
         # necessary, generate plot
-        pl.close(ifig);pl.figure(ifig)
+        if newfig:
+            pl.close(ifig)
+            pl.figure(ifig)
         for i,thisdump in enumerate(dump):
             xquantity = self.get(xthing,thisdump,resolution=res)
             yquantity = self.get(ything,thisdump,resolution=res)
             if logy: 
                 yquantity = np.log10(yquantity)
             pl.plot(xquantity,yquantity,label=runlabel+" dump "+str(thisdump),\
-                 color=utils.linestylecb(i)[2],linestyle=utils.linestylecb(i)[0],\
-                 marker=utils.linestylecb(i)[1],markevery=utils.linestyle(i,a=25,b=7)[1])
+                 color=utils.linestylecb(i+len_dump*idn)[2],\
+                    linestyle=utils.linestylecb(i+len_dump*idn)[0],\
+                 marker=utils.linestylecb(i+len_dump*idn)[1],\
+                    markevery=utils.linestyle(i+len_dump*idn,a=25,b=7)[1])
 
         # Plot detailing
         pl.legend()
