@@ -9813,67 +9813,67 @@ class MomsDataSet:
             Verbosity level as defined in class Messenger.
         '''        
         
-        self.__is_valid = False
-        self.__messenger = Messenger(verbose=verbose)
+        self._is_valid = False
+        self._messenger = Messenger(verbose=verbose)
         
         # __find_dumps() will set the following variables,
         # if successful:
-        self.__dir_name = ''
-        self.__dumps = []
-        if not self.__find_dumps(dir_name):
+        self._dir_name = ''
+        self._dumps = []
+        if not self._find_dumps(dir_name):
             return
 
         # we do not create the grid, we only do that if it is needed
         # bools track what has happened
-        self.__cgrid_exists = False
-        self.__sgrid_exists = False
-        self.__mollweide_exists = False
+        self._cgrid_exists = False
+        self._sgrid_exists = False
+        self._mollweide_exists = False
 
         # we also check if we have our unit vectors
-        self.__grid_jacobian_exists = False
+        self._grid_jacobian_exists = False
 
         # setup some useful dictionaries/lists
-        self.__varloc = {}
-        self.__interpolation_methods = ['trilinear','moments']
+        self._varloc = {}
+        self._interpolation_methods = ['trilinear','moments']
 
         # options for MomsData
-        self.__number_of_whatevers = 10
+        self._number_of_whatevers = 10
 
         # For storing multiple momsdata we use a dictionary so that it can be referenced
         # I will store in a list the dumps that are in there
-        self.__many_momsdata = {}
-        self.__many_momsdata_keys = []
-        self.__dumps_in_mem = dumps_in_mem
+        self._many_momsdata = {}
+        self._many_momsdata_keys = []
+        self._dumps_in_mem = dumps_in_mem
 
         # initialize the dictionaries 
-        if not self.__set_dictionaries(var_list):
+        if not self._set_dictionaries(var_list):
             return
 
         # get the initial dump momsdata
-        self.__get_dump(init_dump_read)
+        self._get_dump(init_dump_read)
 
         # hold the initial dump in attribute
         self.what_dump_am_i = init_dump_read
 
         # set objects ngridpoints and original run ngridpoints
         # these are deep copies to ensure no reference back on momsdata
-        self.moms_ngridpoints = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].ngridpoints)
-        self.run_ngridpoints = copy.deepcopy(self.__many_momsdata[str(init_dump_read)].run_ngridpoints)
+        self.moms_ngridpoints = copy.deepcopy(self._many_momsdata[str(init_dump_read)].ngridpoints)
+        self.run_ngridpoints = copy.deepcopy(self._many_momsdata[str(init_dump_read)].run_ngridpoints)
 
         # do we have an rprofset?
-        self.__rprofset = rprofset
+        self._rprofset = rprofset
 
         # On instantiation we create cartesian ALWAYS
-        if not self.__cgrid_exists:
-            self.__get_cgrid()
+        if not self._cgrid_exists:
+            self._get_cgrid()
 
         # we now have grid, can easily get the following
-        self.moms_gridresolution = np.mean(np.diff(self.__unique_coord))
-        self.run_gridresolution = np.mean(np.diff(self.__unique_coord))/4.
+        self.moms_gridresolution = np.mean(np.diff(self._unique_coord))
+        self.run_gridresolution = np.mean(np.diff(self._unique_coord))/4.
 
         # alright we are now a valid instance
 
-    def __find_dumps(self, dir_name):
+    def _find_dumps(self, dir_name):
         '''
         Searches for .aaa files and creates an internal list of dump numbers
         available.
@@ -9891,23 +9891,23 @@ class MomsDataSet:
         
         if not os.path.isdir(dir_name):
             err = "Directory '{:s}' does not exist.".format(dir_name)
-            self.__messenger.error(err)
+            self._messenger.error(err)
             return False
         
         # join() will add a trailing slash if not present.
-        self.__dir_name = os.path.join(dir_name, '')
+        self._dir_name = os.path.join(dir_name, '')
 
         # ok this directory contains bobs like directory structure, search in
         # sub-directories for actual files, grab dumps from file names
         moms_files = []
 
-        for dirpath, dirnames, filenames in os.walk(self.__dir_name):
+        for dirpath, dirnames, filenames in os.walk(self._dir_name):
             for filename in [f for f in filenames if f.endswith('.aaa')]:
                 moms_files.append(os.path.join(dirpath,filename))
 
         if len(moms_files) == 0:
-            err = "No .aaa files found in '{:s}'.".format(self.__dir_name)
-            self.__messenger.error(err)
+            err = "No .aaa files found in '{:s}'.".format(self._dir_name)
+            self._messenger.error(err)
             return False
         
         moms_files = [os.path.basename(moms_files[i]) \
@@ -9915,14 +9915,14 @@ class MomsDataSet:
         
         # run_id is always separated from the rest of the file name
         # by a single dash.
-        self.__run_id = moms_files[0].split('-')[0]
+        self._run_id = moms_files[0].split('-')[0]
         for i in range(len(moms_files)):
             split1 = moms_files[i].split('-')
-            if split1[0] != self.__run_id:
+            if split1[0] != self._run_id:
                 wrng = (".aaa files with multiple run ids found in '{:s}'."
                         "Using only those with run id '{:s}'.").\
-                       format(self.__dir_name, self.__run_id)
-                self.__messenger.warning(wrng)
+                       format(self._dir_name, self._run_id)
+                self._messenger.warning(wrng)
                 continue
             
             # Skip files that do not fit the rprof naming pattern.
@@ -9935,23 +9935,23 @@ class MomsDataSet:
             try:
                 # there is always BQav prefix before dump
                 dump_num = int(split2[0][4:])
-                self.__dumps.append(dump_num)
+                self._dumps.append(dump_num)
             except:
                 continue
         
-        self.__dumps = sorted(self.__dumps)
-        msg = "{:d} .aaa files found in '{:s}.\n".format(len(self.__dumps), \
-              self.__dir_name)
+        self._dumps = sorted(self._dumps)
+        msg = "{:d} .aaa files found in '{:s}.\n".format(len(self._dumps), \
+              self._dir_name)
         msg += "Dump numbers range from {:d} to {:d}.".format(\
-               self.__dumps[0], self.__dumps[-1])
-        self.__messenger.message(msg)
-        if (self.__dumps[-1] - self.__dumps[0] + 1) != len(self.__dumps):
+               self._dumps[0], self._dumps[-1])
+        self._messenger.message(msg)
+        if (self._dumps[-1] - self._dumps[0] + 1) != len(self._dumps):
             wrng = 'Some dumps are missing!'
-            self.__messenger.warning(wrng)
+            self._messenger.warning(wrng)
 
         return True
 
-    def __get_dump(self, dump):
+    def _get_dump(self, dump):
         '''
         Gets a new dump for MomsData or instantiates MomsData
         
@@ -9960,40 +9960,40 @@ class MomsDataSet:
         dump: integer
         '''
         
-        if dump not in self.__dumps:
+        if dump not in self._dumps:
             err = 'Dump {:d} is not available.'.format(dump)
-            self.__messenger.error(err)
+            self._messenger.error(err)
             return None
         
-        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
-                                                             dump, self.__run_id, dump)
+        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self._dir_name, \
+                                                             dump, self._run_id, dump)
 
         # we first check if we can add a new moments data to memory
         # without removing another
-        if len(self.__many_momsdata) < self.__dumps_in_mem:
+        if len(self._many_momsdata) < self._dumps_in_mem:
 
             # add it to our dictionary!
-            self.__many_momsdata.update(zip([str(dump)],[MomsData(file_path)]))
+            self._many_momsdata.update(zip([str(dump)],[MomsData(file_path)]))
 
             # append the key. This keeps track of order of read in
-            self.__many_momsdata_keys.append(str(dump))
+            self._many_momsdata_keys.append(str(dump))
 
         else:
 
             # we gotta remove one of them, this will be index 0 of a list
-            del self.__many_momsdata[str(self.__many_momsdata_keys[0])]
-            self.__many_momsdata_keys.remove(self.__many_momsdata_keys[0])
+            del self._many_momsdata[str(self._many_momsdata_keys[0])]
+            self._many_momsdata_keys.remove(self._many_momsdata_keys[0])
 
             # now add a new momsdata object to our dict
-            self.__many_momsdata.update(zip([str(dump)],[MomsData(file_path)]))
+            self._many_momsdata.update(zip([str(dump)],[MomsData(file_path)]))
 
             # append the key. This keeps track of order of read in
-            self.__many_momsdata_keys.append(str(dump))
+            self._many_momsdata_keys.append(str(dump))
 
         # all is good. update what_dump_am_i
         self.what_dump_am_i = dump
 
-    def __interpolation_moments(self,varloc,igrid,x_idx,y_idx,z_idx,derivative,logvarloc,coefficients):
+    def _interpolation_moments(self,varloc,igrid,x_idx,y_idx,z_idx,derivative,logvarloc,coefficients):
         '''
         f(xi,yi,zi) = a000 + a100x + a010y + a001z + a200x^2 + a110xy + a101xz + a020y^2 + a011yz + a002z^2
 
@@ -10064,9 +10064,9 @@ class MomsDataSet:
 
         # the formula uses CELL CENTERED COORDINATES, I will have to subtract off the cell centered x,y,z from the "flats"
         # and then scale it with the fact that: 1 cell width = 1
-        xiflat = (xiflat - self.__unique_coord[x_idx]) / np.mean(abs(np.diff(self.__unique_coord)))
-        yiflat = (yiflat - self.__unique_coord[y_idx]) / np.mean(abs(np.diff(self.__unique_coord)))
-        ziflat = (ziflat - self.__unique_coord[z_idx])  / np.mean(abs(np.diff(self.__unique_coord)))
+        xiflat = (xiflat - self._unique_coord[x_idx]) / np.mean(abs(np.diff(self._unique_coord)))
+        yiflat = (yiflat - self._unique_coord[y_idx]) / np.mean(abs(np.diff(self._unique_coord)))
+        ziflat = (ziflat - self._unique_coord[z_idx])  / np.mean(abs(np.diff(self._unique_coord)))
 
         # Are we taking derivatives?
         # Check if it is empty, if not then we return a list
@@ -10084,11 +10084,11 @@ class MomsDataSet:
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
 
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('x')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
+                    varloc_interp[derivative.find('x')] *= np.power(np.mean(np.diff(self._unique_coord)),-1.)
                 else:
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
                     varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*a200*xiflat) * np.power(
-                        np.mean(np.diff(self.__unique_coord)),-1.)
+                        np.mean(np.diff(self._unique_coord)),-1.)
 
             if 'y' in derivative:
                 # is varloc a log quantity?
@@ -10100,11 +10100,11 @@ class MomsDataSet:
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
 
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('y')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
+                    varloc_interp[derivative.find('y')] *= np.power(np.mean(np.diff(self._unique_coord)),-1.)
                 else:
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
                     varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*a020*yiflat) * np.power(
-                        np.mean(np.diff(self.__unique_coord)),-1.)
+                        np.mean(np.diff(self._unique_coord)),-1.)
 
             if 'z' in derivative:
                 # is varloc a log quantity?
@@ -10116,11 +10116,11 @@ class MomsDataSet:
                                                             + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
 
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('z')] *= np.power(np.mean(np.diff(self.__unique_coord)),-1.)
+                    varloc_interp[derivative.find('z')] *= np.power(np.mean(np.diff(self._unique_coord)),-1.)
                 else:
                     # I need to scale the derivative properly as the coordinates are scaled to 1!
                     varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*a002*ziflat) * np.power(
-                        np.mean(np.diff(self.__unique_coord)),-1.)
+                        np.mean(np.diff(self._unique_coord)),-1.)
 
         else:
             # ok, just regular interpolation
@@ -10133,7 +10133,7 @@ class MomsDataSet:
         else:
             return varloc_interp
 
-    def __set_dictionaries(self,var_list):
+    def _set_dictionaries(self,var_list):
         '''
         This function will setup the dictionaries that will house multiple moments data objects and
         a convenience dictionary to refer to variables by a string
@@ -10149,36 +10149,36 @@ class MomsDataSet:
         if not var_list:
 
             # ok it is empty, construct default dictionary
-            var_keys = [str(i) for i in range(self.__number_of_whatevers)]
-            var_vals = [i for i in range(self.__number_of_whatevers)]
+            var_keys = [str(i) for i in range(self._number_of_whatevers)]
+            var_vals = [i for i in range(self._number_of_whatevers)]
 
         else:
 
             # first we check that var_list is the correct length
-            if len(var_list) != self.__number_of_whatevers:
+            if len(var_list) != self._number_of_whatevers:
 
                 # we use the default
-                var_keys = [str(i) for i in range(self.__number_of_whatevers)]
-                var_vals = [i for i in range(self.__number_of_whatevers)]
+                var_keys = [str(i) for i in range(self._number_of_whatevers)]
+                var_vals = [i for i in range(self._number_of_whatevers)]
 
             else:
 
                 # ok we are in the clear
                 var_keys = [str(i) for i in var_list]
-                var_vals = [i for i in range(self.__number_of_whatevers)]
+                var_vals = [i for i in range(self._number_of_whatevers)]
 
                 # I will also allow for known internal varloc to point to the same things
                 # with this dictionary, i.e xc: varloc = 0 ALWAYS
-                var_keys2 = [str(i) for i in range(self.__number_of_whatevers)]
+                var_keys2 = [str(i) for i in range(self._number_of_whatevers)]
 
-                self.__varloc.update(zip(var_keys2,var_vals))
+                self._varloc.update(zip(var_keys2,var_vals))
 
         # construct the variable dictionary
-        self.__varloc.update(zip(var_keys,var_vals))
+        self._varloc.update(zip(var_keys,var_vals))
 
         return True
 
-    def __transform_mollweide(self,theta,phi):
+    def _transform_mollweide(self,theta,phi):
         '''
         Transforms a "physics" spherical coordinates array into the spherical coordinates
         that matplotlib uses for projection plots. This creates a copy of the input arrays
@@ -10210,7 +10210,7 @@ class MomsDataSet:
 
         return theta_copy, phi_copy
 
-    def __transform_spherical(self,theta,phi):
+    def _transform_spherical(self,theta,phi):
         '''
         Transforms a "mollweide" spherical coordinates array into the "physics" spherical coordinates.
         This creates a copy of the input arrays
@@ -10243,7 +10243,7 @@ class MomsDataSet:
 
         return theta_copy, phi_copy
 
-    def __uniform_spherical_grid(self,radius,npoints):
+    def _uniform_spherical_grid(self,radius,npoints):
         '''
         Create a uniformly spaced (in spherical coordinates) grid of points in which
         the interpolation is done on to get a value of quantity at radius r
@@ -10273,11 +10273,11 @@ class MomsDataSet:
         igrid[:,2] = radius * np.sin(theta) * np.cos(phi)
 
         # for mollweide we have to transform these
-        theta, phi = self.__transform_mollweide(theta,phi)
+        theta, phi = self._transform_mollweide(theta,phi)
 
         return igrid, theta, phi
 
-    def __get_cgrid(self):
+    def _get_cgrid(self):
         '''
         Constructs the PPMStar cartesian grid from either the internal rprofset or the assumed xc saved in
         whatever(0).
@@ -10290,14 +10290,14 @@ class MomsDataSet:
         '''
 
         # check, do we already have this?
-        if not self.__cgrid_exists:
+        if not self._cgrid_exists:
 
             # Ok, we will always have a dump in memory so carry on!
 
-            if isinstance(self.__rprofset,RprofSet):
+            if isinstance(self._rprofset,RprofSet):
 
                 # we can construct the xc_array
-                rprof = self.__rprofset.get_dump(self.__rprofset.get_dump_list()[0])
+                rprof = self._rprofset.get_dump(self._rprofset.get_dump_list()[0])
                 dx = rprof.get('deex')
 
                 # 4 * dx * (ngridpoints/2.) gives me the right boundary but I want the central value so
@@ -10311,8 +10311,8 @@ class MomsDataSet:
 
             else:
                 # We assume that x is always the zero varloc
-                # We also make sure it is a copy and separated from self.__momsdata.data
-                temp_array = self.__get(self.__varloc['0'],self.__many_momsdata_keys[0]).copy()
+                # We also make sure it is a copy and separated from self._momsdata.data
+                temp_array = self._get(self._varloc['0'],self._many_momsdata_keys[0]).copy()
 
                 # now, this is NOT uniform and we really need it to be for interpolation. I will force it to be
                 unique_x = temp_array[0,0,:]
@@ -10341,22 +10341,22 @@ class MomsDataSet:
 
             # unfortunately we have to flatten these. This creates copies as
             # they are not contiguous memory chunks... (data is a portion of ghostdata)
-            self.__xc = np.ravel(xc_array)
-            self.__yc = np.ravel(yc_array)
-            self.__zc = np.ravel(zc_array)
+            self._xc = np.ravel(xc_array)
+            self._yc = np.ravel(yc_array)
+            self._zc = np.ravel(zc_array)
 
             # creating a new array, radius
-            self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
-                                    np.power(self.__zc,2.0))
+            self._radius = np.sqrt(np.power(self._xc,2.0) + np.power(self._yc,2.0) +\
+                                    np.power(self._zc,2.0))
 
             # from this, I will always setup vars for a rprof
             # we need a slight offset from the lowest value and highest value of grid for interpolation!
-            delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
+            delta_r = 2*np.min(self._xc[np.where(np.unique(self._xc)>0)])
             eps = 0.000001
-            self.__radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_ngridpoints/2.)-eps*delta_r*(self.moms_ngridpoints/2.),int(np.ceil(self.moms_ngridpoints/2.)))
+            self._radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_ngridpoints/2.)-eps*delta_r*(self.moms_ngridpoints/2.),int(np.ceil(self.moms_ngridpoints/2.)))
 
             # these are the boundaries, now I need what is my "actual" r value
-            self.radial_axis = self.__radial_boundary - delta_r/2.
+            self.radial_axis = self._radial_boundary - delta_r/2.
 
             # # construct the bins for computing averages ON radial_axis, these are "right edges"
             # delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
@@ -10364,28 +10364,28 @@ class MomsDataSet:
             # self.radial_bins = np.insert(radialbins,0,0)
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
-            self.__xc_view = self.__xc.view()
-            self.__xc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
-            self.__yc_view = self.__yc.view()
-            self.__yc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
-            self.__zc_view = self.__zc.view()
-            self.__zc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._xc_view = self._xc.view()
+            self._xc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._yc_view = self._yc.view()
+            self._yc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._zc_view = self._zc.view()
+            self._zc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
-            self.__radius_view = self.__radius.view()
-            self.__radius_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._radius_view = self._radius.view()
+            self._radius_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
             # grab unique values along x-axis
-            self.__unique_coord = self.__xc_view[0,0,:]
+            self._unique_coord = self._xc_view[0,0,:]
 
             # all is good, set that we have made our grid
-            self.__cgrid_exists = True
+            self._cgrid_exists = True
 
             return True
 
         else:
             return True
 
-    def __get_sgrid(self):
+    def _get_sgrid(self):
         '''
         Constructs the PPMStar spherical coordinates grid
 
@@ -10397,33 +10397,33 @@ class MomsDataSet:
         '''
 
         # check if we already have this in memory or not
-        if not self.__sgrid_exists:
+        if not self._sgrid_exists:
 
             # ok we are good to go for the spherical coordinates
 
             # we have the radius already, need theta and phi
-            self.__theta = np.arctan2(np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0)),self.__zc)
+            self._theta = np.arctan2(np.sqrt(np.power(self._xc,2.0) + np.power(self._yc,2.0)),self._zc)
 
             # with phi we have a problem with the way np.arctan2 works, we get negative
             # angles in quadrants 3 and 4. we can fix this by adding 2pi to the negative values
-            self.__phi = np.arctan2(self.__yc,self.__xc)
-            self.__phi[self.__phi < 0] += 2. * np.pi
+            self._phi = np.arctan2(self._yc,self._xc)
+            self._phi[self._phi < 0] += 2. * np.pi
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
-            self.__theta_view = self.__theta.view()
-            self.__theta_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
-            self.__phi_view = self.__phi.view()
-            self.__phi_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._theta_view = self._theta.view()
+            self._theta_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._phi_view = self._phi.view()
+            self._phi_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
             # ok all is good, set our flag that everything is good
-            self.__sgrid_exists = True
+            self._sgrid_exists = True
 
             return True
 
         else:
             return True
 
-    def __get_mgrid(self):
+    def _get_mgrid(self):
         '''
         Constructs the PPMStar mollweide spherical coordinates grid
 
@@ -10435,39 +10435,39 @@ class MomsDataSet:
         '''
 
         # check if we already have this in memory or not
-        if not self.__mollweide_exists:
+        if not self._mollweide_exists:
 
             # ok we now check to see if spherical coordinates has been made or not
-            if not self.__sgrid_exists:
-                self.__get_sgrid()
+            if not self._sgrid_exists:
+                self._get_sgrid()
 
             # we have a transform method, let's use it
-            self.__mollweide_theta, self.__mollweide_phi = self.__transform_mollweide(self.__theta.copy(),self.__phi.copy())
+            self._mollweide_theta, self._mollweide_phi = self._transform_mollweide(self._theta.copy(),self._phi.copy())
 
             # DS: I will save this code, it may be used in the future
             # and is a nice way of calculating this directly
             # # we have the radius already, need theta and phi
-            # self.__mollweide_theta = np.arctan2(self.__zc,np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0)))
+            # self._mollweide_theta = np.arctan2(self._zc,np.sqrt(np.power(self._xc,2.0) + np.power(self._yc,2.0)))
 
             # # with phi we have a problem with the way np.arctan2 works, we get negative
             # # angles in quadrants 3 and 4. This is what we want
-            # self.__mollweide_phi = np.arctan2(self.__yc,self.__xc)
+            # self._mollweide_phi = np.arctan2(self._yc,self._xc)
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
-            self.__mollweide_theta_view = self.__mollweide_theta.view()
-            self.__mollweide_theta_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
-            self.__mollweide_phi_view = self.__mollweide_phi.view()
-            self.__mollweide_phi_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._mollweide_theta_view = self._mollweide_theta.view()
+            self._mollweide_theta_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._mollweide_phi_view = self._mollweide_phi.view()
+            self._mollweide_phi_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
             # ok all is good, set our flag that everything is good
-            self.__mollweide_exists = True
+            self._mollweide_exists = True
 
             return True
 
         else:
             return True
 
-    def __get_interpolation(self,varloc, igrid, method, derivative, logvarloc, coefficients):
+    def _get_interpolation(self,varloc, igrid, method, derivative, logvarloc, coefficients):
         '''
         This function controls the which method of interpolation is done and how it is done.
 
@@ -10501,11 +10501,11 @@ class MomsDataSet:
         # what method?
 
         # trilinear
-        if method == self.__interpolation_methods[0]:
+        if method == self._interpolation_methods[0]:
 
             # first we create interpolation object from scipy
-            linear_interp = scipy.interpolate.RegularGridInterpolator((self.__unique_coord, self.__unique_coord,
-                                                                       self.__unique_coord),varloc)
+            linear_interp = scipy.interpolate.RegularGridInterpolator((self._unique_coord, self._unique_coord,
+                                                                       self._unique_coord),varloc)
 
             # we have a "flattened" in radii igrid, just pass all arguments to the interpolator
             varloc_interp = linear_interp(igrid)
@@ -10517,15 +10517,15 @@ class MomsDataSet:
         else:
 
             # before I begin, are there any igrid values that are on the boundary or outside of it
-            upper_bound = np.max(self.__unique_coord) - 1/2. * np.mean(np.abs(np.diff(self.__unique_coord)))
-            lower_bound = np.min(self.__unique_coord) + 1/2. * np.mean(np.abs(np.diff(self.__unique_coord)))
+            upper_bound = np.max(self._unique_coord) - 1/2. * np.mean(np.abs(np.diff(self._unique_coord)))
+            lower_bound = np.min(self._unique_coord) + 1/2. * np.mean(np.abs(np.diff(self._unique_coord)))
 
             # I will count zeros
             out_of_bounds = np.logical_or((igrid > upper_bound),(igrid < lower_bound))
 
             if np.count_nonzero(out_of_bounds.flatten()) > 0:
                 err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'.format(np.count_nonzero(out_of_bounds.flatten()))
-                self.__messenger.error(err)
+                self._messenger.error(err)
                 raise
 
             # first find the indices that have the closest igrid to our unique coordinates
@@ -10535,25 +10535,25 @@ class MomsDataSet:
             z_idx = np.zeros((np.shape(igrid)[0]),dtype=np.intp)
 
             # find the index of unique coord that is closest to igrid values
-            x_idx = np.searchsorted(self.__unique_coord,igrid[:,2])
-            y_idx = np.searchsorted(self.__unique_coord,igrid[:,1])
-            z_idx = np.searchsorted(self.__unique_coord,igrid[:,0])
+            x_idx = np.searchsorted(self._unique_coord,igrid[:,2])
+            y_idx = np.searchsorted(self._unique_coord,igrid[:,1])
+            z_idx = np.searchsorted(self._unique_coord,igrid[:,0])
 
             # search sorted finds index to the "right" in value from the igrid points. However, we need to find the index
             # where igrid points are closest to for appropriate interpolation. This corrects for that
-            x_idx[np.where((self.__unique_coord[x_idx] - igrid[:,2]) > np.mean(np.abs(np.diff(self.__unique_coord)))/2.)] -= 1
-            y_idx[np.where((self.__unique_coord[y_idx] - igrid[:,1]) > np.mean(np.abs(np.diff(self.__unique_coord)))/2.)] -= 1
-            z_idx[np.where((self.__unique_coord[z_idx] - igrid[:,0]) > np.mean(np.abs(np.diff(self.__unique_coord)))/2.)] -= 1
+            x_idx[np.where((self._unique_coord[x_idx] - igrid[:,2]) > np.mean(np.abs(np.diff(self._unique_coord)))/2.)] -= 1
+            y_idx[np.where((self._unique_coord[y_idx] - igrid[:,1]) > np.mean(np.abs(np.diff(self._unique_coord)))/2.)] -= 1
+            z_idx[np.where((self._unique_coord[z_idx] - igrid[:,0]) > np.mean(np.abs(np.diff(self._unique_coord)))/2.)] -= 1
 
             # now we call the actual interpolation
             if coefficients:
-                varloc_interp, a = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
+                varloc_interp, a = self._interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
                 return varloc_interp, a
             else:
-                varloc_interp = self.__interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
+                varloc_interp = self._interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
                 return varloc_interp
 
-    def __get_jacobian(self,x,y,z,r):
+    def _get_jacobian(self,x,y,z,r):
         '''
         This function creates the Jacobian to convert quantities defined in cartesian
         coordinates to spherical coordinates. This is a very large array of 9 x shape
@@ -10593,7 +10593,7 @@ class MomsDataSet:
         # jacobian transformation matrix has been computed
         return jacobian
 
-    def __get(self,varloc,fname=None):
+    def _get(self,varloc,fname=None):
         '''
         Returns variable var at a specific point in the simulation's time
         evolution. This is used internally for data claims that will be references
@@ -10620,29 +10620,29 @@ class MomsDataSet:
             fname = self.what_dump_am_i
 
         # quick check if we already have the momsdata in memory
-        if str(fname) in self.__many_momsdata:
+        if str(fname) in self._many_momsdata:
 
             try:
-                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
+                return self._many_momsdata[str(fname)].get(self._varloc[str(varloc)])
 
             except KeyError as e:
                 err = 'Invalid key for varloc. A list of keys: \n'
-                err += ', '.join(sorted(map(str,self.__varloc.keys())))
-                self.__messenger.error(err)
+                err += ', '.join(sorted(map(str,self._varloc.keys())))
+                self._messenger.error(err)
                 raise e
 
         else:
 
-            # grab a new datacube. This updates self.__momsdata.data
-            self.__get_dump(fname)
+            # grab a new datacube. This updates self._momsdata.data
+            self._get_dump(fname)
 
             try:
-                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)])
+                return self._many_momsdata[str(fname)].get(self._varloc[str(varloc)])
 
             except KeyError as e:
                 err = 'Invalid key for varloc. A list of keys: \n'
-                err += ', '.join(sorted(map(str,self.__varloc.keys())))
-                self.__messenger.error(err)
+                err += ', '.join(sorted(map(str,self._varloc.keys())))
+                self._messenger.error(err)
                 raise e
 
     def get_dump_list(self):
@@ -10650,7 +10650,7 @@ class MomsDataSet:
         Returns a list of dumps available.
         '''
         
-        return list(self.__dumps)
+        return list(self._dumps)
 
     def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', derivative='', logvarloc=False, coefficients=False):
         '''
@@ -10698,54 +10698,54 @@ class MomsDataSet:
         # first check if we have a np.ndarray or not
         if isinstance(varloc,np.ndarray):
 
-            # check if it is the same shape as self.__xc_view
-            if varloc.shape != self.__xc_view.shape:
+            # check if it is the same shape as self._xc_view
+            if varloc.shape != self._xc_view.shape:
 
                 # we can try reshaping
                 try:
-                    varloc.reshape(self.__xc_view.shape)
+                    varloc.reshape(self._xc_view.shape)
                 except ValueError as e:
-                    err = 'The varloc given cannot be reshaped into ' + str(self.__xc_view.shape)
-                    self.__messenger.error(err)
+                    err = 'The varloc given cannot be reshaped into ' + str(self._xc_view.shape)
+                    self._messenger.error(err)
                     raise e
 
         else:
 
             # varloc is a reference for a get method
-            varloc = self.__get(varloc,fname)
+            varloc = self._get(varloc,fname)
 
         # varloc is good, are we applying log10 to it?
         if logvarloc:
             varloc = np.log10(varloc.copy())
 
         # make sure that our method string is actually a real method
-        if not list(filter(lambda x: method in x, self.__interpolation_methods)):
+        if not list(filter(lambda x: method in x, self._interpolation_methods)):
             err = 'The inputted method, '+method+' is not any of the known methods, '
-            err.join(self.__interpolation_methods)
-            self.__messenger.error(err)
+            err.join(self._interpolation_methods)
+            self._messenger.error(err)
             raise
 
         # to make sure we dont break the code, coefficients must be False for trilinear
-        elif method == self.__interpolation_methods[0]:
+        elif method == self._interpolation_methods[0]:
             coefficients = False
 
         # make sure that igrid is the correct shape
         if len(igrid.shape) != 2 or igrid.shape[1] != 3:
             err = 'The igrid is not the correct shape. It must be [npoints,3] but it is '.join(igrid.shape)
-            self.__messenger.error(err)
+            self._messenger.error(err)
             raise
 
         # make sure derivative only has x,y or z in it
         if derivative:
             if not bool(re.match('^[xyz]+$', derivative)):
                 err = 'The derivative string, {0}, does not have x,y,z in it or contains other characters'.format(derivative)
-                self.__messenger.error(err)
+                self._messenger.error(err)
                 raise
 
         # Now all of the hard work is done in other methods for the interpolation
         if coefficients:
             # we just return w.e varloc_interp is, a list or an array and the coefficients
-            varloc_interp, a = self.__get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
+            varloc_interp, a = self._get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
 
             # did we log it?
             if logvarloc:
@@ -10754,7 +10754,7 @@ class MomsDataSet:
                 return varloc_interp, a
         else:
             # we just return w.e varloc_interp is, a list or an array
-            varloc_interp = self.__get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
+            varloc_interp = self._get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
 
             # did we log it?
             if logvarloc:
@@ -10804,7 +10804,7 @@ class MomsDataSet:
             # make sure nothing is too large
             if np.max(radial_axis) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
                 err = 'The input radial_axis has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radial_axis),np.max(self.radial_axis))
-                self.__messenger.error(err)
+                self._messenger.error(err)
                 raise
 
             # we basically just call interpolation over radial_axis, trilinear is default
@@ -10844,11 +10844,11 @@ class MomsDataSet:
         # else:
         #     # get the grid from a momsdata cube
         #     # because we need a flattened array, ravel will create a new array
-        #     quantity = np.ravel(self.__get(varloc,fname))
+        #     quantity = np.ravel(self._get(varloc,fname))
 
         # # This will apply a "mean" to the quantity that is binned by radialbins
-        # # using the self.__radius values
-        # average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self.__radius,quantity,'mean',self.radial_bins)
+        # # using the self._radius values
+        # average_quantity, bin_edge, binnumber = scipy.stats.binned_statistic(self._radius,quantity,'mean',self.radial_bins)
 
         # # return the radprof and radial_axis
         # return average_quantity, self.radial_axis
@@ -10864,7 +10864,7 @@ class MomsDataSet:
         '''
 
         # we use these internally, so we give copies
-        return self.__xc_view.copy(), self.__yc_view.copy(), self.__zc_view.copy()
+        return self._xc_view.copy(), self._yc_view.copy(), self._zc_view.copy()
 
     def get_sgrid(self):
         '''
@@ -10878,11 +10878,11 @@ class MomsDataSet:
         '''
 
         # does this exist yet?
-        if not self.__sgrid_exists:
-            self.__get_sgrid()
+        if not self._sgrid_exists:
+            self._get_sgrid()
 
         # these are not used internally and so we can give them the real grid (except for radius!)
-        return self.__radius_view.copy(), self.__theta_view.copy(), self.__phi_view.copy()
+        return self._radius_view.copy(), self._theta_view.copy(), self._phi_view.copy()
 
     def get_mgrid(self):
         '''
@@ -10898,11 +10898,11 @@ class MomsDataSet:
         '''
 
         # DOES this exist yet?
-        if not self.__mollweide_exists:
-            self.__get_mgrid()
+        if not self._mollweide_exists:
+            self._get_mgrid()
 
         # these are not used internally and so we can give them the real grid
-        return self.__mollweide_theta_view.copy(), self.__mollweide_phi_view()
+        return self._mollweide_theta_view.copy(), self._mollweide_phi_view()
 
     def get_mollweide_coordinates(self,theta=None,phi=None):
         '''
@@ -10928,7 +10928,7 @@ class MomsDataSet:
         if isinstance(theta,np.ndarray) and isinstance(phi,np.ndarray):
 
             # I want to convert this array
-            theta_copy, phi_copy = self.__transform_mollweide(theta,phi)
+            theta_copy, phi_copy = self._transform_mollweide(theta,phi)
 
             return theta_copy, phi_copy
 
@@ -10958,7 +10958,7 @@ class MomsDataSet:
         if isinstance(theta,np.ndarray) and isinstance(phi,np.ndarray):
 
             # I want to convert this array
-            theta_copy, phi_copy = self.__transform_spherical(theta,phi)
+            theta_copy, phi_copy = self._transform_spherical(theta,phi)
 
             return theta_copy, phi_copy
 
@@ -11039,7 +11039,7 @@ class MomsDataSet:
         igrid = np.zeros((len(radius)*npoints,3))
 
         # we only need the spherical grid once. We can update zyx_grid easily!
-        igrid[:npoints], theta_grid, phi_grid = self.__uniform_spherical_grid(radius[0], npoints)
+        igrid[:npoints], theta_grid, phi_grid = self._uniform_spherical_grid(radius[0], npoints)
 
         # now to get the rest of the coordinates if needed
         if len(radius) > 1:
@@ -11117,25 +11117,25 @@ class MomsDataSet:
 
         # first check if we are using the grid or not
         if not isinstance(igrid,np.ndarray):
-            if not self.__grid_jacobian_exists:
+            if not self._grid_jacobian_exists:
 
                 # create the grid jacobian, keep this in memory
-                self.__grid_jacobian = self.__get_jacobian(self.__xc_view,self.__yc_view,self.__zc_view, self.__radius_view)
-                self.__grid_jacobian_exists = True
+                self._grid_jacobian = self._get_jacobian(self._xc_view,self._yc_view,self._zc_view, self._radius_view)
+                self._grid_jacobian_exists = True
 
             # local variable to reference internal jacobian
-            jacobian = self.__grid_jacobian
+            jacobian = self._grid_jacobian
         else:
             radius = np.sqrt(np.power(igrid[:,2],2.0) + np.power(igrid[:,1],2.0) + np.power(igrid[:,0],2.0))
-            jacobian = self.__get_jacobian(igrid[:,2],igrid[:,1],igrid[:,0],radius)
+            jacobian = self._get_jacobian(igrid[:,2],igrid[:,1],igrid[:,0],radius)
 
         # first grab quantities if we need to
         if not isinstance(ux,np.ndarray):
-            ux = self.__get(ux,fname)
+            ux = self._get(ux,fname)
         if not isinstance(uy,np.ndarray):
-            uy = self.__get(uy,fname)
+            uy = self._get(uy,fname)
         if not isinstance(uz,np.ndarray):
-            uz = self.__get(uz,fname)
+            uz = self._get(uz,fname)
 
         ur = ux * jacobian[0] + uy * jacobian[1] + uz * jacobian[2]
         utheta = ux * jacobian[3] + uy * jacobian[4] + uz * jacobian[5]
@@ -11171,33 +11171,33 @@ class MomsDataSet:
             fname = self.what_dump_am_i
 
         # quick check if we already have the momsdata in memory
-        if str(fname) in self.__many_momsdata:
+        if str(fname) in self._many_momsdata:
 
             # This is public, we must give a copy
             # let's try this, if we get key error then obviously...
             try:
-                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
+                return self._many_momsdata[str(fname)].get(self._varloc[str(varloc)]).copy()
 
             except KeyError as e:
                 err = 'Invalid key for varloc. A list of keys: \n'
-                err += ', '.join(sorted(map(str,self.__varloc.keys())))
-                self.__messenger.error(err)
+                err += ', '.join(sorted(map(str,self._varloc.keys())))
+                self._messenger.error(err)
                 raise e
 
         else:
 
-            # grab a new datacube. If we don't have this in memory already (self.__many_momsdata) we grab a new datacube
-            self.__get_dump(fname)
+            # grab a new datacube. If we don't have this in memory already (self._many_momsdata) we grab a new datacube
+            self._get_dump(fname)
 
             # This is public, we must give a copy
             # let's try this, if we get key error then obviously...
             try:
-                return self.__many_momsdata[str(fname)].get(self.__varloc[str(varloc)]).copy()
+                return self._many_momsdata[str(fname)].get(self._varloc[str(varloc)]).copy()
 
             except KeyError as e:
                 err = 'Invalid key for varloc. A list of keys: \n'
-                err += ', '.join(sorted(map(str,self.__varloc.keys())))
-                self.__messenger.error(err)
+                err += ', '.join(sorted(map(str,self._varloc.keys())))
+                self._messenger.error(err)
                 raise e
 
     def gradient(self,f,fname=None):
@@ -11220,14 +11220,14 @@ class MomsDataSet:
         '''
 
         if not isinstance(f,np.ndarray):
-            f = self.__get(f,fname)
+            f = self._get(f,fname)
         else:
             # check len of shape of f
             if len(f.shape) != 3:
                 err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'.format(self.moms_ngridpoints)
 
         # we use the unique coordinates as the values on the grid (these should have had uniform spacing but don't...)
-        gradf = np.gradient(f,self.__unique_coord,self.__unique_coord,self.__unique_coord)
+        gradf = np.gradient(f,self._unique_coord,self._unique_coord,self._unique_coord)
 
         # we get fz, fy and then fx, rearrange
         gradf.reverse()
@@ -11256,11 +11256,11 @@ class MomsDataSet:
         '''
 
         if not isinstance(ux,np.ndarray):
-            ux = self.__get(ux,fname)
+            ux = self._get(ux,fname)
         if not isinstance(uy,np.ndarray):
-            uy = self.__get(uy,fname)
+            uy = self._get(uy,fname)
         if not isinstance(uz,np.ndarray):
-            uz = self.__get(uz,fname)
+            uz = self._get(uz,fname)
 
         return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
 
@@ -11383,7 +11383,8 @@ class MomsDataSet2X(MomsDataSet):
         super().__init__(dir_name, init_dump_read, dumps_in_mem, var_list,
                          rprofset=rprof_set, verbose=3)
 
-    def __get_dump(self, dump):
+
+    def _get_dump(self, dump):
         '''
         Gets a new dump for MomsData2X or instantiates MomsData2X
         
@@ -11392,40 +11393,40 @@ class MomsDataSet2X(MomsDataSet):
         dump: integer
         '''
         
-        if dump not in self.__dumps:
+        if dump not in self._dumps:
             err = 'Dump {:d} is not available.'.format(dump)
-            self.__messenger.error(err)
+            self._messenger.error(err)
             return None
         
-        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
-                                                             dump, self.__run_id, dump)
+        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self._dir_name, \
+                                                             dump, self._run_id, dump)
 
         # we first check if we can add a new moments data to memory
         # without removing another
-        if len(self.__many_momsdata) < self.__dumps_in_mem:
+        if len(self._many_momsdata) < self._dumps_in_mem:
 
             # add it to our dictionary!
-            self.__many_momsdata.update(zip([str(dump)],[MomsData2X(file_path)]))
+            self._many_momsdata.update(zip([str(dump)],[MomsData2X(file_path)]))
 
             # append the key. This keeps track of order of read in
-            self.__many_momsdata_keys.append(str(dump))
+            self._many_momsdata_keys.append(str(dump))
 
         else:
 
             # we gotta remove one of them, this will be index 0 of a list
-            del self.__many_momsdata[str(self.__many_momsdata_keys[0])]
-            self.__many_momsdata_keys.remove(self.__many_momsdata_keys[0])
+            del self._many_momsdata[str(self._many_momsdata_keys[0])]
+            self._many_momsdata_keys.remove(self._many_momsdata_keys[0])
 
             # now add a new momsdata object to our dict
-            self.__many_momsdata.update(zip([str(dump)],[MomsData2X(file_path)]))
+            self._many_momsdata.update(zip([str(dump)],[MomsData2X(file_path)]))
 
             # append the key. This keeps track of order of read in
-            self.__many_momsdata_keys.append(str(dump))
+            self._many_momsdata_keys.append(str(dump))
 
         # all is good. update what_dump_am_i
         self.what_dump_am_i = dump
 
-    def __set_dictionaries(self,var_list):
+    def _set_dictionaries(self,var_list):
         '''
         This function will setup the dictionaries that will house multiple moments data objects and
         a convenience dictionary to refer to the SINGLE FV2X variable by a string
@@ -11438,42 +11439,42 @@ class MomsDataSet2X(MomsDataSet):
         '''
 
         # because we only have one variable...
-        self.__number_of_whatevers = 1
+        self._number_of_whatevers = 1
 
         # check if the list is empty
         if not var_list:
 
             # ok it is empty, construct default dictionary
-            var_keys = [str(i) for i in range(self.__number_of_whatevers)]
-            var_vals = [i for i in range(self.__number_of_whatevers)]
+            var_keys = [str(i) for i in range(self._number_of_whatevers)]
+            var_vals = [i for i in range(self._number_of_whatevers)]
 
         else:
 
             # first we check that var_list is the correct length
-            if len(var_list) != self.__number_of_whatevers:
+            if len(var_list) != self._number_of_whatevers:
 
                 # we use the default
-                var_keys = [str(i) for i in range(self.__number_of_whatevers)]
-                var_vals = [i for i in range(self.__number_of_whatevers)]
+                var_keys = [str(i) for i in range(self._number_of_whatevers)]
+                var_vals = [i for i in range(self._number_of_whatevers)]
 
             else:
 
                 # ok we are in the clear
                 var_keys = [str(i) for i in var_list]
-                var_vals = [i for i in range(self.__number_of_whatevers)]
+                var_vals = [i for i in range(self._number_of_whatevers)]
 
                 # I will also allow for known internal varloc to point to the same things
                 # with this dictionary, i.e xc: varloc = 0 ALWAYS
-                var_keys2 = [str(i) for i in range(self.__number_of_whatevers)]
+                var_keys2 = [str(i) for i in range(self._number_of_whatevers)]
 
-                self.__varloc.update(zip(var_keys2,var_vals))
+                self._varloc.update(zip(var_keys2,var_vals))
 
         # construct the variable dictionary
-        self.__varloc.update(zip(var_keys,var_vals))
+        self._varloc.update(zip(var_keys,var_vals))
 
         return True
 
-    def __get_cgrid(self):
+    def _get_cgrid(self):
         '''
         Constructs the PPMStar cartesian grid from the internal rprofset
 
@@ -11485,10 +11486,10 @@ class MomsDataSet2X(MomsDataSet):
         '''
 
         # check, do we already have this?
-        if not self.__cgrid_exists:
+        if not self._cgrid_exists:
 
             # we can construct the xc_array
-            rprof = self.__rprofset.get_dump(self.__rprofset.get_dump_list()[0])
+            rprof = self._rprofset.get_dump(self._rprofset.get_dump_list()[0])
             dx = rprof.get('deex')
 
             # 4 * dx * (ngridpoints/2.) gives me the right boundary but I want the central value so
@@ -11517,22 +11518,22 @@ class MomsDataSet2X(MomsDataSet):
 
             # unfortunately we have to flatten these. This creates copies as
             # they are not contiguous memory chunks... (data is a portion of ghostdata)
-            self.__xc = np.ravel(xc_array)
-            self.__yc = np.ravel(yc_array)
-            self.__zc = np.ravel(zc_array)
+            self._xc = np.ravel(xc_array)
+            self._yc = np.ravel(yc_array)
+            self._zc = np.ravel(zc_array)
 
             # creating a new array, radius
-            self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
-                                    np.power(self.__zc,2.0))
+            self._radius = np.sqrt(np.power(self._xc,2.0) + np.power(self._yc,2.0) +\
+                                    np.power(self._zc,2.0))
 
             # from this, I will always setup vars for a rprof
             # we need a slight offset from the lowest value and highest value of grid for interpolation!
-            delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
+            delta_r = 2*np.min(self._xc[np.where(np.unique(self._xc)>0)])
             eps = 0.000001
-            self.__radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_ngridpoints/2.)-eps*delta_r*(self.moms_ngridpoints/2.),int(np.ceil(self.moms_ngridpoints/2.)))
+            self._radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_ngridpoints/2.)-eps*delta_r*(self.moms_ngridpoints/2.),int(np.ceil(self.moms_ngridpoints/2.)))
 
             # these are the boundaries, now I need what is my "actual" r value
-            self.radial_axis = self.__radial_boundary - delta_r/2.
+            self.radial_axis = self._radial_boundary - delta_r/2.
 
             # # construct the bins for computing averages ON radial_axis, these are "right edges"
             # delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
@@ -11540,21 +11541,21 @@ class MomsDataSet2X(MomsDataSet):
             # self.radial_bins = np.insert(radialbins,0,0)
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
-            self.__xc_view = self.__xc.view()
-            self.__xc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
-            self.__yc_view = self.__yc.view()
-            self.__yc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
-            self.__zc_view = self.__zc.view()
-            self.__zc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._xc_view = self._xc.view()
+            self._xc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._yc_view = self._yc.view()
+            self._yc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._zc_view = self._zc.view()
+            self._zc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
-            self.__radius_view = self.__radius.view()
-            self.__radius_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._radius_view = self._radius.view()
+            self._radius_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
             # grab unique values along x-axis
-            self.__unique_coord = self.__xc_view[0,0,:]
+            self._unique_coord = self._xc_view[0,0,:]
 
             # all is good, set that we have made our grid
-            self.__cgrid_exists = True
+            self._cgrid_exists = True
 
             return True
 
