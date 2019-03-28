@@ -9749,7 +9749,9 @@ class MomsData():
 
         # my removed "ghost" values is quite easy! Now in an intuitive format
         # self.data[z,y,x]
-        self.data = ghostview[0:,(self.__ghost-1):(self.ngridpoints+self.__ghost-1),                            (self.__ghost-1):(self.ngridpoints+self.__ghost-1),(self.__ghost-1):(self.ngridpoints+self.__ghost-1)]
+        self.data = ghostview[0:,(self.__ghost-1):(self.ngridpoints+self.__ghost-1),
+                              (self.__ghost-1):(self.ngridpoints+self.__ghost-1),
+                              (self.__ghost-1):(self.ngridpoints+self.__ghost-1)]
 
         return True
 
@@ -10302,7 +10304,7 @@ class MomsDataSet:
                 right_xcbound = 4. * dx * (self.moms_ngridpoints/2.) - 4. * (dx/2.)
                 left_xcbound = -right_xcbound
 
-                # linspace sucks, somehow it isnt even! Let's do it ourselves...
+                # So unfortunately float32 is terrible, only accurate to 1e-6. This isn't strictly uniform...
                 grid_values = 4. * dx * np.arange(0,self.moms_ngridpoints) + left_xcbound
 
                 xc_array = np.ones((self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)) * grid_values
@@ -10317,7 +10319,7 @@ class MomsDataSet:
                 right_xcbound = np.mean(np.diff(unique_x)) * (self.moms_ngridpoints/2.) - np.mean(np.diff(unique_x))/2.
                 left_xcbound = -right_xcbound
 
-                # linspace sucks, somehow it isnt even! Let's do it ourselves...
+                # So unfortunately float32 is terrible, only accurate to 1e-6. This isn't strictly uniform...
                 grid_values = (np.mean(np.diff(unique_x)) * np.arange(0,self.moms_ngridpoints)) + left_xcbound
 
                 xc_array = np.ones((self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)) * grid_values
@@ -10356,10 +10358,10 @@ class MomsDataSet:
             # these are the boundaries, now I need what is my "actual" r value
             self.radial_axis = self.__radial_boundary - delta_r/2.
 
-            # construct the bins for computing averages ON radial_axis, these are "right edges"
-            delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
-            radialbins = self.radial_axis + delta_r
-            self.radial_bins = np.insert(radialbins,0,0)
+            # # construct the bins for computing averages ON radial_axis, these are "right edges"
+            # delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+            # radialbins = self.radial_axis + delta_r
+            # self.radial_bins = np.insert(radialbins,0,0)
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self.__xc_view = self.__xc.view()
@@ -10372,7 +10374,7 @@ class MomsDataSet:
             self.__radius_view = self.__radius.view()
             self.__radius_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
 
-            # we have uneven spacing in general... grab unique values along x-axis
+            # grab unique values along x-axis
             self.__unique_coord = self.__xc_view[0,0,:]
 
             # all is good, set that we have made our grid
@@ -10943,9 +10945,9 @@ class MomsDataSet:
         Parameters
         ----------
         theta: np.ndarray
-            np.ndarray: Convert this theta from "physics" to "mollweide" definitions
+            np.ndarray: Convert this theta from "mollweide" to "physics" definitions
         phi: np.ndarray
-            np.ndarray: Convert this phi from "physics" to "mollweide" definitions
+            np.ndarray: Convert this phi from "mollweide" to "physics" definitions
 
         Returns
         -------
@@ -11265,7 +11267,7 @@ class MomsDataSet:
 # now the 2X classes will override a couple of methods in the instantiation processes
 class MomsData2X(MomsData):
     '''
-    MomsData2x reads in the half briquette resoultion datacube which will contain
+    MomsData2x reads in the half briquette resolution datacube which will contain
     only one quantity (we need 8 "varlocs" for one quantity!) In the
     MomentsDataSet2X it is assumed that an rprof is supplied so that a suitable
     grid can be made.
@@ -11287,8 +11289,287 @@ class MomsData2X(MomsData):
         super().__init__(file_path, verbose)
 
         # now I have a formatted self.data. I will assume the first 8 quantities
-        # are in fact the "2X" quantity and so
+        # are in fact the "2X" quantity and so I will construct the double
+        # resolution grid
+        self.ngridpoints = int(2*self.ngridpoints)
+        self.data2x = np.zeros((self.ngridpoints,self.ngridpoints,self.ngridpoints),
+                               dtype=float32)
 
+        # for an example, this is supposed to be fv2x then the following convention
+        # for the order of varlocs is:
+        # fvlbn, fvrbn, fvltn, fvrtn, fvlbf, fvrbf, fvltf, fvrtf
+        # Where:
+        # for x coordinate: l is "left", r is "right"
+        # for y coordinate: b is "bottom", t is "top"
+        # for z coordinate: n is "near", f is "far"
+
+        fvlbn = self.data[0]
+        fvrbn = self.data[1]
+
+        fvltn = self.data[2]
+        fvrtn = self.data[3]
+
+        fvlbf = self.data[4]
+        fvrbf = self.data[5]
+
+        fvltf = self.data[6]
+        fvrtf = self.data[7]
+
+        # since we have [z,y,x] we can do...
+        self.data2x[0:-1:2,0:-1:2,0:-1:2] = fvlbn
+        self.data2x[0:-1:2,0:-1:2,1::2] = fvrbn
+
+        self.data2x[0:-1:2,1::2,0:-1:2] = fvltn
+        self.data2x[0:-1:2,1::2,1::2] = fvrtn
+
+        self.data2x[1::2,0:-1:2,0:-1:2] = fvlbf
+        self.data2x[1::2,0:-1:2,1::2] = fvrbf
+
+        self.data2x[1::2,1::2,0:-1:2] = fvltf
+        self.data2x[1::2,1::2,1::2] = fvrtf
+
+        # delete data
+        del self.data
+
+    # override get
+    def get(self, varloc):
+        '''
+        Returns a 3d array of the variable that is defined at whatever(varloc).
+
+        Parameters
+        ----------
+        varloc: integer
+            integer index of the quantity that is defined under whatever(varloc).
+            This is completely ignored as there is only one variable
+        
+        Returns
+        -------
+        np.ndarray
+            The 2X variable
+        '''
+
+        # we have no other variables, only return data2x
+        return self.data2x
+
+
+class MomsDataSet2X(MomsDataSet):
+    '''
+    MomsDataSet2X contains a set of dumps of MomsData2X from a single run of the
+    Moments reader from PPMstar 2.0.
+    '''
+
+    def __init__(self, dir_name, rprof_set, init_dump_read=0, dumps_in_mem=2, var_list=[], verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        dir_name: string
+            Name of the directory to be searched for .aaa uncompressed moms datacubes
+        rprofset: RprofSet
+            The grid MUST be constructed 
+        init_dump_read: integer
+            The initial dump to read into memory when object is initialized
+        dumps_in_mem: integer
+            The number of dumps to be held into memory. These datacubes can be large (~2Gb for 384^3)
+        var_list: list
+            This is a list that can be filled with strings that will reference data. Since
+            this is a 2X quantity, there is only one quantity!
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''        
+
+        # we can call super init but override a few methods
+        super().__init__(dir_name, init_dump_read, dumps_in_mem, var_list,
+                         rprofset=rprof_set, verbose=3)
+
+    def __get_dump(self, dump):
+        '''
+        Gets a new dump for MomsData2X or instantiates MomsData2X
+        
+        Parameters
+        ----------
+        dump: integer
+        '''
+        
+        if dump not in self.__dumps:
+            err = 'Dump {:d} is not available.'.format(dump)
+            self.__messenger.error(err)
+            return None
+        
+        file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self.__dir_name, \
+                                                             dump, self.__run_id, dump)
+
+        # we first check if we can add a new moments data to memory
+        # without removing another
+        if len(self.__many_momsdata) < self.__dumps_in_mem:
+
+            # add it to our dictionary!
+            self.__many_momsdata.update(zip([str(dump)],[MomsData2X(file_path)]))
+
+            # append the key. This keeps track of order of read in
+            self.__many_momsdata_keys.append(str(dump))
+
+        else:
+
+            # we gotta remove one of them, this will be index 0 of a list
+            del self.__many_momsdata[str(self.__many_momsdata_keys[0])]
+            self.__many_momsdata_keys.remove(self.__many_momsdata_keys[0])
+
+            # now add a new momsdata object to our dict
+            self.__many_momsdata.update(zip([str(dump)],[MomsData2X(file_path)]))
+
+            # append the key. This keeps track of order of read in
+            self.__many_momsdata_keys.append(str(dump))
+
+        # all is good. update what_dump_am_i
+        self.what_dump_am_i = dump
+
+    def __set_dictionaries(self,var_list):
+        '''
+        This function will setup the dictionaries that will house multiple moments data objects and
+        a convenience dictionary to refer to the SINGLE FV2X variable by a string
+
+        Returns
+        -------
+        Boolean
+            True if successful
+            False if failure
+        '''
+
+        # because we only have one variable...
+        self.__number_of_whatevers = 1
+
+        # check if the list is empty
+        if not var_list:
+
+            # ok it is empty, construct default dictionary
+            var_keys = [str(i) for i in range(self.__number_of_whatevers)]
+            var_vals = [i for i in range(self.__number_of_whatevers)]
+
+        else:
+
+            # first we check that var_list is the correct length
+            if len(var_list) != self.__number_of_whatevers:
+
+                # we use the default
+                var_keys = [str(i) for i in range(self.__number_of_whatevers)]
+                var_vals = [i for i in range(self.__number_of_whatevers)]
+
+            else:
+
+                # ok we are in the clear
+                var_keys = [str(i) for i in var_list]
+                var_vals = [i for i in range(self.__number_of_whatevers)]
+
+                # I will also allow for known internal varloc to point to the same things
+                # with this dictionary, i.e xc: varloc = 0 ALWAYS
+                var_keys2 = [str(i) for i in range(self.__number_of_whatevers)]
+
+                self.__varloc.update(zip(var_keys2,var_vals))
+
+        # construct the variable dictionary
+        self.__varloc.update(zip(var_keys,var_vals))
+
+        return True
+
+    def __get_cgrid(self):
+        '''
+        Constructs the PPMStar cartesian grid from the internal rprofset
+
+        Returns
+        -------
+        Boolean
+            True on success.
+            False on failure.
+        '''
+
+        # check, do we already have this?
+        if not self.__cgrid_exists:
+
+            # we can construct the xc_array
+            rprof = self.__rprofset.get_dump(self.__rprofset.get_dump_list()[0])
+            dx = rprof.get('deex')
+
+            # 4 * dx * (ngridpoints/2.) gives me the right boundary but I want the central value so
+            right_xcbound = 2. * dx * (self.moms_ngridpoints/2.) - 2. * (dx/2.)
+            left_xcbound = -right_xcbound
+
+            # So unfortunately float32 is terrible, only accurate to 1e-6. This isn't strictly uniform...
+            grid_values = 2. * dx * np.arange(0,self.moms_ngridpoints) + left_xcbound
+
+            xc_array = np.ones((self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)) * grid_values
+
+            # x contains all the info for y and z, just different order. I figured this out
+            # and lets use strides so that we don't allocate new wasteful arrays (~230Mb for 1536!)
+            xc_strides = xc_array.strides
+            xorder = [i for i in xc_strides]
+
+            yc_array = np.lib.stride_tricks.as_strided(xc_array,shape=(self.moms_ngridpoints,
+                                                                         self.moms_ngridpoints,
+                                                                         self.moms_ngridpoints),
+                                                        strides=(xorder[1],xorder[2],xorder[0]))
+
+            zc_array = np.lib.stride_tricks.as_strided(xc_array,shape=(self.moms_ngridpoints,
+                                                                         self.moms_ngridpoints,
+                                                                         self.moms_ngridpoints),
+                                                        strides=(xorder[2],xorder[0],xorder[1]))
+
+            # unfortunately we have to flatten these. This creates copies as
+            # they are not contiguous memory chunks... (data is a portion of ghostdata)
+            self.__xc = np.ravel(xc_array)
+            self.__yc = np.ravel(yc_array)
+            self.__zc = np.ravel(zc_array)
+
+            # creating a new array, radius
+            self.__radius = np.sqrt(np.power(self.__xc,2.0) + np.power(self.__yc,2.0) +\
+                                    np.power(self.__zc,2.0))
+
+            # from this, I will always setup vars for a rprof
+            # we need a slight offset from the lowest value and highest value of grid for interpolation!
+            delta_r = 2*np.min(self.__xc[np.where(np.unique(self.__xc)>0)])
+            eps = 0.000001
+            self.__radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_ngridpoints/2.)-eps*delta_r*(self.moms_ngridpoints/2.),int(np.ceil(self.moms_ngridpoints/2.)))
+
+            # these are the boundaries, now I need what is my "actual" r value
+            self.radial_axis = self.__radial_boundary - delta_r/2.
+
+            # # construct the bins for computing averages ON radial_axis, these are "right edges"
+            # delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+            # radialbins = self.radial_axis + delta_r
+            # self.radial_bins = np.insert(radialbins,0,0)
+
+            # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
+            self.__xc_view = self.__xc.view()
+            self.__xc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self.__yc_view = self.__yc.view()
+            self.__yc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self.__zc_view = self.__zc.view()
+            self.__zc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+
+            self.__radius_view = self.__radius.view()
+            self.__radius_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+
+            # grab unique values along x-axis
+            self.__unique_coord = self.__xc_view[0,0,:]
+
+            # all is good, set that we have made our grid
+            self.__cgrid_exists = True
+
+            return True
+
+        else:
+            return True
+
+    # The following methods are overridden as they make no sense for a single
+    # variable that is 2X
+    def get_spherical_components(self):
+        print('This method does not make any sense for a single 2X quantity, overridden')
+        return None
+
+    def norm(self):
+        print('This method does not make any sense for a single 2X quantity, overridden')
+        return None
 
 # DS: my convenient plot figure handling functions
 def add_plot(celln, ifig, ptrack):
