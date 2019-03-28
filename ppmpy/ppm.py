@@ -9674,7 +9674,8 @@ class Rprof:
 class MomsData():
     '''
     MomsData reads in a single briquette averaged data cube which contains up
-    to 10 user-defined variables. It is assumed that whatever(0) = xc
+    to 10 user-defined variables. In the MomentsDataSet it is assumed that either
+    whatever(0) = xc OR an rprof is supplied so that a suitable grid can be made. 
     '''
 
     # we have a couple of "constant" class variables
@@ -10301,7 +10302,8 @@ class MomsDataSet:
                 right_xcbound = 4. * dx * (self.moms_ngridpoints/2.) - 4. * (dx/2.)
                 left_xcbound = -right_xcbound
 
-                grid_values = np.linspace(left_xcbound,right_xcbound,self.moms_ngridpoints)
+                # linspace sucks, somehow it isnt even! Let's do it ourselves...
+                grid_values = 4. * dx * np.arange(0,self.moms_ngridpoints) + left_xcbound
 
                 xc_array = np.ones((self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)) * grid_values
 
@@ -10315,7 +10317,8 @@ class MomsDataSet:
                 right_xcbound = np.mean(np.diff(unique_x)) * (self.moms_ngridpoints/2.) - np.mean(np.diff(unique_x))/2.
                 left_xcbound = -right_xcbound
 
-                grid_values = np.linspace(left_xcbound,right_xcbound,self.moms_ngridpoints)
+                # linspace sucks, somehow it isnt even! Let's do it ourselves...
+                grid_values = (np.mean(np.diff(unique_x)) * np.arange(0,self.moms_ngridpoints)) + left_xcbound
 
                 xc_array = np.ones((self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)) * grid_values
 
@@ -11026,7 +11029,7 @@ class MomsDataSet:
         # do we have many radii?
         try:
             first_r = radius[0]
-        except TypeError as e:
+        except IndexError as e:
             # ok, we have an error, it is a single float or int
             radius = [radius]
 
@@ -11258,6 +11261,33 @@ class MomsDataSet:
             uz = self.__get(uz,fname)
 
         return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
+
+# now the 2X classes will override a couple of methods in the instantiation processes
+class MomsData2X(MomsData):
+    '''
+    MomsData2x reads in the half briquette resoultion datacube which will contain
+    only one quantity (we need 8 "varlocs" for one quantity!) In the
+    MomentsDataSet2X it is assumed that an rprof is supplied so that a suitable
+    grid can be made.
+    '''
+
+    def __init__(self, file_path, verbose=3):
+        '''
+        Init method.
+        
+        Parameters
+        ----------
+        file_path: string
+            Path to the set of .aaa files.
+        verbose: integer
+            Verbosity level as defined in class Messenger.
+        '''        
+
+        # we will call MomsData to read in everything in the standard fashion
+        super().__init__(file_path, verbose)
+
+        # now I have a formatted self.data. I will assume the first 8 quantities
+        # are in fact the "2X" quantity and so
 
 
 # DS: my convenient plot figure handling functions
