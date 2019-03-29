@@ -9159,14 +9159,13 @@ class RprofSet(PPMtools):
             self.rp_plot([dump1,dump2],ything,logy=log10y)
         rp_hst = self.get_history()
         dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
-        dumpmean1 = int((-dumpmin + dumpmax)/3.)
         dumpmean = int(2*(-dumpmin + dumpmax)/3.)
         things_list = self.get_dump(dumpmin).get_lr_variables()+\
                           self.get_dump(dumpmin).get_hr_variables()
         interact(w_plot,dump1=widgets.IntSlider(min=dumpmin,\
-                max=dumpmax,step=1,value=dumpmean),\
+                max=dumpmax,step=1,value=int(dumpmin+0.05*(dumpmean-dumpmin))),\
                      dump2=widgets.IntSlider(min=dumpmin,\
-                                  max=dumpmax,step=1,value=dumpmean),\
+                max=dumpmax,step=1,value=int(dumpmax-0.05*(dumpmax-dumpmean))),\
                      ything=things_list)
         
         
