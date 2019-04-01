@@ -10526,7 +10526,7 @@ class MomsDataSet:
             if np.count_nonzero(out_of_bounds.flatten()) > 0:
                 err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'.format(np.count_nonzero(out_of_bounds.flatten()))
                 self._messenger.error(err)
-                raise
+                raise ValueError
 
             # first find the indices that have the closest igrid to our unique coordinates
             # store the indexes
@@ -10721,9 +10721,10 @@ class MomsDataSet:
         # make sure that our method string is actually a real method
         if not list(filter(lambda x: method in x, self._interpolation_methods)):
             err = 'The inputted method, '+method+' is not any of the known methods, '
-            err.join(self._interpolation_methods)
+            err_add = ', '.join(self._interpolation_methods)
+            err += err_add
             self._messenger.error(err)
-            raise
+            raise ValueError
 
         # to make sure we dont break the code, coefficients must be False for trilinear
         elif method == self._interpolation_methods[0]:
@@ -10731,16 +10732,16 @@ class MomsDataSet:
 
         # make sure that igrid is the correct shape
         if len(igrid.shape) != 2 or igrid.shape[1] != 3:
-            err = 'The igrid is not the correct shape. It must be [npoints,3] but it is '.join(igrid.shape)
+            err = 'The igrid is not the correct shape. It must be [npoints,3] but it is {0}'.format(igrid.shape)
             self._messenger.error(err)
-            raise
+            raise ValueError
 
         # make sure derivative only has x,y or z in it
         if derivative:
             if not bool(re.match('^[xyz]+$', derivative)):
                 err = 'The derivative string, {0}, does not have x,y,z in it or contains other characters'.format(derivative)
                 self._messenger.error(err)
-                raise
+                raise ValueError
 
         # Now all of the hard work is done in other methods for the interpolation
         if coefficients:
@@ -10762,7 +10763,7 @@ class MomsDataSet:
             else:
                 return varloc_interp
 
-    def get_rprof(self,varloc,radial_axis=None,fname=None,method='trilinear',derivative='',logvarloc=False):
+    def get_rprof(self,varloc,radius=None,fname=None,method='trilinear',derivative='',logvarloc=False):
         '''
         Returns a 1d radial profile of the variable that is defined at
         whatever(varloc) and the radial axis values
@@ -10772,7 +10773,7 @@ class MomsDataSet:
         varloc: int or np.ndarray
             integer index of the quantity that is defined under whatever(varloc)
             OR you can supply an array that contains data. This will be flattened
-        radial_axis: None, np.ndarray
+        radius: None, np.ndarray
              None: default option, will use the internal radial_axis (every cell width)
              np.ndarray: array for the radial values to calculate the profile on
         fname: None,int
@@ -10805,7 +10806,7 @@ class MomsDataSet:
             if np.max(radial_axis) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
                 err = 'The input radial_axis has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radial_axis),np.max(self.radial_axis))
                 self._messenger.error(err)
-                raise
+                raise ValueError
 
             # we basically just call interpolation over radial_axis, trilinear is default
             # now, if we do have a derivative, quantity is a list
@@ -11225,6 +11226,8 @@ class MomsDataSet:
             # check len of shape of f
             if len(f.shape) != 3:
                 err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'.format(self.moms_ngridpoints)
+                self._messenger.error(err)
+                raise ValueError
 
         # we use the unique coordinates as the values on the grid (these should have had uniform spacing but don't...)
         gradf = np.gradient(f,self._unique_coord,self._unique_coord,self._unique_coord)
@@ -11564,13 +11567,96 @@ class MomsDataSet2X(MomsDataSet):
 
     # The following methods are overridden as they make no sense for a single
     # variable that is 2X
-    def get_spherical_components(self):
-        print('This method does not make any sense for a single 2X quantity, overridden')
-        return None
+    def get_spherical_components(self,ux,uy,uz,igrid=None):
+        '''
+        Most calculations are done in cartesian coordinates but we can transform them to
+        spherical coordinates using unit vectors. This can also be used to take derivatives
+        of a function in spherical coordinates. This returns the spherical components of u
 
-    def norm(self):
-        print('This method does not make any sense for a single 2X quantity, overridden')
-        return None
+        Parameters
+        ----------
+        ux, uy, uz: np.ndarray
+            np.ndarray: array with quantities
+        igrid: np.ndarray
+            igrid.shape = (len(ux.flatten()),3)
+            igrid[:,0] = z, igrid[:,1] = y, igrid[:,2] = x
+
+        Returns
+        -------
+        ur, utheta, uphi: list of np.ndarray
+            The spherical components of u
+        '''
+
+        # first check if we are using the grid or not
+        if not isinstance(igrid,np.ndarray):
+            if not self._grid_jacobian_exists:
+
+                # create the grid jacobian, keep this in memory
+                self._grid_jacobian = self._get_jacobian(self._xc_view,self._yc_view,self._zc_view, self._radius_view)
+                self._grid_jacobian_exists = True
+
+            # local variable to reference internal jacobian
+            jacobian = self._grid_jacobian
+        else:
+            radius = np.sqrt(np.power(igrid[:,2],2.0) + np.power(igrid[:,1],2.0) + np.power(igrid[:,0],2.0))
+            jacobian = self._get_jacobian(igrid[:,2],igrid[:,1],igrid[:,0],radius)
+
+        # I cannot grab quantities!
+        if not isinstance(ux,np.ndarray):
+            err = 'MomsData2X does not support multiple quantities. Arrays must be inputted for ux, uy and uz'
+            self._messenger.error(err)
+            raise ValueError
+
+        if not isinstance(uy,np.ndarray):
+            err = 'MomsData2X does not support multiple quantities. Arrays must be inputted for ux, uy and uz'
+            self._messenger.error(err)
+            raise ValueError
+
+        if not isinstance(uz,np.ndarray):
+            err = 'MomsData2X does not support multiple quantities. Arrays must be inputted for ux, uy and uz'
+            self._messenger.error(err)
+            raise ValueError
+
+
+        ur = ux * jacobian[0] + uy * jacobian[1] + uz * jacobian[2]
+        utheta = ux * jacobian[3] + uy * jacobian[4] + uz * jacobian[5]
+        uphi = ux * jacobian[6] + uy * jacobian[7]
+
+        return [ur, utheta, uphi]
+
+    def norm(self,ux,uy,uz):
+        '''
+        Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
+        the definition |u| = sqrt(ux**2 + uy**2 + uz**2). The vector must be defined in an
+        orthogonal basis. i.e we can also do |u| = sqrt(ur**2 + uphi**2 + utheta**2)
+
+        Parameters
+        ----------
+        ux, uy, uz: np.ndarray
+            np.ndarray: array with quantities
+
+        Returns
+        -------
+        |u|: np.ndarray
+        '''
+
+        # I cannot grab quantities!
+        if not isinstance(ux,np.ndarray):
+            err = 'MomsData2X does not support multiple quantities. Arrays must be inputted for ux, uy and uz'
+            self._messenger.error(err)
+            raise ValueError
+
+        if not isinstance(uy,np.ndarray):
+            err = 'MomsData2X does not support multiple quantities. Arrays must be inputted for ux, uy and uz'
+            self._messenger.error(err)
+            raise ValueError
+
+        if not isinstance(uz,np.ndarray):
+            err = 'MomsData2X does not support multiple quantities. Arrays must be inputted for ux, uy and uz'
+            self._messenger.error(err)
+            raise ValueError
+
+        return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
 
 # DS: my convenient plot figure handling functions
 def add_plot(celln, ifig, ptrack):
