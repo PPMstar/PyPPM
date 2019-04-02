@@ -11384,7 +11384,7 @@ class MomsDataSet2X(MomsDataSet):
 
         # we can call super init but override a few methods
         super().__init__(dir_name, init_dump_read, dumps_in_mem, var_list,
-                         rprofset=rprof_set, verbose=3)
+                         rprofset=rprofset, verbose=3)
 
 
     def _get_dump(self, dump):
