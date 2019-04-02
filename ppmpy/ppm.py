@@ -10800,17 +10800,17 @@ class MomsDataSet:
         '''
 
         # are we using self.radial_axis?
-        if isinstance(radial_axis,np.ndarray):
+        if isinstance(radius,np.ndarray):
 
             # make sure nothing is too large
-            if np.max(radial_axis) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
-                err = 'The input radial_axis has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radial_axis),np.max(self.radial_axis))
+            if np.max(radius) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
+                err = 'The input radius has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radius),np.max(self.radial_axis))
                 self._messenger.error(err)
                 raise ValueError
 
-            # we basically just call interpolation over radial_axis, trilinear is default
+            # we basically just call interpolation over radius, trilinear is default
             # now, if we do have a derivative, quantity is a list
-            quantity = self.get_spherical_interpolation(varloc,radial_axis,fname,method,derivative,logvarloc,plot_mollweide=False)
+            quantity = self.get_spherical_interpolation(varloc,radius,fname,method,derivative,logvarloc,plot_mollweide=False)
 
             # i.e it is not empty
             if derivative:
@@ -10821,7 +10821,7 @@ class MomsDataSet:
                 quantity = np.mean(quantity,axis=1)
 
         else:
-            # we basically just call interpolation over self.radial_axis, trilinear is default
+            # we basically just call interpolation over self.radius, trilinear is default
             # now, if we do have a derivative, quantity is a list
             quantity = self.get_spherical_interpolation(varloc,self.radial_axis,fname,method,derivative,logvarloc,plot_mollweide=False)
 
@@ -10833,8 +10833,8 @@ class MomsDataSet:
                 # for an rprof we average all of those quantities at each radius
                 quantity = np.mean(quantity,axis=1)
 
-        if isinstance(radial_axis,np.ndarray):
-            return quantity, radial_axis
+        if isinstance(radius,np.ndarray):
+            return quantity, radius
         else:
             return quantity, self.radial_axis
 
@@ -11361,7 +11361,7 @@ class MomsDataSet2X(MomsDataSet):
     Moments reader from PPMstar 2.0.
     '''
 
-    def __init__(self, dir_name, rprof_set, init_dump_read=0, dumps_in_mem=2, var_list=[], verbose=3):
+    def __init__(self, dir_name, rprofset, init_dump_read=0, dumps_in_mem=2, var_list=[], verbose=3):
         '''
         Init method.
         
@@ -11565,8 +11565,8 @@ class MomsDataSet2X(MomsDataSet):
         else:
             return True
 
-    # The following methods are overridden as they make no sense for a single
-    # variable that is 2X
+    # The following methods are overridden as they are able to grab variables with varloc which is not
+    # used in MomsDataSet2X
     def get_spherical_components(self,ux,uy,uz,igrid=None):
         '''
         Most calculations are done in cartesian coordinates but we can transform them to
