@@ -95,7 +95,7 @@ def Pppm(T9,rho_ppm,mu):
     p_ppm = T9 *rho_ppm / mubyR 
     return p_ppm
 
-def UnitConvert(datadir, quantity, convertto='PPMUnits', fromtype='mesaprof', modordump=1):
+def UnitConvert(datadir, quantity, convertto='PPMUnits', fromtype='mesaprof', modordump=1, filename=None):
     '''
     Converts from units used in MESA(cgs and solar) to PPMStar code units and vice versa.
     
@@ -112,6 +112,8 @@ def UnitConvert(datadir, quantity, convertto='PPMUnits', fromtype='mesaprof', mo
     
     modndump, int : model number for mesa profile read if going fro mesa to ppm 
                     and ppm dump number if going from ppm to mesa.
+
+    filename, str: default None, only needed if you are converting from type ppmsetup because ascii_table requires a dir and filename
     
     
     out: array in units converted to
@@ -167,8 +169,7 @@ def UnitConvert(datadir, quantity, convertto='PPMUnits', fromtype='mesaprof', mo
         return(inarray * to_cgs[quantity])
         
         
-    elif convertto == 'MESAUnits' and fromtype == 'ppmsetup' :
-        filename = input("Enter your filename (no '' needed)")
+    elif convertto == 'MESAUnits' and fromtype == 'ppmsetup':
         data = ascii_table(sldir=datadir, filename=filename)
         if quantity == 'density':
             inarray = data.get('rho')
