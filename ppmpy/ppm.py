@@ -9154,9 +9154,9 @@ class RprofSet(PPMtools):
         else:
             return None
 
-    def rprofgui(self):
-        def w_plot(dump1,dump2,ything,log10y=False):
-            self.rp_plot([dump1,dump2],ything,logy=log10y)
+    def rprofgui(self,ifig=11):
+        def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig):
+            self.rp_plot([dump1,dump2],ything,logy=log10y,ifig=ifig)
         rp_hst = self.get_history()
         dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
         dumpmean = int(2*(-dumpmin + dumpmax)/3.)
