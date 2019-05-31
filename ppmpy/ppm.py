@@ -6,9 +6,9 @@
 # (c) 2011 - 2013 Falk Herwig
 # (c) 2014 - 2015 Sam Jones, Falk Herwig, Robert Andrassy
 # (c) 2016 - 2018 Robert Andrassy, Jericho O'Connell, Falk Herwig
-#
+# (c) 2018 - 2019 David Stephens, Falk Herwig
 
-""" 
+"""
 ppmpy.ppm
 
 PPM is a Python module for reading Yprofile-01-xxxx.bobaaa files as well as
@@ -48,7 +48,7 @@ and
        .....: D2.vprofs(100)
 
 plots the data.
-    
+
 .. plot::
 
     import ppmpy.ppm as ppm
@@ -95,7 +95,7 @@ import glob
 
 def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
     '''
-    for given user and run create YProfile dir in run dir and link all 
+    for given user and run create YProfile dir in run dir and link all
     YProfile data from dump directories
 
     this is for use on BlueWaters
@@ -116,7 +116,7 @@ def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
 
 def set_nice_params():
     fsize=14
-    
+
     params = {'axes.labelsize':  fsize,
     #    'font.family':       'serif',
     'font.family':        'Times New Roman',
@@ -143,7 +143,7 @@ def set_YProf_path(path,YProf_fname='YProfile-01-0000.bobaaa'):
 
     ppm.ppm_path: contains path
     ppm.cases: contains dirs in path that contain file with name
-    YProf_fname usually used to determine dirs with 
+    YProf_fname usually used to determine dirs with
     YProfile files
     '''
     global ppm_path, cases
@@ -154,13 +154,13 @@ def set_YProf_path(path,YProf_fname='YProfile-01-0000.bobaaa'):
         if os.path.isdir(dir_thing) and \
            os.path.isfile(os.path.join(ppm_path,thing,YProf_fname)):
             cases.append(thing)
-            
+
 def prof_compare(cases,ndump=None,yaxis_thing='FV H+He',ifig=None,num_type='ndump',
                  labels=None,logy=True):
     """
     Compare profiles of quantities from multiple PPM Yprofile instances at a
     given time of nump number.
-        
+
     Parameters
     ----------
     cases : list
@@ -188,17 +188,17 @@ def prof_compare(cases,ndump=None,yaxis_thing='FV H+He',ifig=None,num_type='ndum
     logy : boolean, optional
         Should the y-axis have a logarithmic scale?
         The default is True.
-        
+
     Examples
     --------
-        
+
     .. ipython::
 
         In [136]: from ppmpy import ppm
            .....: data_dir = '/data/ppm_rpod2/YProfiles/'
            .....: project = 'O-shell-M25'
            .....: ppm.set_YProf_path(data_dir+project)
-        
+
         @savefig prof_compare.png width=6in
         In [136]: D2=ppm.yprofile('D2')
            .....: D1=ppm.yprofile('D1')
@@ -208,7 +208,7 @@ def prof_compare(cases,ndump=None,yaxis_thing='FV H+He',ifig=None,num_type='ndum
     """
 
     fsize=14
-        
+
     params = {'axes.labelsize':  fsize,
     #    'font.family':       'serif',
     'font.family':        'Times New Roman',
@@ -236,15 +236,15 @@ def prof_compare(cases,ndump=None,yaxis_thing='FV H+He',ifig=None,num_type='ndum
         Y.plot('Y',yaxis_thing,fname=ndump,numtype=num_type,legend=labels[i],\
                logy=logy,shape=utils.linestyle(j)[0],markevery=utils.linestyle(j)[1])
         i += 1
-    
+
 def cdiff(x):
     # compute 2nd order centred differences
     dx = (np.roll(x, -1) - np.roll(x, 1))/2.
-    
+
     # 1st order differences to correct the boundaries
     dx[0] = x[1] - x[0]
     dx[-1] = x[-1] - x[-2]
-    
+
     return dx
 
 def interpolate(x, y, x_new, kind='linear'):
@@ -261,7 +261,7 @@ def interpolate(x, y, x_new, kind='linear'):
     else:
         print("Error: Unknown interpolation kind '{:s}'.".format(kind))
         return None
-    
+
     return y_new
 
 def any2list(arg):
@@ -277,7 +277,7 @@ class PPMtools:
     def __init__(self, verbose=3):
         '''
         Init method.
-        
+
         Parameters
         ----------
         verbose: integer
@@ -311,7 +311,7 @@ class PPMtools:
         '''
         Returns a list of computable quantities.
         '''
-        
+
         # Return a copy.
         return list(self.__computable_quantities)
 
@@ -334,30 +334,30 @@ class PPMtools:
                               resolution='l')
             rhoair = self.get('RHOconv', fname=fname, num_type = num_type, \
                               resolution='l')
-            
+
             if fkair is None or fkcld is None or atomicnoair is None or \
                atomicnocld is None:
                 self.__messenger.error('Yprofiles do not contain the values of fkair, '
                                        'fkcld, atomicnoair, and atomicnocld. You have '
                                        'to provide via optional parameters.')
                 return None
-        
+
         if self.__isRprofSet:
             fv = self.get('FV', fname=fname, num_type=num_type, resolution='l')
             rho = self.get('Rho0', fname=fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname=fname, num_type=num_type, resolution='l')
-            
+
             # We allow the user to replace the following values read from the .rprof
             # files should those ever become wrong/unavailable.
             if fkair is None:
                 fkair = self.get('fkair', fname, num_type=num_type)
-            
+
             if fkcld is None:
                 fkcld = self.get('fkcld', fname, num_type=num_type)
-            
+
             if atomicnoair is None:
                 atomicnoair = self.get('atomicnoair', fname, num_type=num_type)
-            
+
             if atomicnocld is None:
                 atomicnocld = self.get('atomicnocld', fname, num_type=num_type)
 
@@ -366,7 +366,7 @@ class PPMtools:
 
             if cldmu is None:
                 cldmu = self.get('cldmu', fname, num_type=num_type)
-            
+
             # Individual densities of the two ideal gases assuming thermal and
             # pressure equlibrium.
             rhocld = rho/(fv + (1. - fv)*airmu/cldmu)
@@ -384,60 +384,60 @@ class PPMtools:
         TM13 = 1./TP13
         TM23 = 1./TP23
         TM32 = 1./TP32
-        
+
         T9inv = 1. / T9
         thyng = 2.173913043478260869565 * T9
         vc12pg = 20000000.*TM23 * np.exp(-13.692*TM13 - thyng*thyng)
         vc12pg = vc12pg * (1. + T9*(9.89-T9*(59.8 - 266.*T9)))
         thing2 = vc12pg + TM23 * 1.0e5 * np.exp(-4.913*T9inv) + \
                           TM32 * 4.24e5 * np.exp(-21.62*T9inv)
-        
+
         thing2[np.where(T9 < .0059)] = 0.
         thing2[np.where(T9 > 0.75)] = 200.
-        
+
         vc12pg = thing2 * rho * 1000.
-        
+
         v = 1./ rho
         atomicnocldinv = 1./atomicnocld
         atomicnoairinv = 1./atomicnoair
-        
+
         Y1 =  rhocld * fv * v * atomicnocldinv
         Y2 =  rhoair * (1. - fv) * v * atomicnoairinv
-        
+
         CN = 96.480733
         # RA (6 Sep 2018): I have to comment out the following part of the code,
         # because the right instantaneous value of dt is currently unavailable.
-        # 
+        #
         #reallysmall=1e-14
         #if use_dt:
         #    # We want the average rate during the current time step.
         #    # If the burning is too fast all the stuff available burns
-        #    # in a fraction of the time step. We do not allow to burn 
+        #    # in a fraction of the time step. We do not allow to burn
         #    # more than what is available, so the average burn rate is
         #    # lower than then instantaneous one.
         #    thing3 = fkair * Y1 * Y2 * vc12pg * dt
         #    thing3[where(Y1 < reallysmall)] = 0.
         #    thing2 = np.min(np.array((thing3, Y1)), axis = 0)
-        #    
+        #
         #    #for i in range(len(Y1)):
         #    #    print '{:d}   {:.1e}   {:.1e}   {:.1e}'.format(i, Y1[i], thing3[i], Y1[i]/thing3[i])
-        #    
+        #
         #    DY = fkcld * thing2
         #    enuc = DY * rho * CN * Q / dt
         #else:
-        
+
         # We want the instantaneous burning rate. This does not
         # depend on how much stuff is available.
         thing3 = fkair * Y1 * Y2 * vc12pg
 
         DY = fkcld * thing3
         enuc = DY * rho * CN * Q
-        
+
         # This factor can account for the heating bug if present.
         enuc *= corr_fact
-        
+
         return enuc
-    
+
     def compute_Hp(self, fname, num_type='ndump'):
         if self.__isyprofile:
             r = self.get('Y', fname, num_type=num_type, resolution='l')
@@ -474,7 +474,7 @@ class PPMtools:
         mt = m[0] - m
 
         return mt
-    
+
     def compute_r4rho2(self, fname, num_type='ndump'):
         if self.__isyprofile:
             r = self.get('Y', fname, num_type=num_type, resolution='l')
@@ -486,7 +486,7 @@ class PPMtools:
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
 
         return r**4*rho**2
-    
+
     def compute_rhodot_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
                              atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
                              T9corr_params={}):
@@ -494,7 +494,7 @@ class PPMtools:
         # files should those ever become wrong/unavailable.
         if fkcld is None:
             fkcld = self.get('fkcld', fname, num_type=num_type)
-        
+
         if atomicnocld is None:
             atomicnocld = self.get('atomicnocld', fname, num_type=num_type)
 
@@ -507,76 +507,76 @@ class PPMtools:
                                        atomicnocld=atomicnocld, airmu=airmu, \
                                        cldmu=cldmu, T9corr_params=T9corr_params, \
                                        Q=Q)
-        
+
         # MeV in code units.
         MeV = 1.60218e-6/1e43
-        
+
         # Reaction rate per unit volume.
         ndot = enuc/(Q*MeV)
-        
+
         # Remember: atomicno is actually the mass number.
         # fkcld is the number fraction of H nucleii in the 'cloud' fluid.
         # X_H is the mass fraction of H in the 'cloud' fluid.
         atomicnoH = 1.
         X_H = fkcld*atomicnoH/atomicnocld
-        
+
         # Atomic mass unit in PPMstar units.
         amu = 1.660539040e-24/1e27
-        
+
         # The nominator is the mass burning rate of H per unit volume.
         # PPMstar cannot remove H from the 'cloud' fluid. When some mass M_H
         # of H is burnt, PPMstar actually removes M_H/X_H units of mass of
         # the 'cloud' fluid. The sign is negative, because mass is removed.
         rhodot = -atomicnoH*amu*ndot/X_H
-        
+
         return rhodot
-    
+
     def compute_T9(self, fname, num_type='ndump', airmu=None, cldmu=None):
         if self.__isyprofile:
             if (airmu is None or cldmu is None):
                 self.__messenger.error('airmu and cldmu parameters are '
                                        'required to compute T9 for a '
                                        'yprofile.')
-                
+
             fv = self.get('FV H+He', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
             p = self.get('P', fname, num_type=num_type, resolution='l')
-        
+
         muair = airmu
         mucld = cldmu
-        
+
         if self.__isRprofSet:
             # We allow the user to replace the mu values read from the .rprof
             # files should those ever become wrong/unavailable.
             if muair is None:
                 muair = self.get('airmu', fname, num_type=num_type)
-            
+
             if mucld is None:
                 mucld = self.get('cldmu', fname, num_type=num_type)
-        
+
             fv = self.get('FV', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
             p = self.get('P0', fname, num_type=num_type, resolution='l') + \
                 self.get('P1', fname, num_type=num_type, resolution='l')
-        
+
         # mu of a mixture of two ideal gases coexisting in thermal and
         # pressure equlibrium.
         mu = (1. - fv)*muair + fv*mucld
-        
+
         # Gas constant as defined in PPMstar.
         Rgasconst = 8.314462
-        
+
         # p = rho*Rgasconst*T9/mu
         T9 = (mu/Rgasconst)*(p/rho)
-        
+
         return T9
-    
+
     def compute_T9corr(self, fname, num_type='ndump', kind=0, params=None, \
                        airmu=None, cldmu=None):
         T9 = self.compute_T9(fname, num_type=num_type, airmu=airmu, \
                              cldmu=cldmu)
-        
+
         T9corr = None
         if kind == 0:
             T9corr = T9
@@ -589,9 +589,9 @@ class PPMtools:
         else:
             self.__messenger.error("T9 correction of kind = {:d} does "
                                    "not exist.".format(kind))
-        
+
         return T9corr
-    
+
     def compute_Xcld(self, fname, num_type='ndump'):
         # Different variables are available depending on data souce, so Xcld
         # is computed in different ways. Both results will be biased, although
@@ -611,7 +611,7 @@ class PPMtools:
             Xcld = fv/((1. - fv)*(airmu/cldmu) + fv)
 
         return Xcld
-    
+
     def compute_Xdot_C12pg(self, fname, num_type='ndump', fkair=None, fkcld=None, \
                            atomicnoair=None, atomicnocld=None, airmu=None, cldmu=None, \
                            T9corr_params={}):
@@ -619,16 +619,16 @@ class PPMtools:
                                            fkcld=fkcld, atomicnoair=atomicnoair, \
                                            atomicnocld=atomicnocld, airmu=airmu, \
                                            cldmu=cldmu, T9corr_params=T9corr_params)
-        
+
         if self.__isyprofile:
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
 
         if self.__isRprofSet:
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
-                
+
         Xdot = rhodot/rho
-        
+
         return Xdot
 
     def average_profiles(self, fname, var, num_type='ndump', func=None, \
@@ -637,7 +637,7 @@ class PPMtools:
         Method to compute time-averaged radial profiles of any quantity.
         Individual profiles can be stacked either in an Eulerian or in a
         Lagrangian frame.
-        
+
         Parameters
         ----------
         fname : int or list
@@ -663,7 +663,7 @@ class PPMtools:
         extra_args : dictionary
             Extra arguments needed for either `func` or `self.compute` to
             work.
- 
+
         Returns
         -------
         avg_profs : dictionary
@@ -689,17 +689,17 @@ class PPMtools:
             gettable_variables = rp.get_anyr_variables()
 
         computable_quantities = self.__computable_quantities
-        
+
         data_slice = range(0, len(r))
         if data_rlim is not None:
             idx0 = np.argmin(np.abs(r - data_rlim[0]))
             idx1 = np.argmin(np.abs(r - data_rlim[1]))
-            
+
             # We store everything from the surface to the core.
             data_slice = range(idx1, idx0+1)
-        
+
         if lagrangian:
-            # Get the initial mass scale. Everything will be interpolated onto 
+            # Get the initial mass scale. Everything will be interpolated onto
             # this scale. We use mt, i.e. mass integrated from the top, because
             # the density stratification is extreme in some cases. There are
             # also some cases (PPMstar 1.0 run), in which some mass leaks in
@@ -709,12 +709,12 @@ class PPMtools:
             if data_rlim is not None:
                 mt0 = mt0[data_slice]
             avg_profs['mt'] = mt0
-        
+
         for v in var_list:
             avg_profs[v] = np.zeros(data_slice[-1] - data_slice[0] + 1)
             avg_profs[radius_variable] = np.zeros(data_slice[-1] - \
                                                   data_slice[0] + 1)
-            
+
             for i, fnm in enumerate(fname_list):
                 if func is not None:
                     data = func(fnm, num_type=num_type, **extra_args)
@@ -727,22 +727,22 @@ class PPMtools:
                     self.__messenger.warning("Unknown quantity '{:s}'".\
                          format(v))
                     break
-                
+
                 rr = r
                 if lagrangian:
                     # Interpolate everything on the initial mass scale.
                     mt = self.compute('mt', fnm, num_type=num_type)
                     data = interpolate(mt, data, mt0)
                     rr = interpolate(mt, rr, mt0)
-                
+
                 avg_profs[v] += data
                 avg_profs[radius_variable] += rr
-                    
+
             avg_profs[v] /= float(len(fname_list))
             avg_profs[radius_variable] /= float(len(fname_list))
-        
+
         return avg_profs
-    
+
     def DsolveLgr(self, cycles1, cycles2, var='Xcld', src_func=None, src_args={}, \
                   src_correction=False, integrate_upwards=False, data_rlim=None, \
                   show_plots=True, ifig0=1, run_id='', logmt=False, mtlim=None, \
@@ -755,7 +755,7 @@ class PPMtools:
         also be used) at two different points in time. The diffusion
         coefficient is assumed to vanish at the outermost data point (or
         innermost if integrate_upwards == True).
-        
+
         Parameters
         ----------
         cycles1 : int or list
@@ -817,7 +817,7 @@ class PPMtools:
             Plotting limits for the Eulerian diffusion coefficient `D`.
         fit_rlim : list
             Radial range for the fitting of the f_CBM model.
-            
+
         Returns
         -------
         res : dictionary
@@ -830,7 +830,7 @@ class PPMtools:
         '''
         cycles1_list = any2list(cycles1)
         cycles2_list = any2list(cycles2)
-    
+
         # Get average profiles and the average time corresponding to cycles1.
         res1 = self.average_profiles(cycles1_list, [var, 'Hp', 'r4rho2'], \
                lagrangian=True, data_rlim=data_rlim)
@@ -873,16 +873,16 @@ class PPMtools:
                                         func=src_func, extra_args=src_args, \
                                         lagrangian=True, data_rlim=data_rlim)
             xsrc = res['src_func']
-        
+
         # We take a simple average whenever a single profile representative of
         # the whole solution interval is needed.
         r = 0.5*(r1 + r2)
         Hp = 0.5*(Hp1 + Hp2)
         r4rho2 = 0.5*(r4rho2_1 + r4rho2_2)
-        
+
         # Technically speaking, the mass corrdinate mt[i] corresponds to
         # i-1/2, i.e. to the lower (outer) cell wall. We will make use of this
-        # in calculating the cell mass dmt[i]. However, x1[i] and x2[i] are 
+        # in calculating the cell mass dmt[i]. However, x1[i] and x2[i] are
         # cell averages, which correspond to cell-centred values to the 2nd
         # order of accuracy. This minute difference has probably little effect,
         # but let's get it right.
@@ -890,7 +890,7 @@ class PPMtools:
         dmt[-1] = dmt[-2] + (dmt[-2] - dmt[-3])
         mt = 0.5*(mt + np.roll(mt, -1))
         mt[-1] = mt[-2] + (mt[-2] - mt[-3])
-        
+
         # We are going to compute the Lagrangian diffusion coefficient sigma
         # from the diffusion equation
         #
@@ -900,14 +900,14 @@ class PPMtools:
         # represent e.g. nuclear burning). We integrate the equation
         # analytically from the outer (or inner if integrate_upwards == True)
         # crystal sphere, where we flux = 0, to a mass coordinate mt, which
-        # gives us an explicit expression for sigma: 
+        # gives us an explicit expression for sigma:
         #
         # sigma = (1./dxdm)*int_0^mt(dx/dt - xsrc)*dmt,
         #
         # where int_0^mt is a definite integral from 0 to mt.
-        
+
         dxdt = (x2 - x1)/(t2 - t1)
-        
+
         if src_correction:
             # If the source term is time dependent, we will never get the exact
             # time averages from a few samples and some mass will be unaccounted
@@ -929,16 +929,16 @@ class PPMtools:
                 self.__messenger.warning('The value of the correction factor '
                                          'is suspiciously large. Please check '
                                          'your data and parameters.')
-        
+
         # Downward diffusive flux at the top (inner) wall of the i-th cell.
         # iph = i + 0.5
         flux_iph = -np.cumsum((dxdt - xsrc)*dmt)
-        
-        if integrate_upwards:        
+
+        if integrate_upwards:
             flux_iph -= flux_iph[-1]
-        
+
         # flux_iph = sigma_iph*dx2dm_iph, where we take the gradient of x2,
-        # because we want to solve an implicit diffusion equation. 
+        # because we want to solve an implicit diffusion equation.
         dx2dm_iph = (np.roll(x2, -1) - x2)/(np.roll(mt, -1) - mt)
         dx2dm_iph[-1] = dx2dm_iph[-2] + (dx2dm_iph[-2] - dx2dm_iph[-3])
 
@@ -946,16 +946,16 @@ class PPMtools:
         # compute sigma_iph in those places. Let's avoid useless warnings.
         with np.errstate(divide='ignore', invalid='ignore'):
             sigma_iph = -flux_iph/dx2dm_iph
-        
-        # We should compute the cell-centred value of sigma, but let's not do 
+
+        # We should compute the cell-centred value of sigma, but let's not do
         # that, because it would increase the number of NaNs in the array if
         # there are any.
         sigma = sigma_iph
-        
+
         # Convert the Lagrangian diffusion coefficient sigma to an Eulerian
         # diffusion coefficient D. The way we define r4rho2 may matter here.
         D = sigma/(16.*np.pi**2*r4rho2)
-        
+
         if show_plots:
             var_lbl = var
             if var == 'Xcld':
@@ -984,12 +984,12 @@ class PPMtools:
                         plt_func = ax2.semilogx
                 elif logvar:
                         plt_func = ax2.semilogy
-                    
+
                 lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
                 lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
-                
+
                 if mtlim is not None:
                     ax2.set_xlim(mtlim)
                 if varlim is not None:
@@ -998,7 +998,7 @@ class PPMtools:
                     ax2.set_ylim((0., 1.))
                 ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
                 ax2.set_ylabel(var_lbl)
-            
+
             ttl = ''
             if run_id != '':
                 ttl = run_id + ', '
@@ -1016,7 +1016,7 @@ class PPMtools:
             lbls = [l.get_label() for l in lns]
             ncol = 2 if plot_var else 1
             pl.legend(lns, lbls, loc=0, ncol=ncol)
-            
+
             # Plot the Lagrangian diffusion coefficient.
             ifig=ifig0+1; pl.close(ifig); fig=pl.figure(ifig)
             ax1 = fig.gca()
@@ -1043,12 +1043,12 @@ class PPMtools:
                         plt_func = ax2.semilogx
                 elif logvar:
                         plt_func = ax2.semilogy
-                
+
                 lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
                 lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
-                
+
                 if mtlim is not None:
                     ax2.set_xlim(mtlim)
                 if varlim is not None:
@@ -1057,7 +1057,7 @@ class PPMtools:
                     ax2.set_ylim((0., 1.))
                 ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
                 ax2.set_ylabel(var_lbl)
-            
+
             pl.title(ttl)
             lbls = [l.get_label() for l in lns]
             ncol = 2 if plot_var else 1
@@ -1125,7 +1125,7 @@ class PPMtools:
                   return_var_scale_height=False, eps=1e-9):
         '''
         Method that finds the radius of a convective boundary.
-        
+
         If the search is based on gradients, second-order centred finite
         differences are used to compute the gradient. The radius where
         the gradient reaches a local extreme (minimum or maximum depending
@@ -1133,11 +1133,11 @@ class PPMtools:
         refined by fitting a parabola to the three points around the
         local extreme and computing the radius at that the parabola
         reaches its extreme.
-        
+
         If a certain value of var is searched for the method finds two
         cells between which var crosses the requested value and then it
         computes the radius of the actual crossing by linear interpolation.
-        
+
         Parameters
         ----------
         cycles : list
@@ -1164,7 +1164,7 @@ class PPMtools:
             at the boundary radius to be returned as well.
         eps : float
             Smallest value considered non-zero in the search alorighm.
-            
+
         Returns
         -------
         rb : 1D numpy array
@@ -1195,7 +1195,7 @@ class PPMtools:
             if var == 'ut':
                 if self.__isyprofile:
                     v = self.get('EkXZ', fname=cyc, resolution='l')**0.5
-                
+
                 if self.__isRprofSet:
                     v = self.get('|Ut|', fname=cyc, resolution='l')
             else:
@@ -1244,12 +1244,12 @@ class PPMtools:
                             r0 = (1. - t)*r[idx0] + t*r[idx0+1]
                         else:
                             r0 = r_max
-                        
+
             rb[i] = r0
-        
+
             if return_var_scale_height:
                 Hv_prof = np.abs(v)/(np.abs(dvdr) + 1e-100)
-                
+
                 idx0 = np.argmin(np.abs(r - r0))
                 if r[idx0] > r0:
                     t = (r0 - r[idx0])/(r[idx0+1] - r[idx0])
@@ -1259,7 +1259,7 @@ class PPMtools:
                     Hv[i] = (1. - t)*Hv_prof[idx0 - 1] + t*Hv_prof[idx0]
                 else:
                     Hv[i] = Hv_prof[idx0]
-                    
+
         if return_var_scale_height:
             return rb, Hv
         else:
@@ -1271,7 +1271,7 @@ class PPMtools:
                   fig_file_name=None, return_time_series=False):
         '''
         Method for calculating entrainment rates.
-        
+
         Parameters
         ----------
         cycles : list
@@ -1291,14 +1291,14 @@ class PPMtools:
             See PPMtools.bound_rad() for allowed values.
         offset : float
             Offset between the boundary radius and the upper integration
-            limit for mass integration. The absolute value of the scale 
+            limit for mass integration. The absolute value of the scale
             height of var evaluated at the boundary is used as a unit for
             the offset. Negative values shift the upper integration limit
             inwards and positive values outwards.
         burn_func : function
             burn_func(cycle, **burn_args) has to return the radial profile
             of the mass burning rate of the entrained fluid per unit volume
-            for the cycle number passed as the first argument. For a data 
+            for the cycle number passed as the first argument. For a data
             object obj, it can be e.g. obj.compute_rhodot_C12pg. The user
             can define a custom function and pass a reference to obj via
             burn_args.
@@ -1317,7 +1317,7 @@ class PPMtools:
             be saved.
         return_time_series : bool
             Switch to control what the method returns, see below.
-            
+
         Returns
         -------
         mdot : float
@@ -1331,7 +1331,7 @@ class PPMtools:
                                 var_value=var_value, return_var_scale_height=True)
         rt = rb + offset*np.abs(Hv)
         print('Done.')
-        
+
         # The grid is assumed to be static, so we get the radial
         # scale only once at cycles[0].
         if self.__isyprofile:
@@ -1346,7 +1346,7 @@ class PPMtools:
         dr3 = r3_cell_top - np.roll(r3_cell_top, -1)
         dr3[-1] = dr3[-2] + (dr3[-2] - dr3[-3])
         dV = (4./3.)*np.pi*dr3
-        
+
         t = np.zeros(len(cycles))
         burn_rate = np.zeros(len(cycles))
         # mir == mass inside radius (rt)
@@ -1356,46 +1356,46 @@ class PPMtools:
         for i, cyc in enumerate(cycles):
             if self.__isyprofile:
                 t[i] = self.get('t', fname=cyc, resolution='l')[-1]
-            
+
             if self.__isRprofSet:
                 t[i] = self.get('t', fname=cyc, resolution='l')
-            
+
             Xcld = self.compute('Xcld', cyc)
-            
+
             if self.__isyprofile:
                 rho = self.get('Rho', cyc, resolution='l')
 
             if self.__isRprofSet:
                 rho = self.get('Rho0', cyc, resolution='l') + \
                       self.get('Rho1', cyc, resolution='l')
-            
+
             if burn_func is not None:
                 rhodot = burn_func(cyc, **burn_args)
-            
+
             # We assume that Xlcd and rho are cell averages, so we can
             # integrate all but the last cell using the rectangle rule.
-            # We do piecewise linear reconstruction in the last cell and 
+            # We do piecewise linear reconstruction in the last cell and
             # integrate only over the portion of the cell where r < rt[i].
-            # We should be as accurate as possible here, because Xcld is 
-            # usually much larger in this cell than in the bulk of the 
+            # We should be as accurate as possible here, because Xcld is
+            # usually much larger in this cell than in the bulk of the
             # convection zone.
             idx_top = np.argmax(r_cell_top < rt[i])
             dm = Xcld*rho*dV
             # mir == mass inside radius (rt)
             mir[i] = np.sum(dm[idx_top:])
-            
+
             # Linear reconstruction. The integrand f = Xcld*rho is
             # assumed to take the form
             #
             #   f(r) = f0 + s*r
             #
             # within a cell. The slope s is computed using cell averages
-            # in the cell's two next-door neighbours and the integral of 
-            # f(r)*dV over the cell's volume V_j is enforced to be 
+            # in the cell's two next-door neighbours and the integral of
+            # f(r)*dV over the cell's volume V_j is enforced to be
             # f_j*V_j, where j is the index of the cell.
             #
             j = idx_top - 1
-            
+
             # jmo = j - 1
             # jpo = j + 1
             r_jmo = r[j-1]
@@ -1404,39 +1404,39 @@ class PPMtools:
             f_jmo = Xcld[j-1]*rho[j-1]
             f_j   = Xcld[j  ]*rho[j  ]
             f_jpo = Xcld[j+1]*rho[j+1]
-            
+
             # jmh = j - 0.5
             # jph = j + 0.5
             r_jmh = 0.5*(r_jmo + r_j)
             r_jph = 0.5*(r_j + r_jpo)
             f_jmh = 0.5*(f_jmo + f_j)
             f_jph = 0.5*(f_j + f_jpo)
-            
+
             s = (f_jph - f_jmh)/(r_jph - r_jmh)
             V_j = (4./3.)*np.pi*(r_jmh**3 - r_jph**3)
             f0 = f_j - np.pi*(r_jmh**4 - r_jph**4)/V_j*s
             mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jph**3)*f0 + \
                       np.pi*(rt[i]**4 - r_jph**4)*s
-                
+
             if burn_func is not None:
                 # We have to use the minus sign, because rhodot < 0.
                 burn_rate[i] = -np.sum(rhodot[idx_top:]*dV[idx_top:])
-                
+
             wct1 = time.time()
             if wct1 - wct0 > 5.:
                 print('{:d}/{:d} cycles processed.'.format(\
                       i+1, len(cycles)), end='\r')
                 wct0 = wct1
-                
+
         print('{:d}/{:d} cycles processed.'.format(i+1, len(cycles)))
         print('Done.')
-        
+
         mir *= 1e27/ast.msun_g
         # mb = mass burnt
         mb = integrate.cumtrapz(burn_rate, x=t, initial=0.)
         mb *= 1e27/ast.msun_g
         mtot = mir + mb
-            
+
         fit_idx0 = 0
         fit_idx1 = len(t)
         if fit_interval is not None:
@@ -1445,13 +1445,13 @@ class PPMtools:
             if fit_idx1 > len(t):
                 fit_idx1 = len(t)
         fit_range = range(fit_idx0, fit_idx1)
-        
+
         # fc = fit coefficients
         rb_fc = np.polyfit(t[fit_range], rb[fit_range], 1)
         rb_fit = rb_fc[0]*t[fit_range] + rb_fc[1]
         rt_fc = np.polyfit(t[fit_range], rt[fit_range], 1)
         rt_fit = rt_fc[0]*t[fit_range] + rt_fc[1]
-        
+
         # fc = fit coefficients
         mtot_fc = np.polyfit(t[fit_range], mtot[fit_range], 1)
         mtot_fit = mtot_fc[0]*t[fit_range] + mtot_fc[1]
@@ -1475,12 +1475,12 @@ class PPMtools:
             print('drb/dt = {:.2e} km/s\n'.format(1e3*rb_fc[0]))
             print('rt is the upper limit for mass integration.')
             print('drt/dt = {:.2e} km/s'.format(1e3*rt_fc[0]))
-            
+
             min_val = np.min([np.min(mtot), np.min(mb), np.min(mtot_fit)])
             max_val = np.max([np.max(mtot), np.max(mb), np.max(mtot_fit)])
             max_val *= 1.1 # allow for some margin at the top of the plot
             oom = int(np.floor(np.log10(max_val)))
-            
+
             pl.close(ifig0+1); fig2=pl.figure(ifig0+1)
             mdot_str = '{:e}'.format(mdot)
             parts = mdot_str.split('e')
@@ -1491,22 +1491,22 @@ class PPMtools:
                    format(mantissa, exponent)
             pl.plot(t[fit_range]/60., mtot_fit/10**oom, color=cb(4), \
                     ls='-', label=lbl, zorder=100)
-            
+
             lbl = ''
             if burn_func is not None:
                 pl.plot(t/60., mir/10**oom, ':', color=cb(3), label='present')
                 pl.plot(t/60., mb/10**oom, '--', color=cb(6), label='burnt')
                 lbl = 'total'
             pl.plot(t/60., mtot/10**oom, color=cb(5), label=lbl)
-            
-            
+
+
             pl.ylim((min_val/10**oom, max_val/10**oom))
             pl.xlabel('t / min')
             sub = 'e'
             ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
             if oom == 0.:
                 ylbl = r'M$_{:s}$ / M$_\odot$'.format(sub)
-                
+
             pl.ylabel(ylbl)
             yfmt = FormatStrFormatter('%.1f')
             fig2.gca().yaxis.set_major_formatter(yfmt)
@@ -1514,36 +1514,36 @@ class PPMtools:
             pl.legend(loc=2)
             if fig_file_name is not None:
                 fig2.savefig(fig_file_name)
-        
+
             print('Resolution: {:d}^3'.format(2*len(r)))
             print('mtot_fc = ', mtot_fc)
             print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
-        
+
         if return_time_series:
             return t, mir, mb
         else:
             return mdot
 
 class yprofile(DataPlot, PPMtools):
-    """ 
+    """
     Data structure for holding data in the  YProfile.bobaaa files.
-    
+
     Parameters
     ----------
     sldir : string
         which directory we are working in.  The default is '.'.
-        
+
     """
 
     def __init__(self, sldir='.', filename_offset=0, silent=False):
-        """ 
+        """
         init method
 
         Parameters
         ----------
         sldir : string
             which directory we are working in.  The default is '.'.
-        
+
         """
 
         PPMtools.__init__(self)
@@ -1555,7 +1555,7 @@ class yprofile(DataPlot, PPMtools):
         self._cycle=[]    # private var
         self._top=[]      # privite var
         self.sldir = sldir #Standard Directory
-        
+
         if not os.path.isdir(sldir): # then try if ppm_path has been set
             try:
                 sldir = ppm_path+'/'+sldir
@@ -1586,7 +1586,7 @@ class yprofile(DataPlot, PPMtools):
             # return the header attributes as a dictionary
             self.hattrs=self._formatHeader()
             # returns the concatination of cycle and top attributes
-            self.cattrs=self.getCattrs() 
+            self.cattrs=self.getCattrs()
 
             self.ndumpDict=self.ndumpDict(self.files, filename_offset=filename_offset)
             self.radbase = float(self.hattrs['At base of the convection zone R'])
@@ -1602,20 +1602,20 @@ class yprofile(DataPlot, PPMtools):
         return None
 
     def ndumpDict(self, fileList, filename_offset=0):
-        """ 
+        """
         Method that creates a dictionary of Filenames with the
         associated key of the filename's Ndump.
-        
+
         Parameters
         ----------
         fileList : list
             A list of yprofile filenames.
-            
+
         Returns
         -------
         dictionary : dict
             the filename, ndump dictionary
-            
+
         """
         ndumpDict={}
         for i in range(len(fileList)):
@@ -1655,7 +1655,7 @@ class yprofile(DataPlot, PPMtools):
 
     def get(self, attri, fname=None, numtype='ndump', num_type=None, \
             resolution='H', silent=True, **kwargs):
-        """ 
+        """
         Method that dynamically determines the type of attribute that is
         passed into this method.  Also it then returns that attribute's
         associated data.
@@ -1715,21 +1715,21 @@ class yprofile(DataPlot, PPMtools):
             return self.getHeaderData(attri, silent=silent)
         else:
             res = self.computeData(attri, fname, numtype, silent=silent, **kwargs)
-            if res is None:             
+            if res is None:
                 if not silent:
                     print('That Data name does not appear in this YProfile Directory')
                     print('Returning none')
-            return res 
+            return res
 
     def getHeaderData(self, attri, silent=False):
-        """ 
+        """
         Method returns header attributes.
-        
+
         Parameters
-        ----------        
+        ----------
         attri : string
             The name of the attribute.
-        
+
         Returns
         -------
         data : string or integer
@@ -1739,7 +1739,7 @@ class yprofile(DataPlot, PPMtools):
         -----
         To see all possable options in this instance type
         instance.getHattrs().
-        
+
         """
         isHead = False
         if attri in self.hattrs:
@@ -1754,10 +1754,10 @@ class yprofile(DataPlot, PPMtools):
 
     def getCycleData(self, attri, FName=None, numType='ndump',
                      Single=False, resolution='H', silent=False):
-        """ 
+        """
         Method that returns a Datalist of values for the given attribute or a
         single attribute in the file FName.
-        
+
         Parameters
         ----------
         attri : string
@@ -1847,9 +1847,9 @@ class yprofile(DataPlot, PPMtools):
 
     def getColData(self, attri, FName, numType='ndump', resolution='H',
                    cycle=False, silent=False):
-        """ 
+        """
         Method that returns column data.
-        
+
         Parameters
         ----------
         attri : string
@@ -1887,19 +1887,19 @@ class yprofile(DataPlot, PPMtools):
             Function for reducing hi-res arrays to low-res arrays.
             To be called for FV profiles at present because of
             averaging issues.
-                
+
             Parameters
             ----------
             r : array
                 array to be reduced
-                
+
             Returns
             --------
             r : array
                 reduced array
             '''
             return (r[0::2]+r[0::2])/2.
-        
+
         num=[]       #temp list that holds the line numbers where the
                      # attribute is found in
         dataList=[]  # holds final data
@@ -2057,7 +2057,7 @@ class yprofile(DataPlot, PPMtools):
                     **kwargs):
         '''
         Method for computing data not in Yprofile file
-        
+
         Parameters
         ----------
         attri : str
@@ -2068,7 +2068,7 @@ class yprofile(DataPlot, PPMtools):
         numtype : str, optional
             'ndump' or 'time' depending on which you are
             looking for
-            
+
         Returns
         -------
         attri : array
@@ -2082,10 +2082,10 @@ class yprofile(DataPlot, PPMtools):
                     missing_args.append(this_arg)
 
             return missing_args
-         
+
         # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
         G_code = ast.grav_const/1e-3
-        
+
         nabla_ad = 0.4
 
         if attri == 'T9' or attri == 'mu':
@@ -2096,10 +2096,10 @@ class yprofile(DataPlot, PPMtools):
                     print('The following arguments are missing: ', \
                           missing_args)
                 return None
-                
+
             airmu = kwargs['airmu']
             cldmu = kwargs['cldmu']
-            
+
             if 'T9_corr_params' in kwargs:
                 T9_corr_params = kwargs['T9_corr_params']
             else:
@@ -2111,9 +2111,9 @@ class yprofile(DataPlot, PPMtools):
                          silent = silent)
             fv = self.get('FV H+He', fname, numtype = numtype, resolution = 'l', \
                           silent = silent)
-           
+
             mu = fv*cldmu + (1. - fv)*airmu
-            
+
             if attri == 'mu':
                 return mu
             else:
@@ -2129,7 +2129,7 @@ class yprofile(DataPlot, PPMtools):
         elif attri == 'Hp':
             r = self.get('Y', fname, numtype, resolution = 'l', silent = silent)
             p = self.get('P', fname, numtype, resolution = 'l', silent = silent)
-            
+
             logp = np.log(p)
 
             dr = cdiff(r)
@@ -2146,27 +2146,27 @@ class yprofile(DataPlot, PPMtools):
 
             # Centre r_bot on the nearest cell.
             idx_bot = np.argmin(np.abs(r - r_bot))
-            
-            # Mass below r_bot (using r[idx_bot] instead of r_bot makes 
+
+            # Mass below r_bot (using r[idx_bot] instead of r_bot makes
             # g[idx_bot] == g_bot).
             m_bot = g_bot*(r[idx_bot]**2)/G_code
-            
+
             dm = -4.*np.pi*(r**2)*cdiff(r)*rho
             m = -np.cumsum(dm) # Get the mass profile by integration.
-            
+
             # Shift the mass profile to make sure that m[idx_bot] == m_bot.
             # The mass profile at small radii won't make sense, because
             # the core is artificial with no gravity.
             m += m_bot - m[idx_bot]
-            
+
             g = G_code*m/(r**2) # Gravity profile (see the note above).
-            
+
             return g
         elif attri == 'nabla':
             T9 = self.get('T9', fname, numtype, resolution = 'l', silent = silent, \
                           **kwargs)
             p = self.get('P', fname, numtype, resolution = 'l', silent = silent)
-            
+
             logT9 = np.log(T9)
             logp = np.log(p)
 
@@ -2179,7 +2179,7 @@ class yprofile(DataPlot, PPMtools):
         elif attri == 'nabla_rho':
             rho = self.get('Rho', fname, numtype, resolution = 'l', silent = silent)
             p = self.get('P', fname, numtype, resolution = 'l', silent = silent)
-            
+
             logrho = np.log(rho)
             logp = np.log(p)
 
@@ -2193,10 +2193,10 @@ class yprofile(DataPlot, PPMtools):
             g = self.get('g', 0, resolution = 'l')
             Hp = self.get('Hp', fname, numtype, resolution = 'l', silent = silent)
             nabla_rho = self.get('nabla_rho', fname, numtype, resolution = 'l', silent = silent)
-            
+
             # Ideal gas assumed.
             N2 = (g/Hp)*(nabla_ad - 1. + nabla_rho)
-            
+
             return N2
         elif attri == 'enuc_C12pg':
             required_args = ('airmu', 'cldmu', 'fkair', 'fkcld', \
@@ -2207,7 +2207,7 @@ class yprofile(DataPlot, PPMtools):
                     print('The following arguments are missing: ', \
                     missing_args)
                 return None
-                
+
             airmu = kwargs['airmu']
             cldmu = kwargs['cldmu']
             fkair = kwargs['fkair']
@@ -2224,10 +2224,10 @@ class yprofile(DataPlot, PPMtools):
 
             if 'use_dt' in kwargs:
                 kwargs2['use_dt'] = kwargs['use_dt']
-            
+
             if 'T9_corr_params' in kwargs:
                 kwargs2['T9_corr_params'] = kwargs['T9_corr_params']
-                
+
             enuc_C12pg = self._get_enuc_C12pg(fname, airmu, cldmu, fkair, \
                                               fkcld, AtomicNoair, AtomicNocld, \
                                               numtype = numtype, silent = silent, \
@@ -2240,7 +2240,7 @@ class yprofile(DataPlot, PPMtools):
             r = self.get('Y', fname, numtype, resolution = 'l', silent = silent)
             dV = -4.*np.pi*r**2*cdiff(r)
             L_C12pg = np.sum(enuc_C12pg*dV)
-            
+
             return L_C12pg
         elif attri == 'enuc_C12C12':
             required_args = ('airmu', 'cldmu', 'fkcld', 'AtomicNocld')
@@ -2250,7 +2250,7 @@ class yprofile(DataPlot, PPMtools):
                     print('The following arguments are missing: ', \
                     missing_args)
                 return None
-                
+
             airmu = kwargs['airmu']
             cldmu = kwargs['cldmu']
             fkcld = kwargs['fkcld']
@@ -2259,7 +2259,7 @@ class yprofile(DataPlot, PPMtools):
             kwargs2 = {}
             if 'Q' in kwargs:
                 kwargs2['Q'] = kwargs['Q']
-            
+
             if 'corr_fact' in kwargs:
                 kwargs2['corr_fact'] = kwargs['corr_fact']
 
@@ -2268,7 +2268,7 @@ class yprofile(DataPlot, PPMtools):
 
             if 'T9_func' in kwargs:
                 kwargs2['T9_func'] = kwargs['T9_func']
-                
+
             enuc_C12C12 = self._get_enuc_C12C12(fname, airmu, cldmu, \
                           fkcld, AtomicNocld, numtype=numtype, \
                           silent=silent, **kwargs2)
@@ -2282,7 +2282,7 @@ class yprofile(DataPlot, PPMtools):
                     print('The following arguments are missing: ', \
                     missing_args)
                 return None
-                
+
             airmu = kwargs['airmu']
             cldmu = kwargs['cldmu']
             XO16conv = kwargs['XO16conv']
@@ -2293,14 +2293,14 @@ class yprofile(DataPlot, PPMtools):
 
             if 'corr_fact' in kwargs:
                 kwargs2['corr_fact'] = kwargs['corr_fact']
-            
+
             if 'T9_func' in kwargs:
                 kwargs2['T9_func'] = kwargs['T9_func']
-                
+
             enuc_O16O16 = self._get_enuc_O16O16(fname, airmu, cldmu, \
                           XO16conv, numtype=numtype, silent=silent, \
                           **kwargs2)
-            
+
             return enuc_O16O16
         elif attri == 'enuc_C12O16':
             required_args = ('AtomicNocld', 'AtomicNoair')
@@ -2310,7 +2310,7 @@ class yprofile(DataPlot, PPMtools):
                     print('The following arguments are missing: ', \
                     missing_args)
                 return None
-                
+
             AtomicNoair = kwargs['AtomicNoair']
             AtomicNocld = kwargs['AtomicNocld']
 
@@ -2320,14 +2320,14 @@ class yprofile(DataPlot, PPMtools):
 
             if 'AtomicNocld' in kwargs:
                 kwargs2['AtomicNocld'] = kwargs['AtomicNocld']
-                
+
             enuc_C12O16 = self._get_enuc_O16O16(fname, AtomicNocld, AtomicNoair, \
                           XO16conv, numtype=numtype, silent=silent, \
                           **kwargs2)
-            
+
             return enuc_O16O16
         elif attri == 'L_C12C12':
-            
+
             required_args = ('airmu', 'cldmu', 'fkcld', 'AtomicNocld','rp_set','r_top')
             missing_args = get_missing_args(required_args, **kwargs)
             if len(missing_args) > 0:
@@ -2335,18 +2335,18 @@ class yprofile(DataPlot, PPMtools):
                     print('The following arguments are missing: ', \
                     missing_args)
                 return None
-                
+
             airmu = kwargs['airmu']
             cldmu = kwargs['cldmu']
             fkcld = kwargs['fkcld']
             AtomicNocld = kwargs['AtomicNocld']
             rp_set = kwargs['rp_set']
             r_top = kwargs['r_top']
-            
+
             kwargs2 = {}
             if 'Q' in kwargs:
                 kwargs2['Q'] = kwargs['Q']
-            
+
             if 'corr_fact' in kwargs:
                 kwargs2['corr_fact'] = kwargs['corr_fact']
 
@@ -2355,19 +2355,19 @@ class yprofile(DataPlot, PPMtools):
 
             if 'T9_func' in kwargs:
                 kwargs2['T9_func'] = kwargs['T9_func']
-                
+
             if 'rp_set' in kwargs:
                 kwargs2['rp_set'] = kwargs['rp_set']
-                
+
             if 'r_top' in kwargs:
                 kwargs2['r_top'] = kwargs['r_top']
-                        
+
             r = self.get('Y', fname=dumps[0], resolution='l')
             idx_top = np.argmin(np.abs(r - r_top))
             # integration from 0 to r_top
             idx = list(range(idx_top, len(r)))
-            dV = -4.*np.pi*r**2*cdiff(r)   
-            
+            dV = -4.*np.pi*r**2*cdiff(r)
+
             enuc_C12C12 = self._get_enuc_C12C12(fname, airmu, cldmu, \
                           fkcld, AtomicNocld, numtype=numtype, \
                           silent=silent, **kwargs2)
@@ -2383,10 +2383,10 @@ class yprofile(DataPlot, PPMtools):
             eta[avg_fv < 1e-6] = 1.
 
             L_C12C12 = np.sum(eta[idx]*enuc_C12C12[idx]*dV[idx])
-            
+
             return L_C12C12
         else:
-            return None 
+            return None
 
     def _get_enuc_C12pg(self, fname, airmu, cldmu, fkair, fkcld, \
                         AtomicNoair, AtomicNocld, numtype = 'ndump', \
@@ -2414,57 +2414,57 @@ class yprofile(DataPlot, PPMtools):
         TM13 = 1./TP13
         TM23 = 1./TP23
         TM32 = 1./TP32
-        
+
         T9inv = 1. / T9
         thyng = 2.173913043478260869565 * T9
         vc12pg = 20000000.*TM23 * np.exp(-13.692*TM13 - thyng*thyng)
         vc12pg = vc12pg * (1. + T9*(9.89-T9*(59.8 - 266.*T9)))
         thing2 = vc12pg + TM32*(1.0e5 * np.exp(-4.913*T9inv) + \
                                 4.24e5 * np.exp(-21.62*T9inv))
-        
+
         thing2[np.where(T9 < .0059)] = 0.
         thing2[np.where(T9 > 0.75)] = 200.
-        
+
         vc12pg = thing2 * rho * 1000.
-        
+
         v = 1./ rho
         atomicnocldinv = 1./AtomicNocld
         atomicnoairinv = 1./AtomicNoair
-        
+
         Y1 =  rhocld * fv * v * atomicnocldinv
         Y2 =  rhoair * (1. - fv) * v * atomicnoairinv
-        
+
         smaller = .0000001
-        reallysmall = smaller * smaller    
+        reallysmall = smaller * smaller
         CN = 96.480733
         if use_dt:
             # We want the average rate during the current time step.
             # If the burning is too fast all the stuff available burns
-            # in a fraction of the time step. We do not allow to burn 
+            # in a fraction of the time step. We do not allow to burn
             # more than what is available, so the average burn rate is
             # lower than then instantaneous one.
             thing3 = fkair * Y1 * Y2 * vc12pg * dt
             thing3[where(Y1 < reallysmall)] = 0.
             thing2 = np.min(np.array((thing3, Y1)), axis = 0)
-            
+
             #for i in range(len(Y1)):
             #    print '{:d}   {:.1e}   {:.1e}   {:.1e}'.format(i, Y1[i], thing3[i], Y1[i]/thing3[i])
-            
+
             DY = fkcld * thing2
             enuc = DY * rho * CN * Q / dt
         else:
             # We want the instantaneous burning rate. This does not
             # depend on how much stuff is available.
             thing3 = fkair * Y1 * Y2 * vc12pg
-        
+
             DY = fkcld * thing3
             enuc = DY * rho * CN * Q
-        
+
         # This factor can account for the heating bug if present.
         enuc *= corr_fact
-        
+
         return enuc
-        
+
     def _get_enuc_C12C12(self, fname, airmu, cldmu, fkcld, AtomicNocld,\
                         numtype='ndump', silent=False, Q=9.35, \
                         corr_fact=1., corr_func=None, T9_func=None):
@@ -2475,7 +2475,7 @@ class yprofile(DataPlot, PPMtools):
                           silent=silent)
         else:
             T9 = T9_func(self, fname=fname, numtype=numtype, resolution='l')
-        
+
         fv = self.get('FV H+He', fname=fname, numtype=numtype, \
                       resolution='l', silent=silent)
         rho = self.get('Rho', fname=fname, numtype=numtype, \
@@ -2500,22 +2500,22 @@ class yprofile(DataPlot, PPMtools):
 
         # C12(C12,a)ne20,60, VITAL
         BRCCA = 0.65*np.ones(len(T9))
-        
+
         # BRCCN according to Dayras et al. 1977 NUC. PHYS. A 279
         BRCCN = np.zeros(len(T9))
-        
+
         tmp = -(0.766e0/T9**3.e0)
         tmp = (1.e0 + 0.0789e0*T9 + 7.74e0*T9**3.e0)*tmp
         tmp = 0.859e0*np.exp(tmp)
         idx = where((T9 >= 0.5) & (T9 <= 1.5))
         BRCCN[idx] = tmp[idx]
-        
+
         idx = where((T9 > 1.5) & (T9 <= 5.0))
         BRCCN[idx] = 0.055e0*(1.e0 - np.exp(-(0.789e0*T9[idx] - 0.976e0)))
-        
+
         idx = where(T9 > 5.0)
         BRCCN[idx] = 0.02e0
-        
+
         # Rate from CF88 for C12+C12 (MG24):
         C12C12 = 4.27e26*T9B56/T932*np.exp(-84.165/T9B13-2.12e-03*T9**3)
 
@@ -2532,19 +2532,19 @@ class yprofile(DataPlot, PPMtools):
         thing2 = fkcld * Y1 * Y1 * vc12c12
 
         DY = 0.5 * fkcld * thing2
-        
+
         CN = 96.480733
         enuc = DY * rho * CN * Q
 
         # This factor can account for the heating bug if present.
         enuc *= corr_fact
-        
+
         if corr_func is not None:
             cf = corr_func(self, fname=fname, numtype=numtype, resolution='l')
             enuc *= cf
 
         return enuc
-        
+
     def _get_enuc_O16O16(self, fname, airmu, cldmu, XO16conv, \
                          numtype='ndump', silent=False, corr_fact=1., \
                          T9_func=None):
@@ -2555,10 +2555,10 @@ class yprofile(DataPlot, PPMtools):
                           silent=silent)
         else:
             T9 = T9_func(self, fname=fname, numtype=numtype, resolution='l')
-        
+
         rho = self.get('Rho', fname=fname, numtype=numtype, \
                        resolution=  'l', silent=silent)
-        
+
         TP13 = T9**(1./3.)
         TP23 = TP13*TP13
         TP43=TP23*TP23
@@ -2569,7 +2569,7 @@ class yprofile(DataPlot, PPMtools):
         TM13 = 1./TP13
         TM23 = 1./TP23
         TM32 = 1./TP32
-        
+
         # Equation 18.75 of Kippenhahn+12 with electron screening neglected.
         enuc = 2.14e37*(1.e3*rho)*XO16conv*XO16conv*TM23
         thyng = -135.93*TM13 - 0.629*TP23 - 0.445*TP43 + 0.0103*T9*T9
@@ -2610,10 +2610,10 @@ class yprofile(DataPlot, PPMtools):
 
         return enuc_c12o16
     def findFile(self, FName, numType='FILE', silent=False):
-        """ 
+        """
         Function that finds the associated file for FName when Fname
         is time or NDump.
-        
+
         Parameters
         ----------
         FName : string
@@ -2625,12 +2625,12 @@ class yprofile(DataPlot, PPMtools):
             function will look at the cycle with that nDump.  If
             numType is 'T' or 'time' function will find the cycle with
             the closest time stamp.  The default is "FILE".
-        
+
         Returns
         -------
         FName : int
             The number corresponding to the file.
-            
+
         """
 
         numType=numType.upper()
@@ -2719,7 +2719,7 @@ class yprofile(DataPlot, PPMtools):
         return FName
 
     def _splitHeader(self):
-        """ 
+        """
         Private function that splits up the data in the header section of the YProfile
         into header attributes and top attributes, where top attributes are just
         cycle attributes located in the header section of the YProfile
@@ -2729,7 +2729,7 @@ class yprofile(DataPlot, PPMtools):
         tmp2=[]
         slname=self.files[0]
         # Find the header section from another YProfile
-        header, tm, tm1=self._readFile() 
+        header, tm, tm1=self._readFile()
 
 
         if len(header)!=len(self.hattrs): #error checking
@@ -2751,14 +2751,14 @@ class yprofile(DataPlot, PPMtools):
         self._top=tmp2
 
     def _formatHeader(self):
-        """ 
+        """
         Private function that takes in a set of header attributes and
         then Formats them into a dictionary.
 
         Input -> A List of headers in the proper format
 
         Assumptions:
-        
+
         The first element in the list is Stellar Conv. Luminosity header
 
         The output in the dictionary looks like
@@ -2770,17 +2770,17 @@ class yprofile(DataPlot, PPMtools):
 
         The output in the dictionary looks like
         {'gridX':9,'gridY':9,'gridZ':9}.
-        
+
         If an element is size two the first item is the header name and
         the second will be its associated value.
 
         The output in the dictionary looks like {'First Item':value}
-        
+
         If an element contains a colon, The string preceding the colon
         is one part of the header name.  The string after the colon
         will be a list of associations in the form of the name followed
         by an equals sign followed by its value.
-        
+
         for example a line like this would look like:
 
         """
@@ -2866,16 +2866,16 @@ class yprofile(DataPlot, PPMtools):
 
 # below are some plotting functions integrated from the PPMstar_svn
 # server utils/YProfPy directory
-    
+
     def prof_time(self,fname,yaxis_thing='vY',num_type='ndump',logy=False,
                   radbase=None,radtop=None,ifig=101,ls_offset=0,label_case=" ",markevery = None,
                   **kwargs):
         """
         Plot the time evolution of a profile from multiple
         dumps of the same run (...on the same figure).
-            
+
         Velocities 'v', 'vY' and/or 'vXZ' may also be plotted.
-            
+
         Parameters
         ----------
         fname : int or list
@@ -2917,22 +2917,22 @@ class yprofile(DataPlot, PPMtools):
 
         Examples
         --------
-        
+
         .. ipython::
 
             In [136]: from ppmpy import ppm
                .....: data_dir = '/data/ppm_rpod2/YProfiles/'
                .....: project = 'O-shell-M25'
                .....: ppm.set_YProf_path(data_dir+project)
-            
+
             @savefig prof_time.png width=6in
             In [136]: D2 = ppm.yprofile('D2')
-               .....: D2.prof_time([0,5,10],logy=False,num_type='time',ifig=78)       
+               .....: D2.prof_time([0,5,10],logy=False,num_type='time',ifig=78)
 
         """
-    
+
         #fsize=14
-        
+
         #params = {'axes.labelsize':  fsize,
         #    'font.family':       'serif',
         #'font.family':        'Times New Roman',
@@ -2947,7 +2947,7 @@ class yprofile(DataPlot, PPMtools):
             fname = [fname]
         if num_type is 'time':
             fname = [f * 60 for f in fname]
-        
+
         pl.figure(ifig)
         i=0
         for dump in fname:
@@ -2956,11 +2956,11 @@ class yprofile(DataPlot, PPMtools):
             # if yaxis_thing in ['j','Y','FVconv','UYconv','FV H+He',\
             #                    'UY H+He','Rho','Rho1','A']:
             #     Y=self.get('Y',fname=dump)
-                
+
             # else:
             Y=self.get('Y',fname=dump,resolution='L')
             cb = utils.colourblind
-            
+
             if yaxis_thing is 'v':
                 Ek = self.get('Ek',fname=dump,numtype=num_type,resolution='l')
                 v = np.sqrt(2.*array(Ek,dtype=float))
@@ -2968,7 +2968,7 @@ class yprofile(DataPlot, PPMtools):
                 if logy:
                     ylab = '$\log <u>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
                 else:
-                    ylab = '$<u>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'        
+                    ylab = '$<u>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
             elif yaxis_thing is 'vY':
                 EkY  = self.get('EkY',fname=dump,numtype=num_type,resolution='l')
                 vY = np.sqrt(array(EkY,dtype=float))  # no factor 2 for v_Y and v_XZ
@@ -2985,14 +2985,14 @@ class yprofile(DataPlot, PPMtools):
                     ylab = '$\log <u_{\\theta,\phi}>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
                 else:
                     ylab = '$<u_{\\theta,\phi}>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
-                 
+
             elif yaxis_thing is 'FV':
                 y = self.get('FV H+He',fname=dump,numtype=num_type,resolution='l')
                 if logy:
                     ylab = '$\log_{10}$ fractional volume'
                 else:
                     ylab = 'fractional volume'
-                    
+
             else:
                 y = self.get(yaxis_thing,fname=dump,numtype=num_type,resolution='L', **kwargs)
                 ylab = yaxis_thing
@@ -3006,7 +3006,7 @@ class yprofile(DataPlot, PPMtools):
                 time_min = time/60.
                 lab=label_case+', '+str("%.3f" % time_min)
                 leg_tit = 'time / min'
-            
+
             if markevery is not None:
                 markevery = markevery
             else:
@@ -3026,11 +3026,11 @@ class yprofile(DataPlot, PPMtools):
                 pl.axvline(radtop,linestyle='dashed',color='k')
 
             i+=1
-                    
+
         pl.xlabel('Radius $[1000\mathrm{km}]$')
         pl.ylabel(ylab)
         pl.legend(loc='best',title=leg_tit).draw_frame(False)
-    
+
     def get_mass_fraction(fluid,fname,resolution):
         '''
         Get mass fraction profile of fluid 'fluid' at fname with resolution
@@ -3054,13 +3054,13 @@ class yprofile(DataPlot, PPMtools):
         If a list of cycle number is given, separate figures are made for
         each cycle. If one wishes to compare velocity profiles for two or
         more cycles, see function vprof_time.
-            
+
         Parameters
         ----------
-        
+
         fname : int or list
             Cycle number or list of cycle numbers to plot
-            
+
         fname_type : string
             'discrete' or 'range' whether to average over a range
             to find velocities or plot entries discretely
@@ -3082,7 +3082,7 @@ class yprofile(DataPlot, PPMtools):
             see 'save' above
         format : string
             see 'save' above
-        initial_conv_boundaries : logical 
+        initial_conv_boundaries : logical
             plot vertical lines where the convective boundaries are
             initially, i.e. ad radbase and radtop from header
             attributes in YProfiles
@@ -3098,20 +3098,20 @@ class yprofile(DataPlot, PPMtools):
 
         Examples
         --------
-            
+
         .. ipython::
 
             In [136]: data_dir = '/data/ppm_rpod2/YProfiles/'
                .....: project = 'O-shell-M25'
                .....: ppm.set_YProf_path(data_dir+project)
-            
+
             @savefig vprofs.png width=6in
             In [136]: D2 = ppm.yprofile('D2')
                .....: D2.vprofs(100,ifig = 111)
         """
-            
+
         ## fsize=14
-        
+
         ## params = {'axes.labelsize':  fsize,
         ## #    'font.family':       'serif',
         ## 'font.family':        'Times New Roman',
@@ -3122,7 +3122,7 @@ class yprofile(DataPlot, PPMtools):
         ## 'ytick.labelsize':   fsize*0.8,
         ## 'text.usetex':       False}
         ## pl.rcParams.update(params)
-        
+
         pl.figure(ifig)
         if type(fname) is not list:
             fname = [fname]
@@ -3131,7 +3131,7 @@ class yprofile(DataPlot, PPMtools):
         vXZtot = np.zeros(size(Y))
         vtot = np.zeros(size(Y))
         vYtot =  np.zeros(size(Y))
-        
+
         for dump in fname:
 #            if save or dump == fname[0]:
 #                pl.close(ifig),pl.figure(ifig)
@@ -3238,7 +3238,7 @@ class yprofile(DataPlot, PPMtools):
                 number_str=str(dump).zfill(11)
                 if save:
                     pl.savefig(prefix+'-Vel-'+number_str+'.'+format,format=format)
-            else:             
+            else:
                 vtot = vtot + v
                 vYtot = vYtot + vY
                 vXZtot = vXZtot + vXZ
@@ -3335,19 +3335,19 @@ class yprofile(DataPlot, PPMtools):
             number_str=str(dump).zfill(11)
             if save:
                     pl.savefig(prefix+'-Vel-'+number_str+'.'+format,format=format)
-            
+
     def vprof_time(self,dumps,Np,comp = 'r',lims=None,save=False,
                prefix='PPM',format='pdf',initial_conv_boundaries=True,lw=1., ifig = 12):
         '''
         Plots the same velocity profile at different times
-        
+
         Parameters
         ----------
         dumps : array
             dumps to plot
         Np : int
-            This function averages over a range of Np points centered at 
-            the dump number, preferable an even number or else the range 
+            This function averages over a range of Np points centered at
+            the dump number, preferable an even number or else the range
             will not be centered around the dump number
         comp : str
             'r' 't' or 'tot' for the velocity component that will be plotted
@@ -3366,22 +3366,22 @@ class yprofile(DataPlot, PPMtools):
             see 'save' above
         format : string
             see 'save' above
-        initial_conv_boundaries : bool, optional 
+        initial_conv_boundaries : bool, optional
             plot vertical lines where the convective boundaries are
             initially, i.e. ad radbase and radtop from header
             attributes in YProfiles
         ifig : int
             figure number to plot into
-            
+
         '''
-        
+
         avg_rms_v = {}
         for d in dumps:
             # Always take an average except the very end of the run.
             v = get_avg_rms_velocities(self, list(range(d-int(Np/2), d+int(Np/2))),comp)
 
             avg_rms_v[d] = v
-        
+
         r = self.get('Y', fname=0, resolution='l')
         markers = ['v', '^', '<', '>', 'o', 's']
         colours = [9, 3, 5, 8, 1, 6]
@@ -3403,7 +3403,7 @@ class yprofile(DataPlot, PPMtools):
         if save:
             number_str=str(dump).zfill(11)
             pl.savefig(prefix+'-Vel-'+number_str+'.'+format,format=format)
-    
+
     def Aprof_time(self,tau,Nl,lims=None,save=False,silent = True,
                    prefix='PPM',format='pdf',initial_conv_boundaries=True,lw=1., ifig = 12):
         '''
@@ -3432,22 +3432,22 @@ class yprofile(DataPlot, PPMtools):
             see 'save' above
         format : string
             see 'save' above
-        initial_conv_boundaries : logical 
+        initial_conv_boundaries : logical
             plot vertical lines where the convective boundaries are
             initially, i.e. ad radbase and radtop from header
             attributes in YProfiles
         ifig : int
             figure number to plot into
-            
+
         Examples
         --------
-        
+
         .. ipython::
 
             In [136]: data_dir = '/data/ppm_rpod2/YProfiles/'
                .....: project = 'AGBTP_M2.0Z1.e-5'
                .....: ppm.set_YProf_path(data_dir+project)
-            
+
             @savefig Aprof_time.png width=6in
             In [136]: F4 = ppm.yprofile('F4')
                .....: F4.Aprof_time(np.array([807., 1399.]),range(0,30,5),lims =[10., 30.,0., 2.5e-2],silent = True)
@@ -3472,23 +3472,23 @@ class yprofile(DataPlot, PPMtools):
                 print('You wanted tau = {:.1f} min. yprofile.get() found the closest dump at t = {:.1f} min.\n'.\
                   format(tau[i], t/60.))
         pl.xlabel('r / Mm')
-        pl.ylabel('A(t)/A(0) - 1')      
+        pl.ylabel('A(t)/A(0) - 1')
         if initial_conv_boundaries:
             pl.axvline(self.radbase,linestyle='dashed',color='k')
             pl.axvline(self.radtop,linestyle='dashed',color='k')
         if lims is not None:
             pl.axis(lims)
         pl.legend(loc=0)
-        pl.tight_layout() 
+        pl.tight_layout()
         if save:
             number_str=str(dump).zfill(11)
             pl.savefig(prefix+'-A-'+number_str+'.'+format,format=format)
-        
+
     def tEkmax(self,ifig=None,label=None,save=False,prefix='PPM',format='pdf',
                logy=False,id=0):
         """
         Plot maximum kinetic energy as a function of time.
-        
+
         Parameters
         ----------
         ifig : int, optional
@@ -3514,24 +3514,24 @@ class yprofile(DataPlot, PPMtools):
             An id for the model, which esures that the lines are
             plotted in different colours and styles.
             The default is 0
-        
+
         Examples
         --------
-        
+
         .. ipython::
 
             In [136]: data_dir = '/data/ppm_rpod2/YProfiles/'
                .....: project = 'O-shell-M25'
                .....: ppm.set_YProf_path(data_dir+project)
-            
+
             @savefig tEKmax.png width=6in
             In [136]: D2 = ppm.yprofile('D2')
                .....: D2.tEkmax(ifig=77,label='D2',id=0)
-        
+
         """
-        
+
         fsize=14
-        
+
         params = {'axes.labelsize':  fsize,
         #    'font.family':       'serif',
         'font.family':        'Times New Roman',
@@ -3542,15 +3542,15 @@ class yprofile(DataPlot, PPMtools):
         'ytick.labelsize':   fsize*0.8,
         'text.usetex':       False}
         pl.rcParams.update(params)
-        
+
         if ifig is None:
             pl.figure()
         else:
             pl.figure(ifig)
-        
+
         t = self.get('t')
         EkMax = self.get('EkMax') # Ek in 10^43 erg
-        
+
         if logy:
             y = np.log10(EkMax*1.e43)
             ylab = '$\log E_{\\rm k,max}/ {\\rm erg}$'
@@ -3573,7 +3573,7 @@ class yprofile(DataPlot, PPMtools):
               logy=False,id=0):
         """
         Plot maximum velocity as a function of time.
-        
+
         Parameters
         ----------
         ifig : int, optional
@@ -3602,21 +3602,21 @@ class yprofile(DataPlot, PPMtools):
 
         Examples
         --------
-        
+
         .. ipython::
 
             In [136]: data_dir = '/data/ppm_rpod2/YProfiles/'
                .....: project = 'O-shell-M25'
                .....: ppm.set_YProf_path(data_dir+project)
-            
+
             @savefig tvmax.png width=6in
             In [136]: D2 = ppm.yprofile('D2')
                .....: D2.tvmax(ifig=11,label='D2',id=0)
-            
+
         """
-        
+
         fsize=14
-        
+
         params = {'axes.labelsize':  fsize,
         #    'font.family':       'serif',
         'font.family':        'Times New Roman',
@@ -3627,12 +3627,12 @@ class yprofile(DataPlot, PPMtools):
         'ytick.labelsize':   fsize*0.8,
         'text.usetex':       False}
         #pl.rcParams.update(params)
-        
+
         if ifig is None:
             pl.figure()
         else:
             pl.figure(ifig)
-        
+
         t=self.get('t')
         EkMax=self.get('EkMax')
 
@@ -3659,14 +3659,14 @@ class yprofile(DataPlot, PPMtools):
                         do_plots = False, logRi_levels = [-1., -0.6, 0., 1., 2., 3.], \
                         ylim_max = 2.02, compressible_fluid = True, plot_type = 0, \
                         ifig = 101):
-        
+
         '''
         Make a plot of radius vs tangential velocity in the vicinity of the
         boundary and draw on lines of constant Richardson number. Compared to
         the function that produced Fig. 9 of Woodward+ (2015) this one takes
         into account the compressibility of the gas. Several bugs have been
         removed, too.
-        
+
 
         Parameters
         ----------
@@ -3678,7 +3678,7 @@ class yprofile(DataPlot, PPMtools):
             The minimum radius in the plot. If invalid or None it will be set
             to R_top - 1.
         R_top : float
-            Radius of top of convection zone. If invalid or None it will be set 
+            Radius of top of convection zone. If invalid or None it will be set
             to the radius at which FV H+He = 0.9.
         do_plots : logical
             Do you want to do some intermittent plotting?
@@ -3699,63 +3699,63 @@ class yprofile(DataPlot, PPMtools):
             profile of the RMS horizontal velocity.
         ifig : int
             Figure number for the Richardson plot (a new window must be opened).
-        
+
         Examples
         ---------
-        
+
         .. ipython::
 
             In [136]: data_dir = '/data/ppm_rpod2/YProfiles/'
                .....: project = 'AGBTP_M2.0Z1.e-5'
                .....: ppm.set_YProf_path(data_dir+project)
-            
+
             @savefig richardson.png width=6in
             In [136]: F4 = ppm.yprofile('F4')
                .....: F4.Richardson_plot()
-               
+
         '''
-        
+
         # the whole calculation is done in code units
         # the unit of G in the code is 10^{-3} g cm^3 s^{-2}
         G_code = ast.grav_const/1e-3
-        
+
         if fname1 < 0 or fname1 > np.max(list(self.ndumpDict.keys())):
             raise IOError("fname1 out of range.")
-        
+
         if fname2 == 0:
             raise IOError("Velocities at fname2=0 will be 0; please "+\
                           "make another choice")
-        
+
         if fname2 < 0 or fname2 > np.max(list(self.ndumpDict.keys())):
             raise IOError("fname2 out of range.")
-        
+
         if plot_type != 0 and plot_type != 1:
             print("plot_type = %s is not implemented." % str(plot_type))
             return
-        
+
         # get some header attributes
         R_bot = float(self.hattrs['At base of the convection zone R'])
         g_bot = float(self.hattrs['At base of the convection zone g'])
-        
+
         # get the stratification at fname = fname1
         # radius is called 'Y' in the YProfiles
         r = self.get('Y', fname = fname1, resolution = 'l')
         fv_H_He = self.get('FV H+He', fname = fname1, resolution = 'l')
         rho = self.get('Rho', fname = fname1, resolution = 'l')
         p = self.get('P', fname = fname1, resolution = 'l')
-        
+
         # get the rms horizontal velocities at fname = fname2
         ek_xz = self.get('EkXZ', fname = fname2, resolution = 'l')
         rms_u_xz = np.sqrt(ek_xz) # no factor of 2 for ek_xz (known bug)
-        
+
         # pre-compute logarithms of some variables to speed up the code
         logrho = np.log(rho)
         logp = np.log(p)
-        
+
         min_r = np.min(r)
         max_r = np.max(r)
         dr = cdiff(r)
-        
+
         if R_top is not None:
             if R_top < min_r:
                 print("R_top too low.")
@@ -3773,7 +3773,7 @@ class yprofile(DataPlot, PPMtools):
             idx_top = np.argmin(np.abs(fv_H_He - 0.9))
             R_top = r[idx_top]
             print("R_top set to %.3f." % R_top)
-        
+
         if R_low is not None:
             if R_low < min_r:
                 print("R_low too low.")
@@ -3791,31 +3791,31 @@ class yprofile(DataPlot, PPMtools):
             R_low = R_top - 1.
             if R_low < min_r:
                 R_low = min_r
-            
+
             # find the point nearest to r = R_low
             idx_low = np.argmin(np.abs(r - R_low))
             R_low = r[idx_low]
             print("R_low centred on the cell nearest to R_top - 1: R_low = %.3f." % R_low)
-        
+
         # centre R_bot on the nearest cell
         idx_bot = np.argmin(np.abs(r - R_bot))
         # mass below R_bot
         # (using r[idx_bot] instead of R_bot makes g[idx_bot] == g_bot)
         M_bot = g_bot*(r[idx_bot]**2)/G_code
-        
+
         dm = 4.*np.pi*(r**2)*dr*rho
         m = np.cumsum(dm) # get the mass profile by integration
         # shift the mass profile to make sure that m[idx_bot] == M_bot
         # the mass profile at small radii won't make sense, because
         # the core is artificial with no gravity
         m += M_bot - m[idx_bot]
-        
+
         g = G_code*m/(r**2) # gravity profile (see the note above)
         H_p = p/(rho*g) # pressure scale height (assuming hydrostatic equilibrium)
-        
+
         nabla_ad = 0.4 # adiabatic temperature gradient
         nabla_rho_ad = 1. - nabla_ad # adiabatic density gradient
-        
+
         # compute the Richardson number for the shearing flow
         # between r[idx_1] and r[idx_2] (it's faster when using
         # indices instead of radii)
@@ -3824,79 +3824,79 @@ class yprofile(DataPlot, PPMtools):
             # average g and H_p between idx_1 and idx_2
             g_avg = (g[idx_1] + g[idx_2])/2.
             H_p_avg = (H_p[idx_1] + H_p[idx_2])/2.
-            
+
             # approximate density gradient between idx_1 and idx_2
             dlogrho = logrho[idx_2] - logrho[idx_1]
             dlogp = logp[idx_2] - logp[idx_1]
             nabla_rho = dlogrho/dlogp
-            
+
             # buoyancy frequency squared
             if compressible_fluid:
                 N2 = (g_avg/H_p_avg)*(nabla_rho - nabla_rho_ad)
             else:
                 N2 = (g_avg/H_p_avg)*nabla_rho
-            
+
             # compute the velocity difference we have no information
             # about the velocity difference or gradient
             if du is None and dudr is None:
                 du = rms_u_xz[idx_2] - rms_u_xz[idx_1]
-            
+
             # compute the velocity gradient if none was supplied
             if dudr is None:
                 dr = r[idx_2] - r[idx_1]
                 dudr = du/dr
-            
+
             # velocity gradient squared
             dudr2 = (dudr)**2
-            
+
             # Richardson number
             Ri = N2/dudr2
-            
+
             return Ri
-        
+
         if plot_type == 0:
             # grid of indices for a sequence of intervals, in which Ri will be computed
             idx_grid = np.arange(idx_top + 1, idx_low + 1)
-            
+
             # the corresponding grid of radii
             r_grid = np.array([r[i] for i in idx_grid])
-        
+
             # reference velocity
             u_0 = rms_u_xz[idx_top]
-            
+
             # velocity limit for the plot
             # the factor of 1e-3 converts the velocity from km/s to
             # code units (10^8 cm s^{-1})
             u_max = 1e-3*(10**ylim_max)
-        
+
             # construct grids of assumed velocities and velocity differences
             # logarithmic spacing between (u_0 + log10u_step) and u_max
             log10u_step = 0.02
             u_grid = 10**np.arange(np.log10(rms_u_xz[idx_top]) + log10u_step, \
                      np.log10(u_max), log10u_step)
             du_grid = u_grid - u_0
-            
+
             # perhaps the loops could be optimised, but it runs fast enough as is
             Ri = np.zeros((du_grid.size, idx_grid.size))
             for i in range(0, du_grid.size):
                 for j in range(0, idx_grid.size):
                     Ri[i, j] = Richardson(idx_grid[j], idx_top, du = du_grid[i])
-            
+
             pl.close(ifig)
             pl.figure(ifig)
-            
+
             # pl.contour() fails if np.log10(Ri) is undefined everywhere
             if any(Ri > 0):
                 cs = pl.contour(r_grid, np.log10(1e3*u_grid), np.log10(Ri), \
                                 logRi_levels, linestyles = '-')
                 pl.clabel(cs)
-            
+
             # pl.contour() fails if np.log10(Ri) is undefined everywhere
             if any(Ri < 0):
                 cs2 = pl.contour(r_grid, np.log10(1e3*u_grid), np.log10(-Ri), \
                                  logRi_levels, linestyles = '--')
                 pl.clabel(cs2)
-            
+
             pl.plot(r, np.log10(1e3*rms_u_xz + 1e-100), \
                     marker = 'o', markevery = utils.linestyle(0)[1], \
                     label = ("velocity at dump %d" % fname2))
@@ -3911,21 +3911,21 @@ class yprofile(DataPlot, PPMtools):
             # the steepest velocity gradient between R_low and R_top
             dudr = cdiff(rms_u_xz)/dr
             max_dudr = np.max(np.abs(dudr[idx_top:(idx_low + 1)]))
-            
+
             # characteristic length scale on which velocities decrease at the boundary
             l_u = np.max(rms_u_xz[idx_top:(idx_low + 1)])/max_dudr
             print("Velocities decrease on a characteristic length scale of %.2f Mm" % l_u)
-            
+
             # grid of positions, at which Ri will be computed
             idx_grid = np.arange(idx_top, idx_low + 1)
-            
+
             # the corresponding grid of radii
             r_grid = np.array([r[i] for i in idx_grid])
-            
+
             # estimate the local velocity gradient assuming that the local velocities
             # vanish on the length scale l_u
             dudr_estimate = rms_u_xz[idx_top:(idx_low + 1)]/l_u
-            
+
             # compute the local Richardson numbers
             Ri = np.zeros(idx_grid.size)
             for i in range(0, idx_grid.size):
@@ -3938,7 +3938,7 @@ class yprofile(DataPlot, PPMtools):
                 pl_Ri_min = np.floor(min_log10absRi)
             else:
                 pl_Ri_min = np.floor(min_log10absRi) - 1.
-            
+
             # determine the upper limit for Ri in the plot
             max_log10absRi = np.max(np.log10(np.abs(Ri)))
             # always keep some margin
@@ -3946,22 +3946,22 @@ class yprofile(DataPlot, PPMtools):
                 pl_Ri_max = np.ceil(max_log10absRi)
             else:
                 pl_Ri_max = np.ceil(max_log10absRi) + 1.
-            
+
             # FV values smaller than 10^{-8} are not interesting
             min_log10fv_H_He = np.min(np.log10(fv_H_He[idx_top:(idx_low + 1)] + 1e-100))
             if min_log10fv_H_He < -8.:
                 min_log10fv_H_He = -8.
-            
+
             # do we need to shift the FV curve in the plot?
             fv_offset = 0
             if pl_Ri_min > min_log10fv_H_He:
                 fv_offset = pl_Ri_max
-            
+
             pl.close(ifig)
             fig = pl.figure(ifig)
             ax = fig.add_subplot(111)
             lns = [] # array of lines to be put into a joint legend
-            
+
             if any(Ri < 0):
                 # temporarily suppress numpy warnings
                 old_settings = np.seterr()
@@ -3974,13 +3974,13 @@ class yprofile(DataPlot, PPMtools):
             else:
                 lns += ax.plot(r_grid, np.log10(Ri), linestyle = '-', linewidth = 2, \
                                label = r'$Ri$')
-            
+
             lns += ax.plot(r_grid, np.log10(fv_H_He[idx_top:(idx_low + 1)] + 1e-100) + \
                            fv_offset, linestyle = '-', label = r'$FV$')
-            
+
             ax.set_xlim(R_low, R_top)
             ax.set_ylim(pl_Ri_min, pl_Ri_max)
-            
+
             ax.set_xlabel(r'$\mathrm{radius\ [Mm]}$', fontsize = 16)
             if fv_offset == 0:
                 ax.set_ylabel(r'$\log Ri; \log FV$', fontsize = 16)
@@ -3994,50 +3994,50 @@ class yprofile(DataPlot, PPMtools):
 
             lbls = [l.get_label() for l in lns]
             ax2.legend(lns, lbls, loc = 2)
-        
+
         # show some plots to inspect more variables
         if do_plots:
             i1 = idx_bot
             i2 = np.argmax(r)
             if i1 > i2: tmp = i1; i1 = i2; i2 = tmp
-            
+
             pl.close(102); pl.figure(102)
             pl.plot(r[i1:i2], 5.025e-07*m[i1:i2])
             pl.xlabel("radius [Mm]")
             pl.ylabel("mass [M_Sun]")
             pl.title("enclosed mass")
-            
+
             pl.close(103); pl.figure(103)
             pl.plot(r[i1:i2], 1e8*g[i1:i2])
             pl.xlabel("radius [Mm]")
             pl.ylabel("gravity [cm/s^2]")
             pl.title("gravity")
-            
+
             pl.close(104); pl.figure(104)
             pl.plot(r[i1:i2], np.log10(1e3*rho[i1:i2]))
             pl.xlabel("radius [Mm]")
             pl.ylabel("log10(rho [g/cm^3])")
             pl.title("log10 density")
-            
+
             pl.close(105); pl.figure(105)
             pl.plot(r[i1:i2], np.log10(1e19*p[i1:i2]))
             pl.xlabel("radius [Mm]")
             pl.ylabel("log10(p [g/(cm s^2)])")
             pl.title("log10 pressure")
-            
+
             pl.close(106); pl.figure(106)
             pl.plot(r[i1:i2], H_p[i1:i2])
             pl.xlabel("radius [Mm]")
             pl.ylabel("Hp [Mm]")
             pl.title("pressure scale height")
-            
+
             pl.close(107); pl.figure(107)
             nabla_rho = cdiff(logrho)/cdiff(logp)
             pl.plot(r[i1:i2], nabla_rho[i1:i2])
             pl.xlabel("radius [Mm]")
             pl.ylabel("nabla_rho")
             pl.title("density gradient")
-            
+
             pl.close(108); pl.figure(108)
             nabla_rho = cdiff(logrho)/cdiff(logp)
             N2 = (g/H_p)*(nabla_rho - nabla_rho_ad)
@@ -4045,16 +4045,16 @@ class yprofile(DataPlot, PPMtools):
             pl.xlabel("radius [Mm]")
             pl.ylabel("N^2 [1/s^2]")
             pl.title("buoyancy frequency")
-        
+
         pl.show() # show everything we have plotted
 
     def Dov(self,r0,D0,f,fname=1):
         '''
         Calculate and plot an exponentially decaying diffusion coefficient
         given an r0, D0 and f.
-            
+
         Dov is given by the formula D0*exp(-2*(r-r0)/f*Hp)
-            
+
         Parameters
         ----------
         r0 : float
@@ -4066,7 +4066,7 @@ class yprofile(DataPlot, PPMtools):
             of the diffusion coefficient) should we decay with?
         fname : int
             which dump do you want to take r and P from?
-            
+
         Returns
         --------
         r : array
@@ -4083,9 +4083,9 @@ class yprofile(DataPlot, PPMtools):
         idx = np.abs(r - r0*1.e8).argmin()
         r0 = r[idx]
         Hp0 = Hp[idx]
-        
+
         print(r0, Hp0, idx)
-        
+
         D = D0 * np.exp(-2. * (r[idx:] - r0) / f / Hp0)
         return r[idx:] / 1.e8, D
 
@@ -4093,10 +4093,10 @@ class yprofile(DataPlot, PPMtools):
         '''
         Calculate and plot an 2-parameter exponentially decaying diffusion coefficient
         given an r0, D0 and f1 and f2.
-        
+
         Dov is given by the formula:
         D = 2. * D0 * 1. / (1. / exp(-2*(r-r0)/f1*Hp) + 1. / exp(-2*(r-r0)/f2*Hp))
-        
+
         Parameters
         ----------
         r0 : float
@@ -4107,7 +4107,7 @@ class yprofile(DataPlot, PPMtools):
             parameters of the model
         fname : int
             which dump do you want to take r and P from?
-        
+
         Returns
         --------
         r : array
@@ -4126,12 +4126,12 @@ class yprofile(DataPlot, PPMtools):
         Hp0 = Hp[idx]
         if not silent:
             print(r0, Hp0, idx)
-                
+
         D = 2. * D0 * 1./(1./(np.exp(-2. * (r - r0) / f1 / Hp0)) +
                          1./(np.exp(-2. * (r - r0) / f2 / Hp0))
                          )
         return r / 1.e8, D
-    
+
     def Dinv(self,fname1,fname2,fluid='FV H+He',numtype='ndump',newton=False,
              niter=3,debug=False,grid=False,FVaverage=False,tauconv=None,
              returnY=False,plot_Dlt0=True, silent = True, initial_conv_boundaries = True,
@@ -4140,10 +4140,10 @@ class yprofile(DataPlot, PPMtools):
         Solve inverted diffusion equation to see what diffusion coefficient
         profile would have been appropriate to mimic the mixing of species
         seen in the Yprofile dumps.
-            
+
         In the present version, we only solve for D in the region where
         'FV H+He' is not 0 or 1 in dump fname 2.
-            
+
         Parameters
         ----------
         fname1,fname2 : int or float
@@ -4186,31 +4186,31 @@ class yprofile(DataPlot, PPMtools):
             whether or not to plot the diffusion coefficient when it is
             negative
         approx_D : boolean, optional
-            whether or not to plot an approximate diffusion coefficient 
+            whether or not to plot an approximate diffusion coefficient
             for an area of the line
         linelims : range, optional
             limits of the radius to approximate diffusion coefficient
             default is none (whole vector)
         r0 : None, optional
-            Start of exponential diffusion decay, necessary 
+            Start of exponential diffusion decay, necessary
             for approx_D
-            
+
         Returns
         --------
         x : array
             radial co-ordinates (Mm) for which we have a diffusion coefficient
         D : array
             Diffusion coefficient (cm^2/s)
-        
+
         Examples
         ---------
-        
+
         .. ipython::
 
             In [136]: data_dir = '/data/ppm_rpod2/YProfiles/'
                .....: project = 'AGBTP_M2.0Z1.e-5'
                .....: ppm.set_YProf_path(data_dir+project)
-            
+
             @savefig Dinv.png width=6in
             In [136]: F4 = ppm.yprofile('F4')
                .....: res = F4.Dinv(1,640)
@@ -4235,7 +4235,7 @@ class yprofile(DataPlot, PPMtools):
             rho = self.get('Rho',fname=fname,resolution='l')
             y = rhofluid * y / rho
             return y
-    
+
         if FVaverage is False:
             y1 = mf(fluid,fname2)
             y1long = y1 # for plotting
@@ -4276,7 +4276,7 @@ class yprofile(DataPlot, PPMtools):
                 ytmp += mf(fluid,cyc)
                 count+=1
             y1 = ytmp / float(count)
-    
+
             y0long = y0
             y1long = y1
 
@@ -4292,7 +4292,7 @@ class yprofile(DataPlot, PPMtools):
         t0 = self.get('t')[idx0]
         t1 = self.get('t')[idx1]
         deltat = t1 - t0
-        
+
         # now we want to exclude any zones where the abundances
         # of neighboring cells are the same. This is hopefully
         # rare inside the computational domain and limited to only
@@ -4303,14 +4303,14 @@ class yprofile(DataPlot, PPMtools):
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
-        
+
         # in the current formulation for the inner boundary condition,
         # y1[0] != 0:
         while y1[0] == 0.:
             x = x[1:]
             y0 = y0[1:]
             y1 = y1[1:]
-                
+
         # Try moving left boundary one over to allow for "exact"
         # boundary condition and saving the now ghost cell value
         xl = x[100]
@@ -4325,11 +4325,11 @@ class yprofile(DataPlot, PPMtools):
             print('deltat = ', deltat, 's')
         p = np.zeros(len(x))
         q = np.zeros(len(x))
-        
+
         xdum = np.zeros(3) # our workhorse array for differencing
-        
+
         dt = float(deltat)
-        
+
         # calculate matrix elements for intermediate mesh points:
         def matrixdiffus(x, y0, y1, dt):
             m = len(x) - 1
@@ -4337,17 +4337,17 @@ class yprofile(DataPlot, PPMtools):
                 xdum[0] = x[i-1]
                 xdum[1] = x[i]
                 xdum[2] = x[i+1]
-                
+
                 xl = xdum[1] - xdum[0]
                 xr = xdum[2] - xdum[1]
-                
+
                 xm = 0.5 * (xdum[2] - xdum[0])
-                
+
                 alpha = dt / xm
-                
+
                 p[i] = (y1[i] - y1[i-1]) * alpha / xl
                 q[i] = (y1[i] - y1[i+1]) * alpha / xr
-            
+
             # central (left) boundary:
             xdum[1] = x[0]
             xdum[2] = x[1]
@@ -4362,7 +4362,7 @@ class yprofile(DataPlot, PPMtools):
             q[0] = (y1[0] - y1[1]) * alpha
             if not silent:
                 print('p0, q0 = ', p[0],q[0])
-            
+
             # surface (right) boundary:
             xdum[0] = x[m-1]
             xdum[1] = x[m]
@@ -4374,11 +4374,11 @@ class yprofile(DataPlot, PPMtools):
             q[m] = 0.
             if not silent:
                 print('pm, qm = ', p[m],q[m])
-            
+
             G = np.zeros([len(x),len(x)])
-            
+
             # set up matrix:
-            
+
             for i in range(len(x)):
                 if not silent:
                     print('p[i] = ', p[i])
@@ -4387,20 +4387,20 @@ class yprofile(DataPlot, PPMtools):
                 if i != len(x)-1 :
                     G[i,i+1] = q[i]
                     if debug : print(G[i,i+1])
-        
+
             A = np.array( [ G[i,:] for i in range(len(x)) ] )
             if not silent:
                 print(A[0])
                 print('determinant = ', np.linalg.det(A))
             return A
-        
-        
+
+
         # Direct solution (initial guess if moving on to do Newton-
         # Raphson refinement:
         A = matrixdiffus(x,y0,y1,dt)
         B = y0 - y1
         D = np.linalg.solve(A,B)
-        
+
         if newton:
             x0 = D
             xn = np.zeros(len(x0))
@@ -4419,12 +4419,12 @@ class yprofile(DataPlot, PPMtools):
                     print('max. correction = ', cmax)
                     print('min. correction = ', cmin)
                 xn = xnp1
-            
+
             D = xnp1
 
         cb = utils.colourblind
         lsty = utils.linestyle
-        
+
         def safe_log10(x, minval=0.0000000001):
             return np.log10(x.clip(min=minval))
 
@@ -4435,7 +4435,7 @@ class yprofile(DataPlot, PPMtools):
                 color=cb(8),
                 markevery=6,
                 label='$X_{'+str(fname1)+'}$')
-        
+
         pl.plot(xlong,safe_log10(y1long),
                 marker='o',
                 color=cb(9),
@@ -4448,9 +4448,9 @@ class yprofile(DataPlot, PPMtools):
         pl.legend(loc='center right').draw_frame(False)
         if grid:
             pl.grid()
-        
+
         pl.twinx()
-        
+
         pl.plot(x/1.e8,safe_log10(D),'k-',
                 label='$D$') #'$D > 0$')
         if initial_conv_boundaries:
@@ -4487,7 +4487,7 @@ class yprofile(DataPlot, PPMtools):
             return x/1.e8, D, y0, y1
         else:
             return x/1.e8,D
-        
+
     def Dsolve(self,fname1,fname2,fluid='FV H+He',numtype='ndump',newton=False,niter=3,
              debug=False,grid=False,FVaverage=False,tauconv=None,returnY=False):
         '''
@@ -4541,15 +4541,15 @@ class yprofile(DataPlot, PPMtools):
             radial co-ordinates (Mm) for which we have a diffusion coefficient
         D : array
             Diffusion coefficient (cm^2/s)
-        
+
         '''
-        
-        
+
+
         xlong = self.get('Y',fname=fname1,resolution='l') # for plotting
         if debug: print(xlong)
         x = xlong
         x = x * 1.e8
-        
+
         def mf(fluid,fname):
             '''
                 Get mass fraction profile of fluid 'fluid' at fname.
@@ -4562,11 +4562,11 @@ class yprofile(DataPlot, PPMtools):
             rho = self.get('Rho',fname=fname,resolution='l')
             y = rhofluid * y / rho
             return y
-        
+
         if FVaverage is False:
             y1 = mf(fluid,fname2)
             y1long = y1 # for plotting
-            
+
             y0 = mf(fluid,fname1)
             y0long = y0 # for plotting
         else:
@@ -4603,23 +4603,23 @@ class yprofile(DataPlot, PPMtools):
                 ytmp += mf(fluid,cyc)
                 count+=1
             y1 = ytmp / float(count)
-            
+
             y0long = y0
             y1long = y1
-        
+
         if fluid == 'FV H+He':
             y1 = y1[::-1]
             x = x[::-1]
             y0 = y0[::-1]
-        
+
         if debug: print(len(xlong), len(y0long))
-        
+
         idx0 = np.abs(np.array(self.cycles) - fname1).argmin()
         idx1 = np.abs(np.array(self.cycles) - fname2).argmin()
         t0 = self.get('t')[idx0]
         t1 = self.get('t')[idx1]
         deltat = t1 - t0
-        
+
         # now we want to exclude any zones where the abundances
         # of neighboring cells are the same. This is hopefully
         # rare inside the computational domain and limited to only
@@ -4629,14 +4629,14 @@ class yprofile(DataPlot, PPMtools):
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
-    
+
         # in the current formulation for the inner boundary condition,
         # y1[0] != 0:
         while y1[0] == 0.:
             x = x[1:]
             y0 = y0[1:]
             y1 = y1[1:]
-        
+
         # Try moving left boundary one over to allow for "exact"
         # boundary condition and saving the now ghost cell value
         xl = x[0]
@@ -4645,16 +4645,16 @@ class yprofile(DataPlot, PPMtools):
         x = x[1:]
         y0 = y0[1:]
         y1 = y1[1:]
-        
+
         if debug : print(y0, y1, deltat)
         print('deltat = ', deltat, 's')
         p = np.zeros(len(x))
         q = np.zeros(len(x))
-        
+
         xdum = np.zeros(3) # our workhorse array for differencing
-        
+
         dt = float(deltat)
-        
+
         # Calculate D starting from inner boundary:
         D = np.zeros(len(x))
         # inner boundary:
@@ -4711,7 +4711,7 @@ class yprofile(DataPlot, PPMtools):
                 label='$D < 0$')
         pl.ylabel('$\log D\,/\,{\\rm cm}^2\,{\\rm s}^{-1}$')
         pl.legend(loc='upper right').draw_frame(False)
-        
+
         if returnY:
             return x/1.e8, D, y0, y1
         else:
@@ -4724,8 +4724,8 @@ class yprofile(DataPlot, PPMtools):
        silent=True,showfig=True):
         '''
         Solve diffusion equation sequentially by iterating over the spatial
-        domain inwards from the upper boundary.        
-        
+        domain inwards from the upper boundary.
+
         Parameters
         ----------
         fname1,fname2 : int or float
@@ -4770,7 +4770,7 @@ class yprofile(DataPlot, PPMtools):
         plot_Dlt0 : boolean, optional
             whether or not to plot D where it is <0
             the default value is True
-        
+
         Returns
         --------
         x : array
@@ -4779,12 +4779,12 @@ class yprofile(DataPlot, PPMtools):
             Diffusion coefficient (cm^2/s)
 
         '''
-    
-    
+
+
         xlong = self.get('Y',fname=fname1,resolution='l') # for plotting
         if debug: print(xlong)
         x = xlong
-        
+
         def mf(fluid,fname):
             '''
             Get mass fraction profile of fluid 'fluid' at fname.
@@ -4797,7 +4797,7 @@ class yprofile(DataPlot, PPMtools):
             rho = self.get('Rho',fname=fname,resolution='l')
             y = rhofluid * y / rho
             return y
-        
+
         def make_monotonic(r,x):
             '''
             function for making x monotonic, as the solution to the diffusion
@@ -4846,7 +4846,7 @@ class yprofile(DataPlot, PPMtools):
                         idxmax = i
                         break
             else:
-                # everything was OK-ish anyway 
+                # everything was OK-ish anyway
                 return xorig
 
             # to take local max as left side as interval:
@@ -4902,7 +4902,7 @@ class yprofile(DataPlot, PPMtools):
                 #xm = func(rm, *popt)
                 # linear:
                 xm = m * rm + c
-                            
+
             #now combine back the results with a sinusoidal blend at each overlap of the
             # reconstruction region with the top and bottom components
 
@@ -4934,7 +4934,7 @@ class yprofile(DataPlot, PPMtools):
         if FVaverage is False:
             y1 = mf(fluid,fname2)
             y1long = y1 # for plotting
-            
+
             y0 = mf(fluid,fname1)
             y0long = y0 # for plotting
         else:
@@ -4971,23 +4971,23 @@ class yprofile(DataPlot, PPMtools):
                 ytmp += mf(fluid,cyc)
                 count+=1
             y1 = ytmp / float(count)
-            
+
             y0long = y0
             y1long = y1
-        
-        
+
+
         if debug: print(len(xlong), len(y0long))
-        
+
         idx0 = np.abs(np.array(self.cycles) - fname1).argmin()
         idx1 = np.abs(np.array(self.cycles) - fname2).argmin()
         t0 = self.get('t')[idx0]
         t1 = self.get('t')[idx1]
         deltat = t1 - t0
-        
+
         if smooth:
             y1 = make_monotonic(x,y1)
             #y0 = make_monotonic(x,y0)
- 
+
         if fluid == 'FV H+He':
             y1 = y1[::-1]
             x = x[::-1]
@@ -5021,7 +5021,7 @@ class yprofile(DataPlot, PPMtools):
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
-                
+
         dt = float(deltat)
 
         # Calculate D starting from outer boundary:
@@ -5039,8 +5039,8 @@ class yprofile(DataPlot, PPMtools):
                 xm = np.float64(xl + xr) / 2.
                 q = np.float64(dt * (y1[i] - y1[i+1]) / (xr * xm))
                 D[i] = np.float64((r - q * D[i+1]) / p)
-        
-                    
+
+
         D = D * 1.e16 # Mm^2/s ==> cm^2/s
         if not silent:
             print(D)
@@ -5102,7 +5102,7 @@ class yprofile(DataPlot, PPMtools):
         Solve diffusion equation sequentially by iterating over the spatial
         domain inwards from the upper boundary. This version of the method is
         explicit.
-        
+
         Parameters
         ----------
         fname1,fname2 : int or float
@@ -5141,22 +5141,22 @@ class yprofile(DataPlot, PPMtools):
             If True, return abundance vectors as well as radius and diffusion
             coefficient vectors
             The default is False.
-        
+
         Returns
         --------
         x : array
             radial co-ordinates (Mm) for which we have a diffusion coefficient
         D : array
             Diffusion coefficient (cm^2/s)
-        
+
         '''
-        
-        
+
+
         xlong = self.get('Y',fname=fname1,resolution='l') # for plotting
         if debug: print(xlong)
         x = xlong
         #        x = x * 1.e8
-        
+
         def mf(fluid,fname):
             '''
                 Get mass fraction profile of fluid 'fluid' at fname.
@@ -5169,11 +5169,11 @@ class yprofile(DataPlot, PPMtools):
             rho = self.get('Rho',fname=fname,resolution='l')
             y = rhofluid * y / rho
             return y
-        
+
         if FVaverage is False:
             y1 = mf(fluid,fname2)
             y1long = y1 # for plotting
-            
+
             y0 = mf(fluid,fname1)
             y0long = y0 # for plotting
         else:
@@ -5210,23 +5210,23 @@ class yprofile(DataPlot, PPMtools):
                 ytmp += mf(fluid,cyc)
                 count+=1
             y1 = ytmp / float(count)
-            
+
             y0long = y0
             y1long = y1
-        
+
         if fluid == 'FV H+He':
             y1 = y1[::-1]
             x = x[::-1]
             y0 = y0[::-1]
-        
+
         if debug: print(len(xlong), len(y0long))
-        
+
         idx0 = np.abs(np.array(self.cycles) - fname1).argmin()
         idx1 = np.abs(np.array(self.cycles) - fname2).argmin()
         t0 = self.get('t')[idx0]
         t1 = self.get('t')[idx1]
         deltat = t1 - t0
-        
+
         # now we want to exclude any zones where the abundances
         # of neighboring cells are the same. This is hopefully
         # rare inside the computational domain and limited to only
@@ -5236,9 +5236,9 @@ class yprofile(DataPlot, PPMtools):
         y1 = np.delete(y1,indexarray)
         y0 = np.delete(y0,indexarray)
         x = np.delete(x,indexarray)
-        
+
         dt = float(deltat)
-        
+
         # Calculate D starting from outer boundary:
         D = np.zeros(len(x))
         m = len(x) - 1
@@ -5254,11 +5254,11 @@ class yprofile(DataPlot, PPMtools):
                 xm = np.float64(xl + xr) / 2.
                 q = np.float64(dt * (y0[i] - y0[i+1]) / (xr * xm))
                 D[i] = np.float64((r - q * D[i+1]) / p)
-        
-        
+
+
         D = D * 1.e16 # Mm^2/s ==> cm^2/s
         x = x * 1e8   # Mm ==> cm
-        
+
         pl.figure()
         pl.plot(xlong,np.log10(y0long),utils.linestyle(1)[0],\
                 markevery=utils.linestyle(1)[1],\
@@ -5279,12 +5279,12 @@ class yprofile(DataPlot, PPMtools):
                 label='$D < 0$')
         pl.ylabel('$\log D\,/\,{\\rm cm}^2\,{\\rm s}^{-1}$')
         pl.legend(loc='upper right').draw_frame(False)
-        
+
         if returnY:
             return x/1.e8, D, y0, y1
         else:
             return x/1.e8,D
-        
+
     def plot_entrainment_rates(self,dumps,r1,r2,fit=False,fit_bounds=None,save=False,lims=None,ifig=4,
                               Q = 1.944*1.60218e-6/1e43,RR = 8.3144598,amu = 1.66054e-24/1e27,
                               airmu = 1.39165,cldmu = 0.725,fkair = 0.203606102635,
@@ -5292,13 +5292,13 @@ class yprofile(DataPlot, PPMtools):
                               AtomicNocld = 1.34228187919):
         '''
         Plots entrainment rates for burnt and unburnt material
-        
+
         Parameters
         ----------
         data_path : str
             data path
         r1 : float
-            This function will only search for the convective 
+            This function will only search for the convective
             boundary in the range between r1/r2
         r2 : float
         fit : boolean, optional
@@ -5310,16 +5310,16 @@ class yprofile(DataPlot, PPMtools):
             save the plot or not
         lims : list, optional
             axes lims [xl,xu,yl,yu]
-            
+
         Examples
         ---------
-        
+
         .. ipython::
 
             In [136]: data_dir = '/data/ppm_rpod2/YProfiles/'
                .....: project = 'AGBTP_M2.0Z1.e-5'
                .....: ppm.set_YProf_path(data_dir+project)
-            
+
             @savefig plot_entrainment_rates.png width=6in
             In [136]: F4 = ppm.yprofile('F4')
                .....: dumps = np.array(range(0,1400,100))
@@ -5360,7 +5360,7 @@ class yprofile(DataPlot, PPMtools):
         X_H = fkcld*1./AtomicNocld
         mdot_L = 1.*amu*ndot/X_H
         dt = cdiff(t)
-        m_HHe_burnt = (1e27/ast.msun_g)*np.cumsum(mdot_L*dt)        
+        m_HHe_burnt = (1e27/ast.msun_g)*np.cumsum(mdot_L*dt)
 
         m_HHe_present = self.entrainment_rate(dumps,r1,r2, var='vxz', criterion='min_grad', offset=-1., \
                         integrate_both_fluids=False, show_output=False, return_time_series=True)
@@ -5397,19 +5397,19 @@ class yprofile(DataPlot, PPMtools):
         if save:
             pl.savefig('entrainment_rate.pdf')
 
-    '''        
+    '''
     def plot_entrainment_rates(self,rp_set,dumps,r1,r2,burning_on_from=0,fit=False,fit_bounds=None,
                                save=False,lims=None,T9_func=None,return_burnt=False,Q = 1.944,
                                airmu = 1.39165,cldmu = 0.725,fkcld = 0.885906040268,
                                AtomicNocld = 1.34228187919):
-        
+
         Plots entrainment rates for burnt and unburnt material
-        
+
         Parameters
         ----------
         rp_set : rp_set instance
         r1/r2 : float
-            This function will only search for the convective 
+            This function will only search for the convective
             boundary in the range between r1/r2
         fit : boolean, optional
             show the fits used in finding the upper boundary
@@ -5421,7 +5421,7 @@ class yprofile(DataPlot, PPMtools):
         lims : list, optional
             axes lims [xl,xu,yl,yu]
 
-        
+
         amu = 1.66054e-24/1e27
         atomicnocldinv = 1./AtomicNocld
         patience0 = 5
@@ -5430,12 +5430,12 @@ class yprofile(DataPlot, PPMtools):
         nd = len(dumps)
         t = np.zeros(nd)
         L_C12C12 = np.zeros(nd)
-        
+
         r = self.get('Y', fname=dumps[0], resolution='l')
         idx_top = np.argmin(np.abs(r - r1))
         idx = range(idx_top, len(r))
         dV = -4.*np.pi*r**2*cdiff(r)
-        
+
         t00 = time.time()
         t0 = t00
         k = 0
@@ -5479,13 +5479,13 @@ class yprofile(DataPlot, PPMtools):
         ndot = 2.*L_C12C12/(Q*1.60218e-6/1e43)
         mdot_L = 12.*amu*ndot/X_C12
 
-        m_HHe_burnt = (1e27/ast.msun_g)*integrate.cumtrapz(mdot_L, x=t, initial=0.)   
-        
+        m_HHe_burnt = (1e27/ast.msun_g)*integrate.cumtrapz(mdot_L, x=t, initial=0.)
+
         m_HHe_present = self.entrainment_rate(dumps,r1,r2, var='vxz', criterion='min_grad', offset=-1., \
                             integrate_both_fluids=False, show_output=False, return_time_series=True)
 
         m_HHe_total = m_HHe_present + m_HHe_burnt
-        
+
         if fit_bounds is not None:
             idx2 = range(np.argmin(t/60. < fit_bounds[0]), np.argmin(t/60. < fit_bounds[1]))
             print(idx2)
@@ -5516,27 +5516,27 @@ class yprofile(DataPlot, PPMtools):
         pl.tight_layout()
         if save:
             pl.savefig('entrainment_rate.pdf')
-        
+
         if return_burnt:
             return m_HHe_burnt
-    '''        
+    '''
     def entrainment_rate(self, cycles, r_min, r_max, var='vxz', criterion='min_grad', \
-                         offset=0., integrate_both_fluids=False, 
+                         offset=0., integrate_both_fluids=False,
                          integrate_upwards=False, show_output=True, ifig0=1, \
                          silent=True, mdot_curve_label=None, file_name=None,
                          return_time_series=False):
         '''
         Function for calculating entrainment rates.
-        
+
         Parameters
         ----------
         cycles : range
             cycles to get entrainment rate for
         r_min : float
             minimum radius to look for boundary
-        r_max : float 
+        r_max : float
             maximum radius to look for boundary
-        
+
         Examples
         ---------
         .. ipython::
@@ -5549,36 +5549,36 @@ class yprofile(DataPlot, PPMtools):
             In [136]: F4 = ppm.yprofile('F4')
                .....: dumps = np.array(range(0,1400,100))
                .....: F4.entrainment_rate(dumps,27.7,28.5)
-               
+
         '''
 
         def regrid(x, y, x_int):
             int_func = scipy.interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
-        
+
         r = self.get('Y', fname = cycles[0], resolution='l')
-        
+
         idx_min = np.argmin(np.abs(r - r_max))
         idx_max = np.argmin(np.abs(r - r_min))
 
         r_min = r[idx_max]
         r_max = r[idx_min]
-        
+
         r = r[idx_min:(idx_max + 1)]
         r_int = np.linspace(r_min, r_max, num = 20.*(idx_max - idx_min + 1))
         dr_int = cdiff(r_int)
-        
+
         time = np.zeros(len(cycles))
         r_b = np.zeros(len(cycles))
         r_top = np.zeros(len(cycles))
         for i in range(len(cycles)):
             time[i] = self.get('t', fname = cycles[i], resolution='l')[-1]
-            
+
             if var == 'vxz':
                 q = self.get('EkXZ', fname = cycles[i], resolution='l')[idx_min:(idx_max + 1)]**0.5
             else:
                 q = self.get(var, fname = cycles[i], resolution='l')[idx_min:(idx_max + 1)]
-            
+
             q_int = regrid(r, q, r_int)
             grad = cdiff(q_int)/dr_int
 
@@ -5591,24 +5591,24 @@ class yprofile(DataPlot, PPMtools):
 
             r_b[i] = r_int[idx_b]
             r_top[i] = r_b[i]
-            
+
             # Optionally offset the integration limit by a multiple of q's
             # scale height.
             if np.abs(grad[idx_b]) > 0.:
                 H_b = q_int[idx_b]/np.abs(grad[idx_b])
                 r_top[i] += offset*H_b
-        
+
         timelong = time
         delta = 0.05*(np.max(time) - np.min(time))
         timelong = np.insert(timelong,0, timelong[0] - delta)
         timelong = np.append(timelong, timelong[-1] + delta)
-        
+
         # fc = fit coefficients
         r_b_fc = np.polyfit(time, r_b, 1)
         r_b_fit = r_b_fc[0]*timelong + r_b_fc[1]
         r_top_fc = np.polyfit(time, r_top, 1)
         r_top_fit = r_top_fc[0]*timelong + r_top_fc[1]
-        
+
         m_ir = np.zeros(len(cycles))
         r = self.get('Y', fname = cycles[0], resolution='l')
         r_int = np.linspace(np.min(r), np.max(r), num = 20.*len(r))
@@ -5620,17 +5620,17 @@ class yprofile(DataPlot, PPMtools):
                 rho_HHe = self.get('Rho H+He', fname = cycles[i], resolution='l')
                 FV_HHe = self.get('FV H+He', fname = cycles[i], resolution='l')
                 rho = rho_HHe*FV_HHe
-            
+
             rho_int = regrid(r, rho, r_int)
-            
+
             idx_top = np.argmin(np.abs(r_int - r_top[i]))
             dm = 4.*np.pi*r_int**2*dr_int*rho_int
-            
+
             if integrate_upwards:
                 m_ir[i] = np.sum(dm[(idx_top + 1):-1])
             else:
                 m_ir[i] = np.sum(dm[0:(idx_top + 1)])
-        
+
         # fc = fit coefficients
         m_ir *= 1e27/ast.msun_g
         m_ir_fc = np.polyfit(time, m_ir, 1)
@@ -5660,13 +5660,13 @@ class yprofile(DataPlot, PPMtools):
                 print('dr_b/dt = {:.2e} km/s\n'.format(1e3*r_b_fc[0]))
                 print('r_top is the upper limit for mass integration.')
                 print('dr_top/dt = {:.2e} km/s'.format(1e3*r_top_fc[0]))
-            
+
             max_val = np.max(m_ir)
             #if show_fits:
             max_val = np.max((max_val, np.max(m_ir_fit)))
             max_val *= 1.1 # allow for some margin at the top
             oom = int(np.floor(np.log10(max_val)))
-            
+
             pl.close(ifig0 + 1); fig2 = pl.figure(ifig0 + 1)
             pl.plot(time/60., m_ir/10**oom, color = cb(5))
             mdot_str = '{:e}'.format(mdot)
@@ -5689,7 +5689,7 @@ class yprofile(DataPlot, PPMtools):
             ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
             if oom == 0.:
                 ylbl = r'M$_{:s}$ / M$_\odot$'.format(sub)
-                
+
             pl.ylabel(ylbl)
             yfmt = FormatStrFormatter('%.1f')
             fig2.gca().yaxis.set_major_formatter(yfmt)
@@ -5701,12 +5701,12 @@ class yprofile(DataPlot, PPMtools):
             pl.legend(loc = loc)
             if file_name is not None:
                 fig2.savefig(file_name)
-        
+
             if not silent:
                 print('Resolution: {:d}^3'.format(2*len(r)))
                 print('m_ir_fc = ', m_ir_fc)
                 print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
-        
+
         if return_time_series:
             return m_ir
         else:
@@ -5716,7 +5716,7 @@ class yprofile(DataPlot, PPMtools):
                         criterion='min_grad', var_value=None):
         '''
         Calculates the boundary of the yprofile.
-        
+
         Parameters
         ----------
         cycles : range
@@ -5725,12 +5725,12 @@ class yprofile(DataPlot, PPMtools):
             min rad to look for boundary
         r_max : float
             max rad to look for boundary
-  
+
         Returns
         --------
         rb : array
             boundary of cycles
-        
+
         '''
         eps = 1e-9
         n_cycles = len(cycles)
@@ -5790,7 +5790,7 @@ class yprofile(DataPlot, PPMtools):
                             r0 = (1. - t)*r[idx0] + t*r[idx0+1]
                         else:
                             r0 = r_max
-                        
+
             rb[i] = r0
 
         return rb
@@ -5801,14 +5801,14 @@ class yprofile(DataPlot, PPMtools):
         orientation (total, radial or tangential) over a range of dumps
         and excluding an initial user-specified transient in seconds.
         '''
-            
+
         cycs = self.cycles
         time = self.get('t')
         istart = np.abs(time-transient).argmin()
         cycs = cycs[istart::sparse]
 
         Y    = self.get('Y',fname=1,resolution='l')
-        
+
         if vi == 'v':
             Ei ='Ek'
             ylab='$\log~v_\mathrm{tot}$'
@@ -5820,7 +5820,7 @@ class yprofile(DataPlot, PPMtools):
             ylab='$\log~v_\mathrm{XZ}$'
 
         vav = np.zeros(len(Y))
-        
+
         for cyc in cycs:
             Ek   = self.get(Ei,fname=cyc,resolution='l')
             if vi == 'v':
@@ -5829,9 +5829,9 @@ class yprofile(DataPlot, PPMtools):
                 v    = np.sqrt(array(Ek,dtype=float))
 
             vav += v
-            
+
         vav = vav * 1.e8 / len(cycs) # average in cm / s
-        
+
         if showfig:
             pl.figure()
             pl.plot(Y,np.log10(vav),'r-')
@@ -5842,10 +5842,10 @@ class yprofile(DataPlot, PPMtools):
 
 # below are some utilities that the user typically never calls directly
     def readTop(self,atri,filename,stddir='./'):
-        """ 
+        """
         Private routine that Finds and returns the associated value for
         attribute in the header section of the file.
-        
+
         Input:
         atri, what we are looking for.
         filename where we are looking.
@@ -5891,7 +5891,7 @@ class yprofile(DataPlot, PPMtools):
         return value
 
     def _readFile(self):
-        """ 
+        """
         private routine that is not directly called by the user.
         filename is the name of the file we are reading
         stdDir is the location of filename, defaults to the
@@ -5899,7 +5899,7 @@ class yprofile(DataPlot, PPMtools):
         Returns a list of the header attributes with their values
         and a List of the column values that are located in this
         particular file and a list of directory attributes.
-        
+
         Assumptions:
         An attribute can't be in the form of a num, if
         the user can float(attribute) without an error
@@ -6004,16 +6004,16 @@ class yprofile(DataPlot, PPMtools):
     def spacetime_diagram(self, var_name, nt, fig, tlim=None, rlim=None, vlim=None, logscale=True, \
                   cmap='viridis', aspect=1./3., zero_intervals=None, patience0 = 5, patience = 30, \
                   **kwargs):
-        ''' 
+        '''
         Creates a spacetime diagram.
-        
+
         Parameters
         -----------
         var_name : str
             variable to plot
         nt : int
             size of time vector, t = np.linspace(t0,tf,nt)
-            
+
         Examples
         --------
         .. ipython::
@@ -6027,7 +6027,7 @@ class yprofile(DataPlot, PPMtools):
                .....: import matplotlib.pyplot as plt
                .....: fig2 = plt.figure(19)
                .....: F4.spacetime_diagram('Ek',5,fig2)
-               
+
         '''
         if var_name == 'Ek':
             cbar_lbl = r'e$_\mathrm{k}$ / erg g$^{-1}$'
@@ -6041,16 +6041,16 @@ class yprofile(DataPlot, PPMtools):
         else:
             cbar_lbl = var_name
             unit = 1.
-        
+
         r = self.get('Y', fname = 0, resolution = 'l')
         if rlim is None:
             rlim = [r[-1], r[0]]
-            
+
         ridx0 = np.argmin(np.abs(r - rlim[1]))
         ridx1 = np.argmin(np.abs(r - rlim[0]))
         nr = ridx1-ridx0+1
         ridx = np.linspace(ridx0, ridx1, num=nr, dtype=np.int32)
-        
+
         r = r[ridx]
 
         if tlim is None:
@@ -6065,7 +6065,7 @@ class yprofile(DataPlot, PPMtools):
                 idx = where((t >= zero_intervals[2*i]) & \
                             (t <= zero_intervals[2*i + 1]))
                 zero[idx] = True
-        
+
         var = np.zeros((nr, nt))
 
         t00 = time.time()
@@ -6076,10 +6076,10 @@ class yprofile(DataPlot, PPMtools):
         for i in range(nt):
             if zero[i]:
                 continue
-            
+
             var[:, i] = unit*self.get(var_name, fname = t[i], numtype = 'time', \
                                       resolution = 'l', silent = True, **kwargs)[ridx]
-            
+
             n += 1
             t_now = time.time()
             if (t_now - t0 >= patience) or \
@@ -6096,28 +6096,28 @@ class yprofile(DataPlot, PPMtools):
                         np.max(var[where(var > 0)])]
             else:
                 vlim = [np.min(var), np.max(var)]
-                
+
             print('vlim = [{:.3e}, {:.3e}]'.format(vlim[0], vlim[1]))
-        
+
         var[where(var < vlim[0])] = vlim[0]
         var[where(var > vlim[1])] = vlim[1]
         ax1 = fig.add_subplot(111)
-            
+
         extent = (t[0]/60., t[-1]/60., r[-1], r[0])
         aspect *= (extent[1] - extent[0])/(extent[3] - extent[2])
-        
+
         if logscale:
             norm = colors.LogNorm(vmin=vlim[0], vmax=vlim[1], clip=True)
         else:
             norm = colors.Normalize(vmin=vlim[0], vmax=vlim[1], clip=True)
-        
+
         ax1i = ax1.imshow(var, aspect = aspect, cmap = cmap, extent = extent, \
                         norm=norm, interpolation = 'spline16')
         ax1.get_yaxis().set_tick_params(which='both', direction='out')
         ax1.get_xaxis().set_tick_params(which='both', direction='out')
         ax1.set_xlabel('t / min')
         ax1.set_ylabel('r / Mm')
-        
+
         cbar = fig.colorbar(ax1i, orientation='vertical')
         cbar.set_label(cbar_lbl)
 
@@ -6207,13 +6207,13 @@ def inv_map_posdef(y, p0, p1, s0, s1):
     return x
 
 def colourmap_from_str(str, segment=None):
-    
+
     points = []
     for line in str.splitlines():
         parts = line.split()
         if (len(parts) == 5) and (parts[0] == 'Cnot:'):
             points.append(parts[1:])
-    
+
     points = np.array(points, dtype=np.float)
     points = points[points[:,0].argsort()]
 
@@ -6223,16 +6223,16 @@ def colourmap_from_str(str, segment=None):
         if idx0 > 0:
             t = (float(segment[0]) - points[idx0 - 1, 0])/ \
                 (points[idx0, 0] - points[idx0 - 1, 0])
-                
+
             new_point = (1. - t)*points[idx0 - 1, :] + t*points[idx0, :]
             points = np.vstack([new_point, points[idx0:, :]])
-            
+
         # Index of the first point with value > segment[1].
         idx1 = np.argmax(points[:, 0] > segment[1])
         if idx1 > 0:
             t = (float(segment[1]) - points[idx1 - 1, 0])/ \
                 (points[idx1, 0] - points[idx1 - 1, 0])
-            
+
             if t > 0.:
                 new_point = (1. - t)*points[idx1 - 1, :] + t*points[idx1, :]
                 points = np.vstack([points[0:idx1, :], new_point])
@@ -6243,17 +6243,17 @@ def colourmap_from_str(str, segment=None):
     p1 = points[-1, 0]
     for i in range(points.shape[0]):
         points[i, 0] = (points[i, 0] - p0)/(p1 - p0)
-    
+
     r = np.zeros((points.shape[0], 3))
     r[:, 0] = points[:, 0]
     r[:, 1] = points[:, 1]
     r[:, 2] = points[:, 1]
-                 
+
     g = np.zeros((points.shape[0], 3))
     g[:, 0] = points[:, 0]
     g[:, 1] = points[:, 2]
     g[:, 2] = points[:, 2]
-                 
+
     b = np.zeros((points.shape[0], 3))
     b[:, 0] = points[:, 0]
     b[:, 1] = points[:, 3]
@@ -6261,14 +6261,14 @@ def colourmap_from_str(str, segment=None):
 
     cmap_points = {'red': r, 'green': g, 'blue': b}
     cmap = matplotlib.colors.LinearSegmentedColormap('my_cmap', cmap_points)
-    
+
     return cmap
 
 def make_colourmap(colours, alphas=None):
     '''
     make a matplotlib colormap given a list of index [0-255], RGB tuple values
     (normalised 0-1) and (optionally) a list of alpha index [0-255] and alpha values, i.e.:
-        
+
     colours = [[0, (0., 0., 0.)], [1, (1., 1., 1.)]]
     alphas = [[0, 0.], [1, 1.]]
     '''
@@ -6308,11 +6308,11 @@ class LUT():
         compress the values of the variable being visualised (e.g., radial
         velocity), this object contains the information needed to draw
         colourbars with matplotlib for a PPMstar volume rendering.
-        
+
         The values of s0, s1, p0 and p1 should be stored in the file
         compression_variables.txt in the setup directory of the respective
         project.
-        
+
         Examples
         ---------
         import ppm
@@ -6357,7 +6357,7 @@ class LUT():
         between the [0-255] colour indices and the values to which they
         correspond. returns a matplotlib.pyplot.colorbar instance, for ease of
         editing the colorbar
-        
+
         Parameters
         -----------
         ticks: numpy array
@@ -6424,7 +6424,7 @@ class LUT():
         # OK, so now we have to make the colour map on the fly (because we are
         # having to sample the original LUT for the subsection we are
         # interested in.
-        
+
         # This means normalising the appropriate interval to the interval
         # [0-255] and constructing new left and right edges, passing the colours (and maybe alphas)
         # to the make_colourmap function.
@@ -6502,7 +6502,7 @@ def cmap_from_str(str, segment=None):
         parts = line.split()
         if (len(parts) == 5) and (parts[0] == 'Cnot:'):
             points.append(parts[1:])
-    
+
     points = np.array(points, dtype=np.float)
     points = points[points[:,0].argsort()]
 
@@ -6512,16 +6512,16 @@ def cmap_from_str(str, segment=None):
         if idx0 > 0:
             t = (float(segment[0]) - points[idx0 - 1, 0])/ \
                 (points[idx0, 0] - points[idx0 - 1, 0])
-                
+
             new_point = (1. - t)*points[idx0 - 1, :] + t*points[idx0, :]
             points = np.vstack([new_point, points[idx0:, :]])
-            
+
         # Index of the first point with value > segment[1].
         idx1 = np.argmax(points[:, 0] > segment[1])
         if idx1 > 0:
             t = (float(segment[1]) - points[idx1 - 1, 0])/ \
                 (points[idx1, 0] - points[idx1 - 1, 0])
-            
+
             if t > 0.:
                 new_point = (1. - t)*points[idx1 - 1, :] + t*points[idx1, :]
                 points = np.vstack([points[0:idx1, :], new_point])
@@ -6532,17 +6532,17 @@ def cmap_from_str(str, segment=None):
     p1 = points[-1, 0]
     for i in range(points.shape[0]):
         points[i, 0] = (points[i, 0] - p0)/(p1 - p0)
-    
+
     r = np.zeros((points.shape[0], 3))
     r[:, 0] = points[:, 0]
     r[:, 1] = points[:, 1]
     r[:, 2] = points[:, 1]
-                 
+
     g = np.zeros((points.shape[0], 3))
     g[:, 0] = points[:, 0]
     g[:, 1] = points[:, 2]
     g[:, 2] = points[:, 2]
-                 
+
     b = np.zeros((points.shape[0], 3))
     b[:, 0] = points[:, 0]
     b[:, 1] = points[:, 3]
@@ -6550,14 +6550,14 @@ def cmap_from_str(str, segment=None):
 
     cmap_points = {'red': r, 'green': g, 'blue': b}
     cmap = LinearSegmentedColormap('my_cmap', cmap_points)
-    
+
     return cmap
 
 ###########################################################
 # Additional plotting methods Jericho
 ###########################################################
 
-        
+
 def analyse_dump(rp, r1, r2):
 
     '''
@@ -6573,7 +6573,7 @@ def analyse_dump(rp, r1, r2):
         minimum radius for the search for r_ub
     r2 : float
         maximum radius for the search for r_ub\
-        
+
     Returns
     ------
     r : array
@@ -6585,7 +6585,7 @@ def analyse_dump(rp, r1, r2):
     r_ub : array
         radius of the upper boundary as defined by the minimum in dutdr
         for all buckets  (except the 0th).
-        
+
     '''
     n_buckets = rp.get('nbuckets')
 
@@ -6629,10 +6629,10 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
                    hist_dump_max, r1, r2, ylims = None, derivative = False, silent = True):
 
     '''
-    Finds the upper convective boundary as defined by the steepest decline in 
-    tangential velocity. 
+    Finds the upper convective boundary as defined by the steepest decline in
+    tangential velocity.
 
-    Subpolot(1) plots the tangential velocity as a function of radius for a single dump and 
+    Subpolot(1) plots the tangential velocity as a function of radius for a single dump and
         displays the convective boundary
     Subplot(2) plots a histogram of the convective boundaries for a range of dumps specified by
         user and compares them to the selected dump
@@ -6651,18 +6651,18 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
     hist_dump_min/hist_dump_max = int
         Range of file numbers you want to use in the histogram
     r1/r2 : float
-        This function will only search for the convective 
+        This function will only search for the convective
         boundary in the range between r1/r2
 
     Examples
     --------
-    
+
     .. ipython::
-    
+
         In [136]: data_path = '/data/ppm_rpod2/RProfiles/AGBTP_M2.0Z1.e-5/F4/'
            .....: dump = 560; hist_dmin = dump - 1; hist_dmax = dump + 1
            .....: r_lim = (27.0, 30.5)
-        
+
         @savefig upper_bound.png width=6in
         In [136]: ppm.upper_bound_ut(data_path,dump, hist_dmin, hist_dmax,r1 = r_lim[0],r2 = 31, derivative = False,ylims = [1e-3,19.])
 
@@ -6671,7 +6671,7 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
     rp_set = bprof.rprofile_set(data_path)
     rp = rp_set.get_dump(dump_to_plot)
     nr = len(rp.get('y'))
-    
+
     sparse = 1
     dumps = np.array([rp_set.dumps[i] for i in range(0, len(rp_set.dumps), sparse)])
 
@@ -6697,7 +6697,7 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
     sigmap_r_ub = np.zeros(n_dumps)
     sigmam_r_ub = np.zeros(n_dumps)
     idx = np.argmin(np.abs(dumps - dump_to_plot))
-    
+
     for k in range(n_dumps):
         devp = dev[:, k]
         devp = devp[devp >= 0]
@@ -6722,8 +6722,8 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
         print("Histogram constructed using dumps {:d} (t = {:.2f} min) to {:d} (t = {:.2f} min) inclusive."\
             .format(hist_dump_min, t[hist_dump_min]/60., hist_dump_max, t[hist_dump_max]/60.))
 
-    fig = pl.figure( figsize = (2*3.39, 2*2.8))   
-    #fig = pl.figure( figsize = (2*5, 2*4)) 
+    fig = pl.figure( figsize = (2*3.39, 2*2.8))
+    #fig = pl.figure( figsize = (2*5, 2*4))
     gs = gridspec.GridSpec(2, 1, height_ratios = [3, 1])
     ax0 = pl.subplot(gs[0])
 
@@ -6775,13 +6775,13 @@ def upper_bound_ut(data_path, dump_to_plot, hist_dump_min,
     ax1.minorticks_off()
     fig.subplots_adjust(hspace = 0)
     pl.setp([a.get_xticklabels() for a in fig.axes[:-1]], visible = False)
-    
+
 def get_avg_rms_velocities(prof, dumps, comp):
     '''
     Finds an average velocity vector as a function of radius for a given
     range of dumps. To find a velocity vector as a function of radius see
     get_v_evolution().
-    
+
     Parameters
     ----------
     yprof : yprofile instance
@@ -6792,7 +6792,7 @@ def get_avg_rms_velocities(prof, dumps, comp):
         component to use 'r':'radial','t':'tangential','tot':'total'
     '''
     avg_rms_v = 0.
-    
+
     for d in dumps:
         if comp == 'tot':
             rms_v = np.sqrt(2.*prof.get('Ek', fname=d, resolution='l'))
@@ -6800,17 +6800,17 @@ def get_avg_rms_velocities(prof, dumps, comp):
             rms_v = np.sqrt(prof.get('EkY', fname=d, resolution='l'))
         elif comp == 't':
             rms_v = np.sqrt(prof.get('EkXZ', fname=d, resolution='l'))
-        
+
         avg_rms_v += rms_v
-        
+
     avg_rms_v /= float(len(dumps))
 
     return avg_rms_v
-    
+
 def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
     '''
     Finds a velocity vector and a time vector for a range of cycles
-    
+
     Parameters
     ----------
     prof : yprofile object
@@ -6824,7 +6824,7 @@ def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
     RMS : string
         'mean' 'min' or 'max velocity
     '''
-        
+
     r = prof.get('Y', fname = cycles[0], resolution = 'l')
     idx1 = np.argmin(np.abs(r - r1))
     idx2 = np.argmin(np.abs(r - r2))
@@ -6844,7 +6844,7 @@ def get_v_evolution(prof, cycles, r1, r2, comp, RMS):
         elif RMS == 'min':
             v[k] = np.min(v_rms[idx2:idx1])
         elif RMS == 'max':
-            v[k] = np.max(v_rms[idx2:idx1])                
+            v[k] = np.max(v_rms[idx2:idx1])
     return t, v
 
 def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig = 12,
@@ -6876,10 +6876,10 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
         will plot up to last dump
     lims : array
         axes lims [xl,xu,yl,yu]
-    
+
     Examples
     ---------
-    
+
     ppm.set_YProf_path('/data/ppm_rpod2/YProfiles/O-shell-M25/',YProf_fname='YProfile-01-0000.bobaaa')
     ppm.v_evolution(['D15','D2','D1'], 4., 8.,'max','radial')
 
@@ -6889,7 +6889,7 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
     ls = utils.linestylecb
     yy = 0
     for case in cases:
-        
+
         try:
             prof = yprofile(os.path.join(ppm_path,case))
         except ValueError:
@@ -6909,22 +6909,22 @@ def v_evolution(cases, ymin, ymax, comp, RMS, sparse = 1, markevery = 25, ifig =
     if lims is not None:
         pl.axis(lims)
     pl.legend(loc = 0)
-   
+
 def luminosity_for_dump(path, get_t = False):
-    
+
     '''
-    
+
     Takes a directory and returns luminosity and time vector with entry
     corresponding to each file in the dump
-    
+
     !Can take both rprofile and yprofile filepaths
-    
+
     Parameters
     ----------
     path : string
         Filepath for the dumps, rprofile or yprofile dumps.
     get_t: Boolean
-        Return the time vector or not 
+        Return the time vector or not
 
     Returns
     -------
@@ -6932,18 +6932,18 @@ def luminosity_for_dump(path, get_t = False):
         time vector [t/min]
     L_H : 1*ndumps array
         luminosity vector [L/Lsun]
-    
+
     '''
-    
+
     yprof = yprofile(path)
-    
+
     try:
         dumps = np.arange(min(yprof.ndumpDict.keys()),\
                           #min(yprof.ndumpDict.keys())+100,1)
                           max(yprof.ndumpDict.keys()) + 1, 1)
         is_yprofile = True
     except:
-        
+
         rp_set = bprof.rprofile_set(path)
         dumps = list(range(rp_set.dumps[0],\
                       #rp_set.dumps[0]+100,1)
@@ -6965,9 +6965,9 @@ def luminosity_for_dump(path, get_t = False):
 
     nd = len(dumps)
     t = np.zeros(nd)
-        
+
     L_H = np.zeros(nd)
-    
+
     t00 = time.time()
     t0 = t00
     k = 0
@@ -6979,13 +6979,13 @@ def luminosity_for_dump(path, get_t = False):
             L_H[i] = yprof.get('L_C12pg', fname = dumps[i], resolution = 'l', airmu = airmu, \
                                   cldmu = cldmu, fkair = fkair, fkcld = fkcld, AtomicNoair = AtomicNoair,
                                   AtomicNocld = AtomicNocld, corr_fact = 1.5)
-        
+
         else:
-            
+
             rp = rp_set.get_dump(dumps[i])
             enuc_rp = rp.get_table('enuc')
             if get_t:
-                t[i] = rp.get('time')  
+                t[i] = rp.get('time')
             # It looks like we do not need to make a correction for the heating bug here. Strange!!!
             L_H[i] = np.sum(enuc_rp[0, :, 0]*dV_rp)
 
@@ -6997,17 +6997,17 @@ def luminosity_for_dump(path, get_t = False):
             print('Processing will be done in {:.0f} s.'.format(time_remaining))
             t0 = t_now
             k += 1
-    if get_t:        
+    if get_t:
         return t, L_H
     else:
         return L_H
-    
+
 def plot_luminosity(L_H_yp,L_H_rp,t):
-    
+
     '''
-    
+
     Plots two luminosity vectors against the same time vector
-        
+
     Parameters
     ----------
     L_H_yp : 1 *ndumps vector
@@ -7018,9 +7018,9 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
              time vector to be plotted on the x-axis
     '''
     cb = utils.colourblind
-    
+
     L_He = 2.25*2.98384E-03
- 
+
     ifig = 1; pl.close(ifig); pl.figure(ifig)
     pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_yp, color = cb(6), \
                  zorder = 2, label = r'L$_\mathrm{H}$')
@@ -7050,11 +7050,11 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
 def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airmu=1.39165,cldmu=0.725,
     fkair=0.203606102635,fkcld=0.885906040268,AtomicNoair=6.65742024965,
     AtomicNocld=1.34228187919,markevery=1,lims=None,save=False):
-    
+
     '''
     Compares L_H to L_He, optional values are set to values from O-shell
     burning paper.
-    
+
     Parameters
     ----------
     cases : string array
@@ -7069,14 +7069,14 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airm
     '''
     yprofs = {}
     res = {}
-    
+
     for case in cases:
-        
+
         try:
             yprofs[case] = yprofile(os.path.join(ppm_path,case))
         except ValueError:
             print("have you set the yprofile filepath using ppm.set_YProf_path?")
-        
+
         r = yprofs[case].get('Y', fname=0, resolution='l')
         res[case] = 2*len(r)
 
@@ -7090,7 +7090,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airm
 
     for this_case in cases:
         print('Processing {:s}...'.format(this_case))
-        
+
         dumps[this_case] = np.arange(min(yprofs[this_case].ndumpDict.keys()),\
            max(yprofs[this_case].ndumpDict.keys()) + 1, sparse)
         #dumps[this_case] = np.arange(min(yprofs[case].ndumpDict.keys()),\
@@ -7123,12 +7123,12 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airm
     pl.close(ifig); pl.figure(ifig)
     pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
         label = r'L$_\mathrm{He}$')
-    
+
     markers = ['o','v', '^', '<', '>', 's']
     colours = [5, 8, 1, 6, 9, 3]
-    
+
     i =0;j =0;nn=0 # super hacky hack for nice colours
-    
+
     for this_case in cases:
         lbl = r'{:s} $\left({:d}^3\right)$'.format(this_case, res[this_case])
         pl.semilogy(t[this_case]/60., (1e43/ast.lsun_erg_s)*L_H[this_case], \
@@ -7153,17 +7153,17 @@ def get_upper_bound(data_path, r1, r2, sparse = 10):
 
     '''
     Returns information about the upper convective boundary
-    
+
     Parameters
     ----------
     data_path : string
         path to rprofile set
     r1/r2 = float
-        This function will only search for the convective 
+        This function will only search for the convective
         boundary in the range between r1/r2
     sparse : int
         What interval to plot data at
-    
+
     Returns
     ------
     [all arrays]
@@ -7171,7 +7171,7 @@ def get_upper_bound(data_path, r1, r2, sparse = 10):
     sigmam_r_ub/sigmap_r_ub: 2 \sigma fluctuations in upper boundary
     r_ub : upper boundary
     t: time
-    
+
     '''
 
     rp_set = bprof.rprofile_set(data_path)
@@ -7198,7 +7198,7 @@ def get_upper_bound(data_path, r1, r2, sparse = 10):
     dev = np.array([r_ub[i, :] - avg_r_ub for i in range(n_buckets)])
     sigmap_r_ub = np.zeros(nt)
     sigmam_r_ub = np.zeros(nt)
-    
+
     for k in range(nt):
         devp = dev[:, k]
         devp = devp[devp >= 0]
@@ -7213,32 +7213,32 @@ def get_upper_bound(data_path, r1, r2, sparse = 10):
             sigmam_r_ub[k] = (sum(devm**2)/float(len(devm)))**0.5
         else:
             sigmam_r_ub[k] = None
-            
+
     return(avg_r_ub, sigmam_r_ub, sigmap_r_ub, r_ub, t)
 
-def get_r_int(data_path, r_ref, gamma, sparse = 1): 
+def get_r_int(data_path, r_ref, gamma, sparse = 1):
     '''
-    Returns values for radius of interface for a given 
+    Returns values for radius of interface for a given
     reference radius.
-    
+
     Parameters
     ----------
     data_path : string
         data path
     r_ref : float
-        r_int is the radius of the interface at which the relative 
+        r_int is the radius of the interface at which the relative
         [A(t) - A0(t)]/A0(t) with respect to a reference value A0(t)
         exceeds a threshold. The reference value A0(t) is taken to be
-        the average A at a reference radius r_ref at time t. 
+        the average A at a reference radius r_ref at time t.
         We need to put r_ref to the bottom of the convection zone,
-        because most of the convection zone is heated in the 
-        final explosion. The threshold should be a few times 
-        larger than the typical bucket-to-bucket fluctuations 
+        because most of the convection zone is heated in the
+        final explosion. The threshold should be a few times
+        larger than the typical bucket-to-bucket fluctuations
         in A due to convection. A value of 1e-3 is a good trade-off
-        between sensitivity and the amount of noise. 
+        between sensitivity and the amount of noise.
     sparse: int, optional
         What interval to have between data points
-        
+
     Returns
     ------
     [all arrays]
@@ -7262,7 +7262,7 @@ def get_r_int(data_path, r_ref, gamma, sparse = 1):
     sigmap_r_int = np.zeros(nd)
     sigmam_r_int = np.zeros(nd)
     t = np.zeros(nd)
-    
+
     for i in range(nd):
         rp = rp_set.get_dump(dumps[i])
         p = rp.get_table('p')[0, :, :]
@@ -7296,14 +7296,14 @@ def get_r_int(data_path, r_ref, gamma, sparse = 1):
             sigmam_r_int[i] = (sum(devm**2)/float(len(devm)))**0.5
         else:
             sigmam_r_int[i] = None
-            
+
     return avg_r_int, sigmam_r_int, sigmap_r_int, r_int, t
 
 def plot_boundary_evolution(data_path, r1, r2, t_fit_start=700,
                             silent = True, show_fits = False, ifig = 5,
                             r_int = False, r_ref = None, gamma = None,
                             sparse = 10, lims = None, insert = False):
-    
+
     '''
 
     Displays the time evolution of the convective boundary or Interface radius
@@ -7318,39 +7318,39 @@ def plot_boundary_evolution(data_path, r1, r2, t_fit_start=700,
     data_path : string
         data path
     r1/r2 : float
-        This function will only search for the convective 
+        This function will only search for the convective
         boundary in the range between r1/r2
     show_fits : boolean, optional
         show the fits used in finding the upper boundary
     t_fit_start : int
-        The time to start the fit for upper boundary fit takes 
+        The time to start the fit for upper boundary fit takes
         range t[t_fit_start:-1] and computes average boundary
     r_int : bool, optional
         True plots interface radius, False plots convective boundary
         !If true r_ref must have a value
     r_ref : float
-        r_int is the radius of the interface at which the relative 
+        r_int is the radius of the interface at which the relative
         [A(t) - A0(t)]/A0(t) with respect to a reference value A0(t)
         exceeds a threshold. The reference value A0(t) is taken to be
-        the average A at a reference radius r_ref at time t. 
+        the average A at a reference radius r_ref at time t.
         We need to put r_ref to the bottom of the convection zone,
-        because most of the convection zone is heated in the 
-        final explosion. The threshold should be a few times 
-        larger than the typical bucket-to-bucket fluctuations 
+        because most of the convection zone is heated in the
+        final explosion. The threshold should be a few times
+        larger than the typical bucket-to-bucket fluctuations
         in A due to convection. A value of 1e-3 is a good trade-off
-        between sensitivity and the amount of noise. 
+        between sensitivity and the amount of noise.
     sparse: int, optional
         What interval to have between data points
     lims : array
         limits of the insert axes [xl,xu,yl,yu]
     insert: bool
         whether or not to include a second inserted subplot
-     
+
     '''
     cb = utils.colourblind
-    
+
     rp_set = bprof.rprofile_set(data_path)
-    
+
     n_dumps = len(rp_set.dumps)
     n_buckets = rp_set.get_dump(rp_set.dumps[0]).get('nbuckets')
 
@@ -7358,13 +7358,13 @@ def plot_boundary_evolution(data_path, r1, r2, t_fit_start=700,
         res = get_upper_bound(data_path, r1, r2,sparse = sparse)
     else:
         res = get_r_int(data_path, r_ref, gamma, sparse = sparse)
-    
+
     avg_r_ub = res[0]
     sigmam_r_ub = res[1]
     sigmap_r_ub = res[2]
     r_ub = res[3]
     t = res[4]
-    
+
     if show_fits:
         idx_fit_start = np.argmin(np.abs(t - t_fit_start))
         t_fit_start = t[idx_fit_start]
@@ -7439,12 +7439,12 @@ def plot_boundary_evolution(data_path, r1, r2, t_fit_start=700,
         ax2.set_xlim((lims[0], lims[1]))
         ax2.set_ylim((lims[2], lims[3]))
         fig.tight_layout()
-        
+
 def compare_entrained_material(yps, labels, fname, ifig = 1):
-    
+
     '''
     Compares the entrainment rate of two seperate yprofile objects
-    
+
     Parameters
     ----------
     yps: yprofile objects
@@ -7453,7 +7453,7 @@ def compare_entrained_material(yps, labels, fname, ifig = 1):
         labels for yp objects
     fname
         specific dump to access information from
-        
+
     Examples
     --------
     import ppm
@@ -7485,7 +7485,7 @@ def compare_entrained_material(yps, labels, fname, ifig = 1):
     #yticks = ax.yaxis.get_major_ticks()
     pl.yticks(10.**np.linspace(-12,0,7))
     fig.subplots_adjust( left = 0.17 )
-    
+
 ########################################################################
 # Plotting funcitons that dont have supported dependencies
 ########################################################################
@@ -7493,7 +7493,7 @@ def compare_entrained_material(yps, labels, fname, ifig = 1):
 def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=None, l_max=6):
     '''
     Calculates power spectra of radial velocity
-    
+
     Parameters
     ----------
     yprof_path/rprof_path: strings
@@ -7506,7 +7506,7 @@ def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=No
         set number of data points between [t_min, t_max], None = ndumps
     l_max:
         maximum spherical harmonic degree l
-        
+
     Returns
     --------
     t,l,power : time, spherical harmonic degree l, and power vectors
@@ -7515,7 +7515,7 @@ def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=No
     n_buckets = 80
     rp_set = rprofile.rprofile_set(rprof_path)
     n_dumps = rp_set.dumps[-1]
-        
+
     if t_lim is None:
         t_min = rp_set.get_dump(1).get('time')
         t_max = rp_set.get_dump(n_dumps).get('time')
@@ -7523,12 +7523,12 @@ def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=No
 
     if t_res is None:
         t_res = n_dumps
-        
+
     t = np.linspace(t_lim[0], t_lim[1], t_res)
-    
+
     l = np.arange(0, l_max + 1)
     power = np.zeros((len(t), l_max + 1))
-    
+
     for i in range(len(t)):
         dump = int(yprof.get('Ndump', fname=t[i], numtype='t', silent=True)[-1])
         if dump > n_dumps:
@@ -7536,12 +7536,12 @@ def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=No
         rp = rp_set.get_dump(dump)
         r = rp.get_table('y')
         idx0 = np.argmin(np.abs(r - r0))
-        
+
         vx = rp.get_table('ux')
         vy = rp.get_table('uy')
         vz = rp.get_table('uz')
         centers = rp.get_centers()
-    
+
         lat = np.zeros(n_buckets)
         lon = np.zeros(n_buckets)
         vr = np.zeros(n_buckets)
@@ -7558,7 +7558,7 @@ def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=No
                           vy[0, idx0, bucket+1], \
                           vz[0, idx0, bucket+1]])
             vr[bucket] = np.dot(v, r_norm)
-        
+
         coeffs, _ = SHExpandLSQ(vr, lat, lon, l_max)
         power[i, :] = spectrum(coeffs, convention='power', unit='per_l')
 
@@ -7566,8 +7566,8 @@ def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=No
 
 def plot_power_spectrum_RProfile(t, l, power, ifig=1, title='', vmin=1e-2, vmax=1.):
     '''
-    Plots power spectra of radial velocity 
-    
+    Plots power spectra of radial velocity
+
     Parameters
     ----------
     t,l,power : arrays
@@ -7578,7 +7578,7 @@ def plot_power_spectrum_RProfile(t, l, power, ifig=1, title='', vmin=1e-2, vmax=
     '''
     ifig = ifig; pl.close(ifig); pl.figure(ifig, figsize=(8., 5.), dpi=125)
     extent = (t[0]/60., t[-1]/60., l[0] - 0.5, l[-1] + 0.5)
-    aspect = 0.5*(extent[1] - extent[0])/(extent[3] - extent[2]) 
+    aspect = 0.5*(extent[1] - extent[0])/(extent[3] - extent[2])
     max_power = np.max(power)
     norm = LogNorm(vmin=vmin*max_power, vmax=vmax*max_power, clip=True)
     #norm = Normalize(vmin=0., vmax=max_power, clip=True)
@@ -7594,10 +7594,10 @@ def plot_power_spectrum_RProfile(t, l, power, ifig=1, title='', vmin=1e-2, vmax=
     ax0.get_xaxis().set_tick_params(direction='out')
 
 def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None, time = None):
-    
+
     '''
     Plots a Mollweide projection of the rprofile object using the mpl_toolkits.basemap package
-    
+
     Parameters
     -----------
     rprofile: rprofile object
@@ -7605,20 +7605,20 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
     quantity: array
         data to be passed into the projection
     limits: 2 index array
-        cmap limits, scale the colormap for limit[0] =min to 
+        cmap limits, scale the colormap for limit[0] =min to
         limit[1] =max
-    ticks: 
+    ticks:
         passed into matplotlib.colors.ColorbarBase see ColourbarBase
     file_name: string
         file name: '/path/filename' to save the image as
     time: float
         time to display as the title
-    
+
     '''
     q = quantity#rp.get_table(quantity)[0, :, :]
     #r = rp.get('y')
     #idx_r0 = np.argmin(np.abs(r - r0))
-    
+
     corners = rprofile.get_corners()
     corners_per_bucket = corners.shape[1]
     n_buckets = corners.shape[2]
@@ -7712,24 +7712,24 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
     #ifig = 1; plt.close(ifig); fig = plt.figure(ifig, figsize = (9, 4))
     #ifig = 1; plt.close(ifig); fig = plt.figure(ifig, figsize = (3.39, 2.4))
     pl.clf()
-    gs = gridspec.GridSpec(2, 1, height_ratios = [12, 1]) 
+    gs = gridspec.GridSpec(2, 1, height_ratios = [12, 1])
     ax0 = pl.subplot(gs[0])
     ax1 = pl.subplot(gs[1])
     m = Basemap(projection = 'moll', lon_0 = 0., ax = ax0)
-    
+
     cmap_min = np.min(quantity)
     cmap_max = np.max(quantity)
     cmap_avg = np.sum(quantity)/float(len(quantity))
-    
+
     if limits is not None:
         cmap_min = limits[0]
         cmap_max = limits[1]
-        
+
         cmap_avg = 0.5*(cmap_min + cmap_max)
-        
+
         if len(limits) > 2:
             cmap_avg = limits[2]
-            
+
     cmap_avg_rel = (cmap_avg - cmap_min)/(cmap_max - cmap_min)
     gamma = 1.0
     c1 = np.array([95, 158, 209])/255.
@@ -7764,10 +7764,10 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
     #ax0.set_title(cmap_name)
     if time is not None:
         ax0.set_title('t = {:.0f} min'.format(time/60.))
-    
+
     def fmt(x, pos):
         return '{: .2f}'.format(x)
-    
+
     norm = matplotlib.colors.Normalize(vmin = cmap_min, vmax = cmap_max)
     cb = ColorbarBase(ax1, cmap = cmap, norm = norm, ticks = ticks, \
                       format = ticker.FuncFormatter(fmt), orientation='horizontal')
@@ -7779,29 +7779,29 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
         pl.savefig(file_name, bbox_inches = 'tight', facecolor = 'w', dpi = 332.7)
 
 def plot_Mollweide(rp_set, dump_min, dump_max, r1, r2, output_dir = None, Filename = None, ifig = 2):
-    
+
     '''
     Plot Mollweide spherical projection plot
-    
+
     Parameters
     ----------
     dump_min/dump_max = int
         Range of file numbers you want to use in the histogram
     r1/r2 = float
-        This function will only search for the convective 
+        This function will only search for the convective
         boundary in the range between r1/r2
     ouput_dir: string
         path to output directory
     filename: string
         name for output file, None: no output
-    
+
     Examples
     --------
     data_path = "/rpod2/PPM/RProfiles/AGBTP_M2.0Z1.e-5/F4"
     rp_set = rprofile.rprofile_set(data_path)
     plot_Mollweide(rp_set, 100,209,7.4,8.4)
     '''
-    
+
     pl.close(ifig); fig = pl.figure(ifig, figsize = (3.384, 2.))
     fig.patch.set_facecolor('w')
     fig.patch.set_alpha(1.)
@@ -7821,13 +7821,13 @@ def plot_Mollweide(rp_set, dump_min, dump_max, r1, r2, output_dir = None, Filena
         filename = output_dir + Filename
     else:
         filename = None
-        
+
     bucket_map(rp, dr_ub_avg, file_name = filename)
 
 def get_mach_number(rp_set,yp,dumps,comp,filename_offset = 1):
     '''
     Returns max Mach number and matching time vector
-    
+
     Parameters
     ----------
     yp: yprofile instance
@@ -7836,7 +7836,7 @@ def get_mach_number(rp_set,yp,dumps,comp,filename_offset = 1):
         range of dumps to include
     comp: string
         'mean' 'max' or 'min' mach number
-        
+
     Returns
     -------
     Ma_max : vector
@@ -7854,17 +7854,17 @@ def get_mach_number(rp_set,yp,dumps,comp,filename_offset = 1):
         if comp == 'max':
             Ma_max[i] = np.max(rp.get_table('mach')[2, :, 0])
         if comp == 'mean':
-            Ma_max[i] = np.mean(rp.get_table('mach')[0, :, 0])            
-        if comp == 'min': 
+            Ma_max[i] = np.mean(rp.get_table('mach')[0, :, 0])
+        if comp == 'min':
             Ma_max[i] = np.min(rp.get_table('mach')[1, :, 0])
-            
+
     return Ma_max, t
 
 def plot_mach_number(rp_set,yp,dumps,comp = 'max',ifig = 1,lims =None,insert=False,save=False,\
                       prefix='PPM',format='pdf',lims_insert =None,f_offset=1):
     '''
     A function for geterating the time evolution of the mach number.
-    
+
     Parameters
     ----------
     yp: yprofile instance
@@ -7900,10 +7900,10 @@ def plot_mach_number(rp_set,yp,dumps,comp = 'max',ifig = 1,lims =None,insert=Fal
     if comp == 'max':
         ax1.set_ylabel(r'Ma$_\mathrm{max}$')
     if comp == 'mean':
-        ax1.set_ylabel(r'Ma$_\mathrm{av}$')           
-    if comp == 'min': 
+        ax1.set_ylabel(r'Ma$_\mathrm{av}$')
+    if comp == 'min':
         ax1.set_ylabel(r'Ma$_\mathrm{min}$')
-    
+
     if insert:
         left, bottom, width, height = [0.27, 0.55, 0.3, 0.3]
         ax2 = fig.add_axes([left, bottom, width, height])
@@ -7919,7 +7919,7 @@ def plot_mach_number(rp_set,yp,dumps,comp = 'max',ifig = 1,lims =None,insert=Fal
 def get_p_top(prof,dumps,r_top):
     '''
     Returns p_top and matching time vector
-    
+
     Parameters
     ----------
     yp: yprofile instance
@@ -7927,7 +7927,7 @@ def get_p_top(prof,dumps,r_top):
         boundary radius
     dumps: range
         range of dumps to include can be sparse
-        
+
     Returns
     -------
     Ma_max : vector
@@ -7983,7 +7983,7 @@ def plot_p_top(yp,dumps,r_top,ifig = 1,lims = None,insert = False,save=False,\
         ax1.set_ylim((lims[2],lims[3]))
     ax1.set_xlabel('t / min')
     ax1.set_ylabel(r'p$_\mathrm{top}$(t) / p$_\mathrm{top}$(0) - 1')
-    
+
     if insert:
         left, bottom, width, height = [0.31, 0.55, 0.3, 0.3]
         ax2 = fig.add_axes([left, bottom, width, height])
@@ -7994,7 +7994,7 @@ def plot_p_top(yp,dumps,r_top,ifig = 1,lims = None,insert = False,save=False,\
     fig.tight_layout()
 
     if save:
-        pl.savefig(prefix+'_p_top_evolution.'+format,format=format) 
+        pl.savefig(prefix+'_p_top_evolution.'+format,format=format)
 
 
 #####################################################
@@ -8011,26 +8011,26 @@ def get_N2(yp, dump):
         yprofile to use
     dump = int
         dump to analyze
-    
+
     Returns
     -------
     N2 = vector
         Brunt Vaisala frequency [rad^2 s^-1]
     '''
-    
+
     G_code = ast.grav_const/1e-3
     nabla_ad = 0.4
-    
+
     R_bot = float(yp.hattrs['At base of the convection zone R'])
     g_bot = float(yp.hattrs['At base of the convection zone g'])
-    
+
     r = yp.get('Y', fname = dump, resolution = 'l')
     p = yp.get('P', fname = dump, resolution = 'l')
     rho = yp.get('Rho', fname = dump, resolution = 'l')
-    
+
     # centre R_bot on the nearest cell
     idx_bot = np.argmin(np.abs(r - R_bot))
-    
+
     # mass below R_bot
     # (using r[idx_bot] instead of R_bot makes g[idx_bot] == g_bot)
     M_bot = g_bot*(r[idx_bot]**2)/G_code
@@ -8041,19 +8041,19 @@ def get_N2(yp, dump):
     # the mass profile at small radii won't make sense, because
     # the core is artificial with no gravity
     m += M_bot - m[idx_bot]
-    
+
     g = G_code*m/(r**2) # gravity profile (see the note above)
     H_p = p/(rho*g) # pressure scale height (assuming hydrostatic equilibrium)
-    
+
     logrho = np.log(rho)
     dlogrho = 0.5*(np.roll(logrho, -1) - np.roll(logrho, +1))
     logp = np.log(p)
     dlogp = 0.5*(np.roll(logp, -1) - np.roll(logp, +1))
     nabla_rho = dlogrho/dlogp
-    
+
     # N^2 for an ideal gas
     N2 = (g/H_p)*(nabla_ad - 1. + nabla_rho)
-    
+
     return N2
 
 def plot_N2(case, dump1, dump2, lims1, lims2,mesa_logs_path, mesa_model_num):
@@ -8063,7 +8063,7 @@ def plot_N2(case, dump1, dump2, lims1, lims2,mesa_logs_path, mesa_model_num):
 
         Parameters
         ----------
-        case = string 
+        case = string
             Name of run eg. 'D1'
         dump1/ dump2 = int
             dump to analyze
@@ -8127,10 +8127,10 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
                      xlim = [0.5,2.5] , ylim = [8,13], radbase = 4.1297,\
                      dlayerbot = 0.5, totallum = 20.153):
     '''
-    Nuclear  energy  generation  rate (enuc) thermal  neutrino   
+    Nuclear  energy  generation  rate (enuc) thermal  neutrino
     energy   loss   rate (enu) and   luminosity   profiles (L) for MESA
     plotted with ppmstar energy estimation (eppm)
-    
+
     Parameters
     ----------
     yprof : yprofile object
@@ -8147,12 +8147,12 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
         range to shade for convection zone 2
     xlim: range
     ylim: range
-   
+
     values from setup.txt
     radbase = 4.1297
     dlayerbot = 0.5
     totallum = 20.153
-    
+
     Examples
     --------
     import ppm
@@ -8162,7 +8162,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
     mesa_model = ms.mesa_profile(mesa_logs_path, mesa_A_model_num)
     yprof = yprofile('/data/ppm_rpod2/YProfiles/O-shell-M25/D1')
     energy_comparison(yprof,mesa_model)
-    
+
     '''
     xthing1 = xthing
     p = mesa_model
@@ -8179,7 +8179,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
     # plot conv zone boundaries
     if range_conv1 is not None:
         pl.fill_between( range_conv1 , 0, 100, color= '#fffdd8' )
-        
+
     if range_conv2 is not None:
         pl.fill_between( range_conv2 , 0, 100, color='#b39eb5' )
 
@@ -8256,21 +8256,21 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
     pl.xlim(xlim)
     #pl.ylim(1.e8,1.e13)
     pl.ylim(ylim)
-    
+
 def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153):
     '''
     returns estimation of yprofiles energy
-    
+
     # values from setup.txt
     radbase = 4.1297
     dlayerbot = 0.5
     totallum = 20.153
-    
+
     Parameters
     ----------
     yprof: yprofile object
         yprofile to examine
-        
+
     Returns
     -------
     array
@@ -8285,7 +8285,7 @@ def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153)
 
     dr = -0.5*(np.roll(r, -1) - np.roll(r, +1))
     dr[0] = dr[1]; dr[-1] = dr[-2]
-    
+
     # centre r_bot on the nearest cell
     idx_bot = np.argmin(np.abs(r - r_bot))
     # mass below r_bot
@@ -8305,28 +8305,28 @@ def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153)
                      (radminbase + radmaxbase)*(radmaxbase**4 - radminbase**4)/4. - \
                      radminbase*radmaxbase*(radmaxbase**3 - radminbase**3)/3.)
     dist = np.maximum(0.*r, r - radminbase)*np.maximum(0.*r, radmaxbase - r)*dV/heatsum
-    
+
     # the tiny offset of 1e-100 makes sure lines don't end suddenly in a logarithmic plot
     # 2.25 is the correction factor to account for the heating bug in PPMstar
     eps = 2.25*totallum*dist/dm + 1e-100
-    
+
     return np.transpose(np.array([r, m, eps]))
 
 def get_mesa_time_evo(mesa_path,mesa_logs,t_end,save = False):
     '''
     Function to generate data for figure 5 in O-shell paper.
-    
+
     Parameters
     ----------
-    mesa_path : string 
+    mesa_path : string
         path to the mesa data
-    mesa_logs : range 
+    mesa_logs : range
         cycles you would like to include in the plot
     t_end : float
         time of core collapse
     save : boolean,optional
         save the output into data files
-        
+
     Returns
     -------
     agearr : array
@@ -8345,13 +8345,13 @@ def get_mesa_time_evo(mesa_path,mesa_logs,t_end,save = False):
         peak luminosity units Lsun
     peakepsgravarr : array
         peak sepperation
-    
+
     '''
     tag = 'shell1'
     #tag = 'shell2'
 
     s = ms.history_data(mesa_path)
- 
+
     #logs=range(825,1000)
 
     agearr         = []
@@ -8427,18 +8427,18 @@ def get_mesa_time_evo(mesa_path,mesa_logs,t_end,save = False):
 def plot_mesa_time_evo(mesa_path,mesa_logs,t_end,ifig=21):
     '''
     Function to plot data for figure 5 in O-shell paper.
-    
+
     Parameters
     ----------
-    mesa_path : string 
+    mesa_path : string
         path to the mesa data
-    mesa_logs : range 
+    mesa_logs : range
         cycles you would like to include in the plot
     t_end : float
         time of core collapse
     save : boolean, optional
         save the output into data files
-        
+
     Examples
     --------
     plot_mesa_time_evo('/data/ppm_rpod2/Stellar_models/O-shell-M25/M25Z0.02/LOGS',
@@ -8453,9 +8453,9 @@ def plot_mesa_time_evo(mesa_path,mesa_logs,t_end,ifig=21):
     pl.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
 
     # load arrays
-    
+
     data = get_mesa_time_evo(mesa_path,mesa_logs,t_end)
-    
+
     age = data[0]
     ltl = data[1]
     mu = data[4]
@@ -8498,11 +8498,11 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label,ifig = 3,
                   integrate_both_fluids = False):
     '''
     Plots entrainment rate vs max radial or tangential velocity.
-    
+
     Parameters
     ----------
     cases : string list
-        list of cases i.e.D1 
+        list of cases i.e.D1
     c0 : list
         cycle to start on for each case
     Ncycles: int
@@ -8513,13 +8513,13 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label,ifig = 3,
         component of velocity 'tangential' or 'radial'
     metric : str
         metric of veloctiy 'min' max' or 'mean'
-        
+
     Examples
     --------
     cases = ('D1', 'D8', 'D5', 'D6', 'D9', 'D10', 'D20', 'D23', 'D2')
     c0 = (241,154,142,155,123,78,355,241,124)
     global ppm_path
-    ppm_path = '/data/ppm_rpod2/YProfiles/O-shell-M25/'    
+    ppm_path = '/data/ppm_rpod2/YProfiles/O-shell-M25/'
     plot_entr_v_ut(cases,c0,10,7.5,8.5,ifig = 3,integrate_both_fluids = False)
     '''
     mdot = np.zeros(len(cases))
@@ -8537,7 +8537,7 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label,ifig = 3,
                                         integrate_both_fluids = integrate_both_fluids,
                                         ifig0 = ifig,
                                         show_output = False)
-        
+
     fc = np.polyfit(np.log(vt[0:len(cases)]/30.), np.log(mdot[0:len(cases)]), 1)
     vt_fit = np.array((1e0, 1e3))
     mdot_fit = np.exp(fc[0]*np.log(vt_fit/30.) + fc[1])
@@ -8572,16 +8572,16 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
     '''
     This is a function that generates various diffusion profiles
     it is dependant on the functions Dsolvedown and Dov2
-    
+
     Parameters
     ----------
     run : string
         yprofile case to use i.e. 'D2'
-    mesa_path : string 
+    mesa_path : string
         path to the mesa data
-    mesa_logs : range 
+    mesa_logs : range
         cycles you would like to include in the plot
-    Dsolve_range : int array 
+    Dsolve_range : int array
         cycles from which to take initial and final abundance profiles
         for the diffusion step we want to mimic.
     fluid : string
@@ -8596,7 +8596,7 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
         diffusion coefficient at r0
     f1,f2 : float
         parameters of the model
-        
+
     Examples
     --------
     plot_diffusion_profiles('D2','/data/ppm_rpod2/Stellar_models/O-shell-M25/M25Z0.02/',28900,
@@ -8604,7 +8604,7 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
     pl.xlim(3,9)
     pl.ylim(11,16)
     '''
-    
+
     run = 'D2'
     cb = utils.colourblind
     ls = utils.linestyle
@@ -8667,11 +8667,11 @@ class Messenger:
     '''
     Messenger reports messages, warnings, and errors to the user.
     '''
-    
+
     def __init__(self, verbose=3):
         '''
         Init method.
-        
+
         Parameters
         ----------
         verbose: integer
@@ -8679,12 +8679,12 @@ class Messenger:
             warnings (2), everything (3). Negative values are replaced
             with 0 and any values greater than 3 are considered to be 3.
         '''
-        
+
         # Print everything by default (verbose=3).
         self.__print_messages = True
         self.__print_warnings = True
         self.__print_errors = True
-        
+
         vrbs = int(verbose)
         if vrbs > 3:
             self.__verbose = 3
@@ -8692,50 +8692,50 @@ class Messenger:
             self.__verbose = 0
         else:
             self.__verbose = vrbs
-            
+
         if self.__verbose < 3:
             self.__print_messages = False
         if self.__verbose < 2:
             self.__print_warnings = False
         if self.__verbose < 1:
             self.__print_errors = False
-    
+
     def message(self, message):
         '''
         Reports a message to the user. The message is currently printed to
         stdout.
-        
+
         Parameters
         ----------
         message: string
         '''
-        
+
         if self.__print_messages:
             print(message)
-            
+
     def warning(self, warning):
         '''
         Reports a warning to the user. The warning is currently printed to
         stdout.
-        
+
         Parameters
         ----------
         warning: string
         '''
-        
+
         if self.__print_warnings:
             print('Warning: ' + warning)
-    
+
     def error(self, error):
         '''
         Reports an error to the user. The error is currently printed to
         stdout.
-        
+
         Parameters
         ----------
         error: string
         '''
-        
+
         if self.__print_errors:
             print('Error: ' + error)
 
@@ -8745,11 +8745,11 @@ class RprofHistory:
     '''
     RprofHistory reads .hstry files produced by PPMstar 2.0.
     '''
-    
+
     def __init__(self, file_path, verbose=3):
         '''
         Init method.
-        
+
         Parameters
         ----------
         file_path: string
@@ -8757,10 +8757,10 @@ class RprofHistory:
         verbose: integer
             Verbosity level as defined in class Messenger.
         '''
-        
+
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
-        
+
         # __read_history_file() will set the following variables,
         # if successful:
         self.__file_path = ''
@@ -8768,19 +8768,19 @@ class RprofHistory:
         self.__data = {}
         if not self.__read_history_file(file_path):
             return
-        
+
         # Instance successfully initialized.
         self.__is_valid = True
-        
+
     def __read_history_file(self, file_path):
         '''
         Reads a .hstry file written by PPMstar 2.0.
-        
+
         Parameters
         ----------
         file_path: string
             Path to the .hstry file to be read.
-        
+
         Returns
         -------
         True when the file has been successfully read. False otherwise.
@@ -8799,7 +8799,7 @@ class RprofHistory:
             err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
             self.__messenger.error(err)
             return False
-        
+
         n_lines = len(lines)
         l = 0 # line index
 
@@ -8809,25 +8809,25 @@ class RprofHistory:
         # Get column names.
         self.__vars = lines[l].split()
         l += 1
-        
+
         for this_var in self.__vars:
             self.__data[this_var] = []
-        
+
         # Read the data table.
         while l < n_lines:
             if lines[l].strip() == '':
                 l += 1
                 continue
-            
+
             sline = lines[l].split()
-            
+
             # The 1st variable is always NDump.
             self.__data['NDump'].append(int(sline[0]))
-            
+
             # Another len(self.__vars) - 2 columns contain floats.
             for i in range(1, len(self.__vars) - 1):
                 self.__data[self.__vars[i]].append(float(sline[i]))
-                
+
             # The last column is always TimeStamp (which contains spaces,
             # so we have to put it back together). We parse the datetime
             # string and convert it to a UNIX time stamp (float). We do
@@ -8837,37 +8837,37 @@ class RprofHistory:
             timestamp = time.mktime(parse(timestamp_str).timetuple())
             self.__data['TimeStamp'].append(timestamp)
             l += 1
-        
+
         return True
-        
+
     def is_valid(self):
         '''
         Checks if the instance is valid, i.e. fully initialised.
-        
+
         Returns
         -------
         True if the instance is valid. False otherwise.
         '''
-        
+
         return self.__is_valid
-        
+
     def get_variables(self):
         '''
         Returns a list of variables available.
         '''
-        
+
         # Return a copy.
         return list(self.__vars)
-    
+
     def get(self, var_name):
         '''
         Returns variable var_name if it exists.
-        
+
         Parameters
         ----------
         var_name: string
             Name of the variable.
-        
+
         Returns
         -------
         numpy.ndarray
@@ -8875,18 +8875,18 @@ class RprofHistory:
         NoneType
             If variable var_name does not exist.
         '''
-        
+
         if var_name in self.__vars:
             # Return a copy.
             return np.array(self.__data[var_name])
         else:
             err = "Variable '{:s}' does not exist.".format(var_name)
             self.__messenger.error(err)
-            
+
             msg = 'Available variables: \n'
             msg += str(self.__vars)
             self.__messenger.message(msg)
-            
+
             return None
 
     def plot_wct_per_dump(self):
@@ -8894,41 +8894,41 @@ class RprofHistory:
         Plots wall-clock time (WCT) per dump as a function of dump
         number.
         '''
-        
+
         dumps = self.get('NDump')
         timestamps = self.get('TimeStamp')
-        
+
         wct_per_dump = (np.roll(timestamps, -1) - timestamps)/\
                        (np.roll(dumps, -1) - dumps)
-        
+
         pl.plot(dumps[:-1], wct_per_dump[:-1])
         pl.xlabel('NDump')
         pl.ylabel('WCT per dump / s')
 
-        
-        
+
+
 class RprofSet(PPMtools):
     '''
     RprofSet holds a set of .rprof files from a single run
     of PPMstar 2.0.
     '''
-    
+
     def __init__(self, dir_name, verbose=3, cache_rprofs=True):
         '''
         Init method.
-        
+
         Parameters
         ----------
         dir_name: string
             Name of the directory to be searched for .rprof files.
         verbose: integer
             Verbosity level as defined in class Messenger.
-        '''        
-        
+        '''
+
         PPMtools.__init__(self)
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
-        
+
         # __find_dumps() will set the following variables,
         # if successful:
         self.__dir_name = ''
@@ -8936,7 +8936,7 @@ class RprofSet(PPMtools):
         self.__dumps = []
         if not self.__find_dumps(dir_name):
             return
-        
+
         # To speed up repeated requests for data from the same dump, we
         # will cache every Rprof that has already been read from disk.
         # The user can still turn this off in case that they analyse a
@@ -8951,30 +8951,30 @@ class RprofSet(PPMtools):
             wrng = ('History not available. You will not be able to access '
                    'rprof data by simulation time.')
             self.__messenger.warning(wrng)
-        
+
         self.__is_valid = True
 
     def __find_dumps(self, dir_name):
         '''
         Searches for .rprof files and creates an internal list of dump numbers
         available.
-        
+
         Parameters
         ----------
         dir_name: string
             Name of the directory to be searched for .rprof files.
-        
+
         Returns
         -------
         boolean
             True when a set of .rprof files has been found. False otherwise.
         '''
-        
+
         if not os.path.isdir(dir_name):
             err = "Directory '{:s}' does not exist.".format(dir_name)
             self.__messenger.error(err)
             return False
-        
+
         # join() will add a trailing slash if not present.
         self.__dir_name = os.path.join(dir_name, '')
 
@@ -8983,10 +8983,10 @@ class RprofSet(PPMtools):
             err = "No rprof files found in '{:s}'.".format(self.__dir_name)
             self.__messenger.error(err)
             return False
-        
+
         rprof_files = [os.path.basename(rprof_files[i]) \
                        for i in range(len(rprof_files))]
-        
+
         # run_id is always separated from the rest of the file name
         # by a single dash.
         self.__run_id = rprof_files[0].split('-')[0]
@@ -8998,7 +8998,7 @@ class RprofSet(PPMtools):
                        format(self.__dir_name, self.__run_id)
                 self.__messenger.warning(wrng)
                 continue
-            
+
             # Skip files that do not fit the rprof naming pattern.
             if len(split1) < 2:
                 continue
@@ -9011,7 +9011,7 @@ class RprofSet(PPMtools):
                 self.__dumps.append(dump_num)
             except:
                 continue
-        
+
         self.__dumps = sorted(self.__dumps)
         msg = "{:d} rprof files found in '{:s}.\n".format(len(self.__dumps), \
               self.__dir_name)
@@ -9023,68 +9023,68 @@ class RprofSet(PPMtools):
             self.__messenger.warning(wrng)
 
         return True
-     
+
     def is_valid(self):
         '''
         Checks if the instance is valid, i.e. fully initialised.
-        
+
         Returns
         -------
         boolean
             True if the instance is valid. False otherwise.
         '''
-        
+
         return self.__is_valid
-    
+
     def get_run_id(self):
         '''
         Returns the run identifier that precedes the dump number in the names
         of .rprof files.
         '''
-        
+
         return str(self.__run_id)
-    
+
     def get_history(self):
         '''
         Returns the RprofHistory object associated with this instance if available
         and None otherwise.
         '''
-        
+
         if self.__history is not None:
             return self.__history
         else:
             self.__messenger.error('History not available.')
             return None
-    
+
     def get_dump_list(self):
         '''
         Returns a list of dumps available.
         '''
-        
+
         return list(self.__dumps)
-    
+
     def get_dump(self, dump):
         '''
         Returns a single dump.
-        
+
         Parameters
         ----------
         dump: integer
-            
+
         Returns
         -------
         Rprof
             Rprof object corresponding to the selected dump.
         '''
-        
+
         if dump not in self.__dumps:
             err = 'Dump {:d} is not available.'.format(dump)
             self.__messenger.error(err)
             return None
-        
+
         file_path = '{:s}{:s}-{:04d}.rprof'.format(self.__dir_name, \
                                                    self.__run_id, dump)
-        
+
         if self.__cache_rprofs:
             if dump in self.__rprof_cache:
                 rp = self.__rprof_cache[dump]
@@ -9093,14 +9093,14 @@ class RprofSet(PPMtools):
                 self.__rprof_cache[dump] = rp
         else:
             rp = Rprof(file_path)
-        
+
         return rp
-    
+
     def get(self, var, fname, num_type='NDump', resolution='l'):
         '''
         Returns variable var at a specific point in the simulation's time
         evolution.
-        
+
         Parameters
         ----------
         var: string
@@ -9116,8 +9116,8 @@ class RprofSet(PPMtools):
             'l' (low) or 'h' (high). A few variables are available at
             double resolution ('h'), the rest correspond to the resolution
             of the computational grid ('l').
-            
-            
+
+
         Returns
         -------
         numpy.ndarray
@@ -9126,7 +9126,7 @@ class RprofSet(PPMtools):
         NoneType
             If the Rprof corresponding to fname does not exist.
         '''
-        
+
         if num_type.lower() == 'ndump':
             rp = self.get_dump(fname)
         elif num_type.lower() == 't':
@@ -9134,10 +9134,10 @@ class RprofSet(PPMtools):
                 err = 'History not available. Cannot search by t.'
                 self.__messenger.error(err)
                 return None
-            
+
             t = self.__history.get('time(secs)')
             ndump = self.__history.get('NDump')
-            
+
             closest_idx = np.argmin(np.abs(t - fname))
             closest_dump = ndump[closest_idx]
             closest_t = t[closest_idx]
@@ -9150,17 +9150,17 @@ class RprofSet(PPMtools):
             self.__messenger.error("'{:s}' is not a valid value of "
                                    "num_type.".format(num_type))
             return None
-        
+
         if rp is not None:
             return rp.get(var, resolution=resolution)
         else:
             return None
-        
+
     def plot_FV(self, fname, num_type='NDump', resolution='l', idec=3, xxlim=None, \
                 yylim=None,legend='', ylog=True):
         np.warnings.filterwarnings('ignore')
-        R = self.get('R', fname=fname, num_type=num_type, resolution='l') 
-        FV = self.get('FV', fname=fname, num_type=num_type, resolution='l') 
+        R = self.get('R', fname=fname, num_type=num_type, resolution='l')
+        FV = self.get('FV', fname=fname, num_type=num_type, resolution='l')
         t = self.get('t', fname=fname, num_type=num_type)
         yy = FV
         if ylog: yy = np.log10(FV)
@@ -9176,7 +9176,7 @@ class RprofSet(PPMtools):
 
     def plot_A(self, fname, num_type='NDump', resolution='l', idec=3,xxlim=None, \
                yylim=None, legend=''):
-        R = self.get('R', fname=fname, num_type=num_type, resolution='l') 
+        R = self.get('R', fname=fname, num_type=num_type, resolution='l')
         A = self.get('A', fname=fname, num_type=num_type, resolution='l')
         t = self.get('t', fname=fname, num_type=num_type)
         pl.plot(R, A,  utils.linestylecb(idec)[0], \
@@ -9190,22 +9190,22 @@ class RprofSet(PPMtools):
         pl.tight_layout()
 
     def entrainment_rate(self, cycles, r_min, r_max, airmu, cldmu, var='vxz', criterion='min_grad', \
-                         offset=0., integrate_both_fluids=False, 
+                         offset=0., integrate_both_fluids=False,
                          integrate_upwards=False, show_output=True, ifig0=1, \
                          silent=True, mdot_curve_label=None, file_name=None,
                          return_time_series=False):
         '''
         Function for calculating entrainment rates.
-        
+
         Parameters
         ----------
         cycles : range
             cycles to get entrainment rate for
         r_min : float
             minimum radius to look for boundary
-        r_max : float 
+        r_max : float
             maximum radius to look for boundary
-        
+
         Examples
         ---------
         .. ipython::
@@ -9218,36 +9218,36 @@ class RprofSet(PPMtools):
             In [136]: F4 = ppm.yprofile('F4')
                .....: dumps = np.array(range(0,1400,100))
                .....: F4.entrainment_rate(dumps,27.7,28.5)
-               
+
         '''
 
         def regrid(x, y, x_int):
             int_func = scipy.interpolate.CubicSpline(x[::-1], y[::-1])
             return int_func(x_int)
-        
+
         r = self.get('R', fname = cycles[0], resolution='l')
-        
+
         idx_min = np.argmin(np.abs(r - r_max))
         idx_max = np.argmin(np.abs(r - r_min))
 
         r_min = r[idx_max]
         r_max = r[idx_min]
-        
+
         r = r[idx_min:(idx_max + 1)]
         r_int = np.linspace(r_min, r_max, num = 20.*(idx_max - idx_min + 1))
         dr_int = cdiff(r_int)
-        
+
         time = np.zeros(len(cycles))
         r_b = np.zeros(len(cycles))
         r_top = np.zeros(len(cycles))
         for i in range(len(cycles)):
             time[i] = self.get('t', fname = cycles[i], resolution='l')
-            
+
             if var == 'vxz':
                 q = (self.get('|Ut|', fname = cycles[i], resolution='l'))[idx_min:(idx_max + 1)]**0.5
             else:
                 q = (self.get(var, fname = cycles[i], resolution='l'))[idx_min:(idx_max + 1)]
-            
+
             q_int = regrid(r, q, r_int)
             grad = cdiff(q_int)/dr_int
 
@@ -9260,24 +9260,24 @@ class RprofSet(PPMtools):
 
             r_b[i] = r_int[idx_b]
             r_top[i] = r_b[i]
-            
+
             # Optionally offset the integration limit by a multiple of q's
             # scale height.
             if np.abs(grad[idx_b]) > 0.:
                 H_b = q_int[idx_b]/np.abs(grad[idx_b])
                 r_top[i] += offset*H_b
-        
+
         timelong = time
         delta = 0.05*(np.max(time) - np.min(time))
         timelong = np.insert(timelong,0, timelong[0] - delta)
         timelong = np.append(timelong, timelong[-1] + delta)
-        
+
         # fc = fit coefficients
         r_b_fc = np.polyfit(time, r_b, 1)
         r_b_fit = r_b_fc[0]*timelong + r_b_fc[1]
         r_top_fc = np.polyfit(time, r_top, 1)
         r_top_fit = r_top_fc[0]*timelong + r_top_fc[1]
-        
+
         m_ir = np.zeros(len(cycles))
         r = self.get('R', fname = cycles[0], resolution='h')
         r_int = np.linspace(np.min(r), np.max(r), num = 20.*len(r))
@@ -9293,17 +9293,17 @@ class RprofSet(PPMtools):
                 rhocld = rhocldtoair*rhoair
                 rho_HHe = rhocld
                 rho = rho_HHe*FV_HHe
-            
+
             rho_int = regrid(r, rho, r_int)
-            
+
             idx_top = np.argmin(np.abs(r_int - r_top[i]))
             dm = 4.*np.pi*r_int**2*dr_int*rho_int
-            
+
             if integrate_upwards:
                 m_ir[i] = np.sum(dm[(idx_top + 1):-1])
             else:
                 m_ir[i] = np.sum(dm[0:(idx_top + 1)])
-        
+
         # fc = fit coefficients
         m_ir *= 1e27/ast.msun_g
         m_ir_fc = np.polyfit(time, m_ir, 1)
@@ -9333,13 +9333,13 @@ class RprofSet(PPMtools):
                 print('dr_b/dt = {:.2e} km/s\n'.format(1e3*r_b_fc[0]))
                 print('r_top is the upper limit for mass integration.')
                 print('dr_top/dt = {:.2e} km/s'.format(1e3*r_top_fc[0]))
-            
+
             max_val = np.max(m_ir)
             #if show_fits:
             max_val = np.max((max_val, np.max(m_ir_fit)))
             max_val *= 1.1 # allow for some margin at the top
             oom = int(np.floor(np.log10(max_val)))
-            
+
             pl.close(ifig0 + 1); fig2 = pl.figure(ifig0 + 1)
             pl.plot(time/60., m_ir/10**oom, color = cb(5), label=mdot_curve_label)
             mdot_str = '{:e}'.format(mdot)
@@ -9362,7 +9362,7 @@ class RprofSet(PPMtools):
             ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
             if oom == 0.:
                 ylbl = r'M$_{:s}$ / M$_\odot$'.format(sub)
-                
+
             pl.ylabel(ylbl)
             yfmt = FormatStrFormatter('%.1f')
             fig2.gca().yaxis.set_major_formatter(yfmt)
@@ -9374,12 +9374,12 @@ class RprofSet(PPMtools):
             pl.legend(loc = loc)
             if file_name is not None:
                 fig2.savefig(file_name)
-        
+
             if not silent:
                 print('Resolution: {:d}^3'.format(2*len(r)))
                 print('m_ir_fc = ', m_ir_fc)
                 print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
-        
+
         if return_time_series:
             return m_ir
         else:
@@ -9391,43 +9391,43 @@ class Rprof:
     Rprof reads and holds the contents of a single .rprof file written by
     PPMstar 2.0.
     '''
-    
+
     def __init__(self, file_path, verbose=3):
         '''
         Init method.
-        
+
         Parameters
         ----------
         file_path: string
             Path to the .rprof file.
         verbose: integer
             Verbosity level as defined in class Messenger.
-        '''        
-        
+        '''
+
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
         if self.__read_rprof_file(file_path) != 0:
             return
-        
+
         self.__is_valid = True
-        
+
     def __read_rprof_file(self, file_path):
         '''
         Reads a single .rprof file written by PPMstar 2.0.
-        
+
         Parameters
         ----------
         file_path: string
             Path to the .rprof file.
-            
+
         Returns
         -------
         int
             0 on success.
         NoneType
             Something failed.
-        ''' 
-        
+        '''
+
         try:
             with open(file_path, 'r') as fin:
                 lines = fin.readlines()
@@ -9436,7 +9436,7 @@ class Rprof:
             err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
             self.__messenger.error(err)
             return None
-        
+
         self.__header_vars = []
         self.__header_data = {}
         self.__lr_vars = [] # low-resolution data columns
@@ -9486,14 +9486,14 @@ class Rprof:
 
             if footer_reached or eof:
                 break
- 
+
             # Go to the table's body.
             while True:
                 stripped_line = lines[l].strip()
                 if len(stripped_line) > 0 and stripped_line[0].isdigit():
                     break
                 l += 1
-            
+
             sline = lines[l].split()
             # The first number is always the number of radial zones.
             n = int(sline[0])
@@ -9526,7 +9526,7 @@ class Rprof:
                     else:
                         self.__lr_data[col_names[i]][n-idx] = val
                 l += 1
-        
+
         if footer_reached:
             while l < len(lines):
                 sline = lines[l].split()
@@ -9544,13 +9544,13 @@ class Rprof:
                             par_value = float(sline[i+1])
                         else:
                             par_value = int(sline[i+1])
-                        
+
                         # Although we are technically in the file's footer, we
                         # call these parameters "header variables".
                         self.__header_vars.append(par_name)
                         self.__header_data[par_name] = par_value
                 l += 1
-        
+
         self.__lr_vars = sorted(self.__lr_vars, key=lambda s: s.lower())
         self.__hr_vars = sorted(self.__hr_vars, key=lambda s: s.lower())
         self.__header_vars = sorted(self.__header_vars, key=lambda s: s.lower())
@@ -9560,58 +9560,58 @@ class Rprof:
                                   key=lambda s: s.lower())
         self.__all_vars = sorted(list(set(self.__header_vars+self.__anyr_vars)), \
                                   key=lambda s: s.lower())
- 
+
         return 0
-     
+
     def is_valid(self):
         '''
         Checks if the instance is valid, i.e. fully initialised.
-        
+
         Returns
         -------
         boolean
             True if the instance is valid. False otherwise.
         '''
-        
+
         return self.__is_valid
-     
+
     def get_header_variables(self):
         '''
         Returns a list of header variables available.
         '''
-        
+
         # Return a copy.
         return list(self.__header_vars)
-    
+
     def get_lr_variables(self):
         '''
         Returns a list of low-resolution variables available.
         '''
-        
+
         # Return a copy.
         return list(self.__lr_vars)
-      
+
     def get_hr_variables(self):
         '''
         Returns a list of high-resolution variables available.
         '''
-        
+
         # Return a copy.
         return list(self.__hr_vars)
-    
+
     def get_anyr_variables(self):
         '''
         Returns a list of any-resolution variables available.
         '''
-        
+
         # Return a copy.
         return list(self.__anyr_vars)
-   
+
     def get_all_variables(self):
         '''
         Returns a list of all variables available.
         '''
-        
+
         # Return a copy.
         return list(self.__all_vars)
 
@@ -9620,7 +9620,7 @@ class Rprof:
         Returns variable var if it exists. The method first searches for
         a variable name match in this order: header variables, low-
         resolution variables, and high-resolution variables.
-        
+
         Parameters
         ----------
         var: string
@@ -9629,14 +9629,14 @@ class Rprof:
             'l' (low) or 'h' (high). A few variables are available at
             double resolution ('h'), the rest correspond to the resolution
             of the computational grid ('l').
-        
+
         Returns
 
         -------
         np.ndarray
             Variable var, if found.
         '''
-        
+
         if var in self.__header_vars:
             return self.__header_data[var]
         else:
@@ -9652,7 +9652,7 @@ class Rprof:
                 else:
                     err = ("Variable '{:s}' does not exist.").format(var)
                     self.__messenger.error(err)
-                    
+
                     msg = 'Available variables:\n'
                     msg += str(self.__anyr_vars)
                     self.__messenger.message(msg)
@@ -9663,7 +9663,7 @@ class Rprof:
                     err = ("High-resolution data not available for variable "
                           "{:s}.").format(var)
                     self.__messenger.error(err)
-                    
+
                     msg = 'Available high-resolution variables:\n'
                     msg += str(self.__hr_vars)
                     self.__messenger.message(msg)
@@ -9673,24 +9673,22 @@ class Rprof:
 
 class MomsData():
     '''
-    MomsData reads in a single briquette averaged data cube which contains up
-    to 10 user-defined variables. In the MomentsDataSet it is assumed that either
-    whatever(0) = xc OR an rprof is supplied so that a suitable grid can be made. 
+    MomsData reads in a single briquette averaged data cube which contains up to 10 user-defined
+    variables. In the MomentsDataSet it is assumed that either whatever(0) = xc OR an rprof is
+    supplied so that a suitable grid can be made.
+
+    Parameters
+    ----------
+    file_path: string
+        Path to the .aaa file.
+    verbose: integer
+        Verbosity level as defined in class Messenger.
     '''
 
     # we have a couple of "constant" class variables
     def __init__(self, file_path, verbose=3):
-        '''
-        Init method.
-        
-        Parameters
-        ----------
-        file_path: string
-            Path to the .rprof file.
-        verbose: integer
-            Verbosity level as defined in class Messenger.
-        '''        
-        
+
+        # initialize a few quantities
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
 
@@ -9704,21 +9702,22 @@ class MomsData():
         self.ngridpoints = 0
         self.run_ngridpoints = 0
 
+        # read a moments data binary file
         if not self.read_moms_cube(file_path):
             return
 
         # all is good, initialize bools
         self.__is_valid = True
-        
+
     def read_moms_cube(self, file_path):
         '''
         Reads a single .aaa uncompressed data cube file written by PPMstar 2.0.
-        
+
         Parameters
         ----------
         file_path: string
             Path to the .aaa data cube file
-            
+
         Returns
         -------
         Boolean
@@ -9727,8 +9726,6 @@ class MomsData():
         '''
 
         # we need to first try out if we can read the data...
-        # if not self.__initialize:
-        #     del self.data
         try:
             ghostdata = np.fromfile(file_path,dtype='float32',count=-1,sep="")
 
@@ -9738,18 +9735,18 @@ class MomsData():
             return False
 
 
-        # DS: testing new way of doing things
+        # just by knowing how paul layed out the data I can infer these quantities
         self.run_ngridpoints = int(np.ceil(4. * (np.power(np.shape(ghostdata)[0] / 10.,1/3.) - self.__ghost)))
         self.ngridpoints = int(np.ceil(self.run_ngridpoints/4.))
 
         # ok, I can reshape without reallocating an array
         ghostview = ghostdata.view()
-        size = int(np.ceil(self.ngridpoints+self.__ghost))
-        ghostview.shape = (self.__number_of_whatevers,size,size,size)
+        size = int(np.ceil(self.ngridpoints + self.__ghost))
+        ghostview.shape = (self.__number_of_whatevers, size, size, size)
 
         # my removed "ghost" values is quite easy! Now in an intuitive format
-        # self.data[z,y,x]
-        self.data = ghostview[0:,(self.__ghost-1):(self.ngridpoints+self.__ghost-1),
+        # self.var[z,y,x]
+        self.var = ghostview[0:,(self.__ghost-1):(self.ngridpoints+self.__ghost-1),
                               (self.__ghost-1):(self.ngridpoints+self.__ghost-1),
                               (self.__ghost-1):(self.ngridpoints+self.__ghost-1)]
 
@@ -9757,16 +9754,17 @@ class MomsData():
 
     def is_valid(self):
         '''
-        Checks if the instance is valid, i.e. fully initialised.
-        
+        Checks if the instance is valid
+
         Returns
         -------
         boolean
-            True if the instance is valid. False otherwise.
+            True if the data cube was read.
+            False if there is an error in reading.
         '''
-        
+
         return self.__is_valid
-     
+
 
     def get(self, varloc):
         '''
@@ -9776,46 +9774,43 @@ class MomsData():
         ----------
         varloc: integer
             integer index of the quantity that is defined under whatever(varloc)
-        
+
         Returns
         -------
         np.ndarray
             Variable at whatever(varloc)
         '''
 
-        # self.data contains a shaped array that has no ghosts
-        return self.data[varloc]
+        # self.var contains a shaped array that has no ghosts
+        return self.var[varloc]
 
 class MomsDataSet:
     '''
-    MomsDataSet contains a set of dumps of MomsData from a single run of the
-    Moments reader from PPMstar 2.0.
+    MomsDataSet tracks a set of "dumps" of MomsData which are single "moments" datacubes
+    from PPMStar 2.0
+
+    Parameters
+    ----------
+    dir_name: string
+        Name of the directory to be searched for .aaa uncompressed moms datacubes
+    init_dump_read: integer
+        The initial dump to read into memory when object is initialized
+    dumps_in_mem: integer
+        The number of dumps to be held into memory. These datacubes can be large (~2Gb for 384^3)
+    var_list: list
+        This is a list that can be filled with strings that will reference data. E.g element 0 is
+        'xc' which will refer to the variable location data[0] in the large array of data
+    rprofset: RprofSet
+        Instead of constructing the grid with moments data, use the rprofset
+    verbose: integer
+        Verbosity level as defined in class Messenger.
     '''
 
     def __init__(self, dir_name, init_dump_read=0, dumps_in_mem=2, var_list=[], rprofset=None, verbose=3):
-        '''
-        Init method.
-        
-        Parameters
-        ----------
-        dir_name: string
-            Name of the directory to be searched for .aaa uncompressed moms datacubes
-        init_dump_read: integer
-            The initial dump to read into memory when object is initialized
-        dumps_in_mem: integer
-            The number of dumps to be held into memory. These datacubes can be large (~2Gb for 384^3)
-        var_list: list
-            This is a list that can be filled with strings that will reference data. E.g element 0 is 'xc'
-            which will refer to the variable location data[0] in the large array of data
-        rprofset: RprofSet
-            Instead of constructing the grid with moments data, use the rprofset
-        verbose: integer
-            Verbosity level as defined in class Messenger.
-        '''        
-        
+
         self._is_valid = False
         self._messenger = Messenger(verbose=verbose)
-        
+
         # __find_dumps() will set the following variables,
         # if successful:
         self._dir_name = ''
@@ -9845,7 +9840,7 @@ class MomsDataSet:
         self._many_momsdata_keys = []
         self._dumps_in_mem = dumps_in_mem
 
-        # initialize the dictionaries 
+        # initialize the dictionaries
         if not self._set_dictionaries(var_list):
             return
 
@@ -9875,25 +9870,25 @@ class MomsDataSet:
 
     def _find_dumps(self, dir_name):
         '''
-        Searches for .aaa files and creates an internal list of dump numbers
-        available.
-        
+        Searches for .aaa files and creates an internal list of dump numbers available.
+
         Parameters
         ----------
         dir_name: string
             Name of the directory to be searched for .aaa files.
-        
+
         Returns
         -------
         boolean
-            True when a set of .aaa files has been found. False otherwise.
+            True: when a set of .aaa files has been found.
+            False: otherwise.
         '''
-        
+
         if not os.path.isdir(dir_name):
             err = "Directory '{:s}' does not exist.".format(dir_name)
             self._messenger.error(err)
             return False
-        
+
         # join() will add a trailing slash if not present.
         self._dir_name = os.path.join(dir_name, '')
 
@@ -9909,10 +9904,10 @@ class MomsDataSet:
             err = "No .aaa files found in '{:s}'.".format(self._dir_name)
             self._messenger.error(err)
             return False
-        
+
         moms_files = [os.path.basename(moms_files[i]) \
                        for i in range(len(moms_files))]
-        
+
         # run_id is always separated from the rest of the file name
         # by a single dash.
         self._run_id = moms_files[0].split('-')[0]
@@ -9924,13 +9919,13 @@ class MomsDataSet:
                        format(self._dir_name, self._run_id)
                 self._messenger.warning(wrng)
                 continue
-            
-            # Skip files that do not fit the rprof naming pattern.
+
+            # Skip files that do not fit the momsdata naming pattern.
             if len(split1) < 2:
                 continue
 
             # Get rid of the extension and try to parse the dump number.
-            # Skip files that do not fit the rprof naming pattern.
+            # Skip files that do not fit the momsdata naming pattern.
             split2 = split1[1].split('.')
             try:
                 # there is always BQav prefix before dump
@@ -9938,7 +9933,7 @@ class MomsDataSet:
                 self._dumps.append(dump_num)
             except:
                 continue
-        
+
         self._dumps = sorted(self._dumps)
         msg = "{:d} .aaa files found in '{:s}.\n".format(len(self._dumps), \
               self._dir_name)
@@ -9953,18 +9948,19 @@ class MomsDataSet:
 
     def _get_dump(self, dump):
         '''
-        Gets a new dump for MomsData or instantiates MomsData
-        
+        Gets a new dump of MomsData that is in memory or instantiates a new MomsData
+
         Parameters
         ----------
         dump: integer
+            The dump number you want access to
         '''
-        
+
         if dump not in self._dumps:
             err = 'Dump {:d} is not available.'.format(dump)
             self._messenger.error(err)
             return None
-        
+
         file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self._dir_name, \
                                                              dump, self._run_id, dump)
 
@@ -9993,13 +9989,17 @@ class MomsDataSet:
         # all is good. update what_dump_am_i
         self.what_dump_am_i = dump
 
-    def _interpolation_moments(self,varloc,igrid,x_idx,y_idx,z_idx,derivative,logvarloc,coefficients):
+    def _interpolation_moments(self, var, igrid, x_idx, y_idx, z_idx, coefficients):
         '''
-        f(xi,yi,zi) = a000 + a100x + a010y + a001z + a200x^2 + a110xy + a101xz + a020y^2 + a011yz + a002z^2
+        The interpolation form is quadratic:
 
-        Through moments averaging, we can determine these coefficients based on the value of f at various points.
-        Similar to the convention above, the subscripts for coefficients below refer to a displacement of central cell points
-        from our closest central cell to where our interpolation is actually happening in an (x,y,z) format. So...
+        f(xi,yi,zi) = a000 + a100x + a010y + a001z + a200x^2 + a110xy + a101xz + a020y^2
+                      + a011yz + a002z^2
+
+        Through moments averaging, we can determine these coefficients based on the value of f at
+        various points. Similar to the convention above, the subscripts for coefficients below
+        refer to a displacement of central cell points from our closest central cell to where our
+        interpolation is actually happening in an (x,y,z) format. So...
 
         a000 = 5/4c000 - 1/24(c100 + c-100 + c010 + c0-10 + c001 + c00-1)
         a100 = 1/2(c100 - c-100)
@@ -10011,39 +10011,56 @@ class MomsDataSet:
         a200 = 1/2(c100 + c-100) - c000
         a020 = 1/2(c010 + c0-10) - c000
         a002 = 1/2(c001 + c00-1) - c000
+
+        Parameters
+        ----------
+        var: np.ndarray
+            The quantity on the grid
+        igrid: np.ndarray
+            The array that contains all of the points that are to be interpolated to
+            igrid.shape = [nset,ninterpolation_points,3]
+            igrid[nset,:,0] = z, igrid[nset,:,1] = y, igrid[nset,:,2] = z
+        x_idx: np.ndarray
+            The x indices that the interpolation points are closest to
+        y_idx: np.ndarray
+            The y indices that the interpolation points are closest to
+        z_idx: np.ndarray
+            The z indices that the interpolation points are closest to
+        coefficients: bool
+            In some cases you may want the coefficients for the 'moments' interpolation
         '''
 
         # flatten igrid, now every 3 is either x,y or z values
         iflat = igrid.flatten()
 
-        # Grab all of the c values needed to get the a coefficients. Note varloc[z,y,x]
+        # Grab all of the c values needed to get the a coefficients. Note var[z,y,x]
 
         # a000, a100, a010, a001
-        c000 = varloc[z_idx,y_idx,x_idx]
-        c100 = varloc[z_idx,y_idx,x_idx+1]
-        c_100 = varloc[z_idx,y_idx,x_idx-1]
-        c010 = varloc[z_idx,y_idx+1,x_idx]
-        c0_10 = varloc[z_idx,y_idx-1,x_idx]
-        c001 = varloc[z_idx+1,y_idx,x_idx]
-        c00_1 = varloc[z_idx-1,y_idx,x_idx]
+        c000 = var[z_idx, y_idx, x_idx]
+        c100 = var[z_idx, y_idx, x_idx+1]
+        c_100 = var[z_idx, y_idx, x_idx-1]
+        c010 = var[z_idx, y_idx+1, x_idx]
+        c0_10 = var[z_idx, y_idx-1, x_idx]
+        c001 = var[z_idx+1, y_idx, x_idx]
+        c00_1 = var[z_idx-1, y_idx, x_idx]
 
         # a110
-        c110 = varloc[z_idx,y_idx+1,x_idx+1]
-        c_1_10 = varloc[z_idx,y_idx-1,x_idx-1]
-        c1_10 = varloc[z_idx,y_idx-1,x_idx+1]
-        c_110 = varloc[z_idx,y_idx+1,x_idx-1]
+        c110 = var[z_idx, y_idx+1, x_idx+1]
+        c_1_10 = var[z_idx, y_idx-1, x_idx-1]
+        c1_10 = var[z_idx, y_idx-1, x_idx+1]
+        c_110 = var[z_idx, y_idx+1, x_idx-1]
 
         # a101
-        c101 = varloc[z_idx+1,y_idx,x_idx+1]
-        c_10_1 = varloc[z_idx-1,y_idx,x_idx-1]
-        c_101 = varloc[z_idx+1,y_idx,x_idx-1]
-        c10_1 = varloc[z_idx-1,y_idx,x_idx+1]
+        c101 = var[z_idx+1, y_idx, x_idx+1]
+        c_10_1 = var[z_idx-1, y_idx, x_idx-1]
+        c_101 = var[z_idx+1, y_idx, x_idx-1]
+        c10_1 = var[z_idx-1, y_idx, x_idx+1]
 
         # a011
-        c011 = varloc[z_idx+1,y_idx+1,x_idx]
-        c0_1_1 = varloc[z_idx-1,y_idx-1,x_idx]
-        c0_11 = varloc[z_idx+1,y_idx-1,x_idx]
-        c01_1 = varloc[z_idx-1,y_idx+1,x_idx]
+        c011 = var[z_idx+1, y_idx+1, x_idx]
+        c0_1_1 = var[z_idx-1, y_idx-1, x_idx]
+        c0_11 = var[z_idx+1, y_idx-1, x_idx]
+        c01_1 = var[z_idx-1, y_idx+1, x_idx]
 
         # now compute a's with my c values
         a000 = 5./4. * c000 - 1/24. * (c100 + c_100 + c010 + c0_10 + c001 + c00_1)
@@ -10062,81 +10079,33 @@ class MomsDataSet:
         yiflat = iflat[1::3]
         ziflat = iflat[::3]
 
-        # the formula uses CELL CENTERED COORDINATES, I will have to subtract off the cell centered x,y,z from the "flats"
-        # and then scale it with the fact that: 1 cell width = 1
+        # the formula uses CELL CENTERED COORDINATES, I will have to subtract off the cell
+        # centered x,y,z from the "flats" and then scale it with the fact that: 1 cell width = 1
         xiflat = (xiflat - self._unique_coord[x_idx]) / np.mean(abs(np.diff(self._unique_coord)))
         yiflat = (yiflat - self._unique_coord[y_idx]) / np.mean(abs(np.diff(self._unique_coord)))
         ziflat = (ziflat - self._unique_coord[z_idx])  / np.mean(abs(np.diff(self._unique_coord)))
 
-        # Are we taking derivatives?
-        # Check if it is empty, if not then we return a list
-        if derivative:
-            # make a certain size so I can return it in the right order as specified in derivative string
-            varloc_interp = [i for i in derivative]
+        # interpolate the quantity using the definition of f
+        var_interp = (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat +
+                         a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat +
+                         a020*yiflat*yiflat + a002*ziflat*ziflat)
 
-            if 'x' in derivative:
-                # is varloc a log quantity?
-                if logvarloc:
-                    # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
-                    varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*a200*xiflat)
-                    varloc_interp[derivative.find('x')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
-                                                            + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
-                                                            + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
-
-                    # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('x')] *= np.power(np.mean(np.diff(self._unique_coord)),-1.)
-                else:
-                    # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('x')] = (a100 + a110*yiflat + a101*ziflat + 2.*a200*xiflat) * np.power(
-                        np.mean(np.diff(self._unique_coord)),-1.)
-
-            if 'y' in derivative:
-                # is varloc a log quantity?
-                if logvarloc:
-                    # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
-                    varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*a020*yiflat)
-                    varloc_interp[derivative.find('y')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
-                                                            + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
-                                                            + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
-
-                    # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('y')] *= np.power(np.mean(np.diff(self._unique_coord)),-1.)
-                else:
-                    # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('y')] = (a010 + a110*xiflat + a011*ziflat + 2.*a020*yiflat) * np.power(
-                        np.mean(np.diff(self._unique_coord)),-1.)
-
-            if 'z' in derivative:
-                # is varloc a log quantity?
-                if logvarloc:
-                    # d/dx log(f(x)) = df/dx * (f(x) * ln(10))**-1
-                    varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*a002*ziflat)
-                    varloc_interp[derivative.find('z')] *= np.power(10.,a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat
-                                                            + a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat
-                                                            + a020*yiflat*yiflat + a002*ziflat*ziflat) * np.log(10.)
-
-                    # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('z')] *= np.power(np.mean(np.diff(self._unique_coord)),-1.)
-                else:
-                    # I need to scale the derivative properly as the coordinates are scaled to 1!
-                    varloc_interp[derivative.find('z')] = (a001 + a011*yiflat + a101*xiflat + 2.*a002*ziflat) * np.power(
-                        np.mean(np.diff(self._unique_coord)),-1.)
-
-        else:
-            # ok, just regular interpolation
-            varloc_interp = (a000 + a100*xiflat + a010*yiflat + a001*ziflat + a110*xiflat*yiflat + a101*xiflat*ziflat +
-                             a011*yiflat*ziflat + a200*xiflat*xiflat + a020*yiflat*yiflat + a002*ziflat*ziflat)
-
+        # Do I want to look at the coefficients used?
         if coefficients:
             coefficients = [a000, a100, a010, a001, a110, a101, a011, a200, a020, a002]
-            return varloc_interp, coefficients
+            return var_interp, coefficients
         else:
-            return varloc_interp
+            return var_interp
 
-    def _set_dictionaries(self,var_list):
+    def _set_dictionaries(self, var_list):
         '''
-        This function will setup the dictionaries that will house multiple moments data objects and
-        a convenience dictionary to refer to variables by a string
+        This function will setup the dictionaries that will house multiple MomsData objects and
+        a convenient dictionary to refer to variables by a string
+
+        Parameters
+        ---------
+        var_list: list
+            A list that may contain strings to associate the integer locations "varloc"
 
         Returns
         -------
@@ -10178,20 +10147,24 @@ class MomsDataSet:
 
         return True
 
-    def _transform_mollweide(self,theta,phi):
+    def _transform_mollweide(self, theta, phi):
         '''
         Transforms a "physics" spherical coordinates array into the spherical coordinates
         that matplotlib uses for projection plots. This creates a copy of the input arrays
 
         Parameters
         ----------
-        theta, phi: np.array
-            The "physics" theta and phi arrays
+        theta: np.ndarray
+            An array of theta with the "physics" defined angle to be converted
+        phi: np.ndarray
+            An array of phi with the "physics" defined angle to be converted
 
         Returns
         -------
-        theta, phi numpy.ndarray
-            theta and phi transformed
+        theta: np.ndarray
+            theta transformed to the "mollweide" defined angle
+        phi: np.ndarray
+            phi transformed to the "mollweide" defined angle
         '''
 
         # create a copy
@@ -10210,20 +10183,24 @@ class MomsDataSet:
 
         return theta_copy, phi_copy
 
-    def _transform_spherical(self,theta,phi):
+    def _transform_spherical(self, theta, phi):
         '''
         Transforms a "mollweide" spherical coordinates array into the "physics" spherical coordinates.
         This creates a copy of the input arrays
 
         Parameters
         ----------
-        theta, phi: np.array
-            The "mollweide" theta and phi arrays
+        theta: np.ndarray
+            An array of theta with the "mollweide" defined angle to be converted
+        phi: np.ndarray
+            An array of phi with the "mollweide" defined angle to be converted
 
         Returns
         -------
-        theta, phi numpy.ndarray
-            theta and phi transformed
+        theta: np.ndarray
+            theta transformed to the "physics" defined angle
+        phi: np.ndarray
+            phi transformed to the "physics" defined angle
         '''
 
         # create a copy
@@ -10233,17 +10210,18 @@ class MomsDataSet:
         # mollweide arrays have the following which we will invert!:
         # phi instead goes from -pi to pi with -pi/2 being the -y axis and
         # the x axis defines phi = 0
-
-        phi_copy[np.where(phi_copy < 0)] = phi_copy[np.where(phi_copy < 0)] + 2*np.pi
+        phi_bool = phi_copy < 0
+        phi_copy[phi_bool] = phi_copy[phi_bool] + 2*np.pi
 
         # theta instead goes from -pi/2 to pi/2 with pi/2 being the positive
         # z axis and the xy plane defines theta = 0
-        theta_copy[np.where(theta_copy >= 0)] = abs(theta_copy[np.where(theta_copy >= 0)] - np.pi/2.)
-        theta_copy[np.where(theta_copy < 0)] = abs(theta_copy[np.where(theta_copy < 0)]) + np.pi/2.
+        theta_bool = theta_copy >= 0
+        theta_copy[theta_bool] = abs(theta_copy[theta_bool] - np.pi/2.)
+        theta_copy[~theta_bool] = abs(theta_copy[~theta_bool]) + np.pi/2.
 
         return theta_copy, phi_copy
 
-    def _uniform_spherical_grid(self,radius,npoints):
+    def _uniform_spherical_grid(self, radius, npoints):
         '''
         Create a uniformly spaced (in spherical coordinates) grid of points in which
         the interpolation is done on to get a value of quantity at radius r
@@ -10255,9 +10233,12 @@ class MomsDataSet:
 
         Returns
         -------
-        xyz_grid,theta_interp,phi_interp: np.ndarray
-            The spherical coordinates (physics) of the points on the sphere with their
-            associated x,y,z
+        xyz_grid: np.ndarray
+            The x, y, z coordinates of the "npoints"
+        theta_interp: np.ndarray
+            The theta spherical coordinates (physics) of the "npoints"
+        phi_interp: np.ndarray
+            The phi spherical coordinates (physics) of the "npoints"
         '''
 
         indices = np.arange(0, npoints, dtype=np.float32) + 0.5
@@ -10268,19 +10249,19 @@ class MomsDataSet:
 
         # create the interp_grid. It is written in this fashion to work with interpolation, z,y,x
         igrid = np.zeros((npoints,3))
-        igrid[:,0] = radius * np.cos(theta)
-        igrid[:,1] = radius * np.sin(theta) * np.sin(phi)
-        igrid[:,2] = radius * np.sin(theta) * np.cos(phi)
+        igrid[:, 0] = radius * np.cos(theta)
+        igrid[:, 1] = radius * np.sin(theta) * np.sin(phi)
+        igrid[:, 2] = radius * np.sin(theta) * np.cos(phi)
 
         # for mollweide we have to transform these
-        theta, phi = self._transform_mollweide(theta,phi)
+        theta, phi = self._transform_mollweide(theta, phi)
 
         return igrid, theta, phi
 
     def _get_cgrid(self):
         '''
-        Constructs the PPMStar cartesian grid from either the internal rprofset or the assumed xc saved in
-        whatever(0).
+        Constructs the PPMStar cartesian grid from either the internal rprofset or the assumed xc
+        saved in whatever(0).
 
         Returns
         -------
@@ -10293,8 +10274,7 @@ class MomsDataSet:
         if not self._cgrid_exists:
 
             # Ok, we will always have a dump in memory so carry on!
-
-            if isinstance(self._rprofset,RprofSet):
+            if isinstance(self._rprofset, RprofSet):
 
                 # we can construct the xc_array
                 rprof = self._rprofset.get_dump(self._rprofset.get_dump_list()[0])
@@ -10353,7 +10333,10 @@ class MomsDataSet:
             # we need a slight offset from the lowest value and highest value of grid for interpolation!
             delta_r = 2*np.min(self._xc[np.where(np.unique(self._xc)>0)])
             eps = 0.000001
-            self._radial_boundary = np.linspace(delta_r+eps*delta_r,delta_r*(self.moms_ngridpoints/2.)-eps*delta_r*(self.moms_ngridpoints/2.),int(np.ceil(self.moms_ngridpoints/2.)))
+            self._radial_boundary = np.linspace(delta_r + eps*delta_r, delta_r *
+                                                (self.moms_ngridpoints/2.) - eps*delta_r *
+                                                (self.moms_ngridpoints/2.),
+                                                int(np.ceil(self.moms_ngridpoints/2.)))
 
             # these are the boundaries, now I need what is my "actual" r value
             self.radial_axis = self._radial_boundary - delta_r/2.
@@ -10365,14 +10348,14 @@ class MomsDataSet:
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self._xc_view = self._xc.view()
-            self._xc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._xc_view.shape = (self.moms_ngridpoints, self.moms_ngridpoints, self.moms_ngridpoints)
             self._yc_view = self._yc.view()
-            self._yc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._yc_view.shape = (self.moms_ngridpoints, self.moms_ngridpoints, self.moms_ngridpoints)
             self._zc_view = self._zc.view()
-            self._zc_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._zc_view.shape = (self.moms_ngridpoints, self.moms_ngridpoints, self.moms_ngridpoints)
 
             self._radius_view = self._radius.view()
-            self._radius_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._radius_view.shape = (self.moms_ngridpoints, self.moms_ngridpoints, self.moms_ngridpoints)
 
             # grab unique values along x-axis
             self._unique_coord = self._xc_view[0,0,:]
@@ -10402,18 +10385,18 @@ class MomsDataSet:
             # ok we are good to go for the spherical coordinates
 
             # we have the radius already, need theta and phi
-            self._theta = np.arctan2(np.sqrt(np.power(self._xc,2.0) + np.power(self._yc,2.0)),self._zc)
+            self._theta = np.arctan2(np.sqrt(np.power(self._xc,2.0) + np.power(self._yc,2.0)), self._zc)
 
             # with phi we have a problem with the way np.arctan2 works, we get negative
             # angles in quadrants 3 and 4. we can fix this by adding 2pi to the negative values
-            self._phi = np.arctan2(self._yc,self._xc)
+            self._phi = np.arctan2(self._yc, self._xc)
             self._phi[self._phi < 0] += 2. * np.pi
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self._theta_view = self._theta.view()
-            self._theta_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._theta_view.shape = (self.moms_ngridpoints, self.moms_ngridpoints, self.moms_ngridpoints)
             self._phi_view = self._phi.view()
-            self._phi_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._phi_view.shape = (self.moms_ngridpoints, self.moms_ngridpoints, self.moms_ngridpoints)
 
             # ok all is good, set our flag that everything is good
             self._sgrid_exists = True
@@ -10442,7 +10425,8 @@ class MomsDataSet:
                 self._get_sgrid()
 
             # we have a transform method, let's use it
-            self._mollweide_theta, self._mollweide_phi = self._transform_mollweide(self._theta.copy(),self._phi.copy())
+            self._mollweide_theta, self._mollweide_phi = self._transform_mollweide(self._theta.copy(),
+                                                                                   self._phi.copy())
 
             # DS: I will save this code, it may be used in the future
             # and is a nice way of calculating this directly
@@ -10455,9 +10439,9 @@ class MomsDataSet:
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self._mollweide_theta_view = self._mollweide_theta.view()
-            self._mollweide_theta_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._mollweide_theta_view.shape = (self.moms_ngridpoints, self.moms_ngridpoints, self.moms_ngridpoints)
             self._mollweide_phi_view = self._mollweide_phi.view()
-            self._mollweide_phi_view.shape = (self.moms_ngridpoints,self.moms_ngridpoints,self.moms_ngridpoints)
+            self._mollweide_phi_view.shape = (self.moms_ngridpoints, self.moms_ngridpoints, self.moms_ngridpoints)
 
             # ok all is good, set our flag that everything is good
             self._mollweide_exists = True
@@ -10467,35 +10451,35 @@ class MomsDataSet:
         else:
             return True
 
-    def _get_interpolation(self,varloc, igrid, method, derivative, logvarloc, coefficients):
+    def _get_interpolation(self, var, igrid, method, coefficients):
         '''
         This function controls the which method of interpolation is done and how it is done.
 
         Parameters
         ----------
-        varloc: np.ndarray
-           The variable grid has already been chosen, this is the size of the simulation box
+        var: np.ndarray
+            The quantity on the grid
         igrid: np.ndarray
-           The array that contains all of the points that are to be interpolated to
-           igrid.shape = [nset,ninterpolation_points,3]
-           igrid[nset,:,0] = z, igrid[nset,:,1] = y, igrid[nset,:,2] = z
+            The array that contains all of the points that are to be interpolated to
+            igrid.shape = [nset,ninterpolation_points,3]
+            igrid[nset,:,0] = z, igrid[nset,:,1] = y, igrid[nset,:,2] = z
         method: str
-            'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
-            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
-        derivative: str
-            What derivatives am I taking for 'varloc'?
-        logvarloc: bool
-            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are handled for method='moments'
-            The returned varloc_interpolated will be scaled back
+            'trilinear': Use a trilinear method to interpolate onto the points on igrid
+            'moments': Use a moments averaging within a cell and using a quadratic function
+                       as the form for the interpolation
         coefficients: bool
-            In some cases you may want the coefficients for a particular interpolation scheme
+            In some cases you may want the coefficients for the 'moments' interpolation
 
         Returns
         -------
         coefficients: False
-            varloc_interp: np.ndarray or list
+            var_interp: np.ndarray
+                The var interpolated onto the 'igrid' points
         coefficients: True
-            varloc_interp, coefficients: np.ndarray or list, list
+            var_interp: np.ndarray
+                The var interpolated onto the 'igrid' points
+            coefficients: list
+                The coefficients used in the interpolation
         '''
 
         # what method?
@@ -10504,14 +10488,14 @@ class MomsDataSet:
         if method == self._interpolation_methods[0]:
 
             # first we create interpolation object from scipy
-            linear_interp = scipy.interpolate.RegularGridInterpolator((self._unique_coord, self._unique_coord,
-                                                                       self._unique_coord),varloc)
+            linear_interp = scipy.interpolate.RegularGridInterpolator(
+                (self._unique_coord, self._unique_coord, self._unique_coord), var)
 
             # we have a "flattened" in radii igrid, just pass all arguments to the interpolator
-            varloc_interp = linear_interp(igrid)
+            var_interp = linear_interp(igrid)
 
             # we will exit here
-            return varloc_interp
+            return var_interp
 
         # moments
         else:
@@ -10524,7 +10508,9 @@ class MomsDataSet:
             out_of_bounds = np.logical_or((igrid > upper_bound),(igrid < lower_bound))
 
             if np.count_nonzero(out_of_bounds.flatten()) > 0:
-                err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'.format(np.count_nonzero(out_of_bounds.flatten()))
+                err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'.format(
+                    np.count_nonzero(out_of_bounds.flatten()))
+
                 self._messenger.error(err)
                 raise ValueError
 
@@ -10547,27 +10533,45 @@ class MomsDataSet:
 
             # now we call the actual interpolation
             if coefficients:
-                varloc_interp, a = self._interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
-                return varloc_interp, a
+                var_interp, a = self._interpolation_moments(var, igrid, x_idx, y_idx, z_idx, coefficients)
+                return var_interp, a
             else:
-                varloc_interp = self._interpolation_moments(varloc, igrid, x_idx, y_idx, z_idx, derivative, logvarloc, coefficients)
-                return varloc_interp
+                var_interp = self._interpolation_moments(var, igrid, x_idx, y_idx, z_idx, coefficients)
+                return var_interp
 
-    def _get_jacobian(self,x,y,z,r):
+    def _get_jacobian(self, x, y, z, r):
         '''
         This function creates the Jacobian to convert quantities defined in cartesian
-        coordinates to spherical coordinates. This is a very large array of 9 x shape
-        which will be stored in memory. It is defined as the "physics" spherical coordinates
-        so the array has rhat, theta-hat, phi-hat -> xhat, yhat, zhat
+        coordinates to spherical coordinates. This is a very large array of
+        9 x self.moms_gridresolution which will be stored in memory. It is defined as the "physics"
+        spherical coordinates so the array has rhat, theta-hat, phi-hat -> xhat, yhat, zhat
+
+        Parameters
+        ----------
+        x: np.ndarray
+            The x coordinates of the grid
+        y: np.ndarray
+            The y coordinates of the grid
+        z: np.ndarray
+            The z coordinates of the grid
+        r: np.ndarray
+            The r coordinates of the grid
+
+        Returns
+        -------
+        jacobian: np.ndarray
+            The jacobian for the transformation between cartesian and spherical coordinates
         '''
 
         # are we working with a flattened, (x,y,z) or a matrix?
         if len(x.shape) > 1:
+
             # since we work in spherical coordinates, the phi-hat dot z-hat component is zero, so it is 8x(nxnxn)
-            jacobian = np.zeros((8,x.shape[0],y.shape[0],z.shape[0]),dtype='float32')
+            jacobian = np.zeros((8, x.shape[0], y.shape[0], z.shape[0]),dtype='float32')
         else:
+
             # since we work in spherical coordinates, the phi-hat dot z-hat component is zero, so it is 8x(n)
-            jacobian = np.zeros((8,x.shape[0]))
+            jacobian = np.zeros((8, x.shape[0]))
 
         # need the cylindrical radius
         rcyl = np.sqrt(np.power(x,2.0) + np.power(y,2.0))
@@ -10593,26 +10597,26 @@ class MomsDataSet:
         # jacobian transformation matrix has been computed
         return jacobian
 
-    def _get(self,varloc,fname=None):
+    def _get(self, varloc, fname=None):
         '''
-        Returns variable var at a specific point in the simulation's time
-        evolution. This is used internally for data claims that will be references
-        that die in a method. IMPORTANT: The arrays are NOT flattened but if they need
-        to be a NEW array must be made
-        
+        Returns the variable var which is referenced with varloc at a specific dump/time in the
+        simulation. This is used internally for var claims that will be references that are garbage
+        collected in a method. IMPORTANT: The arrays are NOT flattened but if they need
+        to be a NEW array will be made
+
         Parameters
         ----------
-        varloc: int
-            Index location of the variable you want
+        varloc: str, int
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
         fname: None,int
             None: default option, will grab current dump
             int: Dump number
 
         Returns
         -------
-        numpy.ndarray
-            Variable in index varloc as given by MomsData.get() if the MomsData
-        corresponding to fname exists.
+        var: np.ndarray
+            Variable on the grid
         '''
 
         # if fname is None, use current dump
@@ -10648,14 +10652,19 @@ class MomsDataSet:
     def get_dump_list(self):
         '''
         Returns a list of dumps available.
+
+        Returns
+        -------
+        dumps: list
+            List of dumps that are available
         '''
-        
+
         return list(self._dumps)
 
-    def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', derivative='', logvarloc=False, coefficients=False):
+    def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', logvar=False, coefficients=False):
         '''
-        Returns the trilinear interpolated array of values of 'varloc' at a radius of
-        'radius' as well as the 'theta,phi' (mollweide) coordinates of the 'varloc' values
+        Returns the interpolated array of values (with a particular method) of the var given by
+        'varloc' at the [z,y,x] grid points of igrid
 
         Parameters
         ----------
@@ -10664,46 +10673,46 @@ class MomsDataSet:
             Int: index location of the variable you want
             np.ndarray: quantity you want to have interpolated on the grid
         igrid: np.ndarray
-            The array containing the x,y,z points you want interpolated values of. Must be shape igrid[len,3] and
-            igrid[:,0] = z, igrid[:,1] = y and igrid[:,2] = x
-        fname: None,int
+           The array that contains all of the points that are to be interpolated to
+           igrid.shape = [nset,ninterpolation_points,3]
+           igrid[nset,:,0] = z, igrid[nset,:,1] = y, igrid[nset,:,2] = z
+        fname: None, int
             None: default option, will grab current dump
             int: Dump number
         method: str
-            'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
-            'moments' (fast): Use a moments averaging within a cell and using a quadratic function as the form
-                              for the interpolation
-        derivative: str
-            The default is NO derivative, i.e an empty string.
-
-            Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
-            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments'
-            method
-
-            method = 'moments': Use the analytic derivative of the moments quadratic function
-        logvarloc: bool
-            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are
-            handled for method='moments'. The returned varloc_interpolated will be scaled back
+            'trilinear': Use a trilinear method to interpolate onto the points on igrid
+            'moments': Use a moments averaging within a cell and using a quadratic function
+                       as the form for the interpolation
+        logvar: bool
+            For better fitting should I do var = np.log10(var)? The returned var_interpolated
+            will be scaled back to linear
         coefficients: bool
-            In some cases you may want the coefficients for a particular interpolation scheme
+            In some cases you may want the coefficients for the 'moments' interpolation
 
         Returns
         -------
-        varloc_interpolated: np.ndarray
-
-        derivative: Not Empty
-            [varloc_interpolated]
+        coefficients: False
+            var_interp: np.ndarray
+                The var interpolated onto the 'igrid' points
+        coefficients: True
+            var_interp: np.ndarray
+                The var interpolated onto the 'igrid' points
+            coefficients: list
+                The coefficients used in the interpolation
         '''
 
         # first check if we have a np.ndarray or not
-        if isinstance(varloc,np.ndarray):
+        if isinstance(varloc, np.ndarray):
+
+            # for consistency of naming..
+            var = varloc
 
             # check if it is the same shape as self._xc_view
-            if varloc.shape != self._xc_view.shape:
+            if var.shape != self._xc_view.shape:
 
                 # we can try reshaping
                 try:
-                    varloc.reshape(self._xc_view.shape)
+                    var.reshape(self._xc_view.shape)
                 except ValueError as e:
                     err = 'The varloc given cannot be reshaped into ' + str(self._xc_view.shape)
                     self._messenger.error(err)
@@ -10712,11 +10721,11 @@ class MomsDataSet:
         else:
 
             # varloc is a reference for a get method
-            varloc = self._get(varloc,fname)
+            var = self._get(varloc, fname)
 
         # varloc is good, are we applying log10 to it?
-        if logvarloc:
-            varloc = np.log10(varloc.copy())
+        if logvar:
+            var = np.log10(var.copy())
 
         # make sure that our method string is actually a real method
         if not list(filter(lambda x: method in x, self._interpolation_methods)):
@@ -10736,71 +10745,61 @@ class MomsDataSet:
             self._messenger.error(err)
             raise ValueError
 
-        # make sure derivative only has x,y or z in it
-        if derivative:
-            if not bool(re.match('^[xyz]+$', derivative)):
-                err = 'The derivative string, {0}, does not have x,y,z in it or contains other characters'.format(derivative)
-                self._messenger.error(err)
-                raise ValueError
-
         # Now all of the hard work is done in other methods for the interpolation
         if coefficients:
-            # we just return w.e varloc_interp is, a list or an array and the coefficients
-            varloc_interp, a = self._get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
+
+            # we just return w.e var_interp is, a list or an array and the coefficients
+            var_interp, a = self._get_interpolation(var, igrid, method, coefficients)
 
             # did we log it?
-            if logvarloc:
-                return np.power(10.,varloc_interp), a
+            if logvar:
+                return np.power(10., var_interp), a
             else:
-                return varloc_interp, a
+                return var_interp, a
         else:
-            # we just return w.e varloc_interp is, a list or an array
-            varloc_interp = self._get_interpolation(varloc, igrid, method, derivative, logvarloc, coefficients)
+            # we just return w.e var_interp is, a list or an array
+            var_interp = self._get_interpolation(varloc, igrid, method, coefficients)
 
             # did we log it?
-            if logvarloc:
-                return np.power(10., varloc_interp)
+            if logvar:
+                return np.power(10., var_interp)
             else:
-                return varloc_interp
+                return var_interp
 
-    def get_rprof(self,varloc,radius=None,fname=None,method='trilinear',derivative='',logvarloc=False):
+    def get_rprof(self, varloc, radius=None, fname=None, method='trilinear', logvar=False):
         '''
-        Returns a 1d radial profile of the variable that is defined at
-        whatever(varloc) and the radial axis values
+        Compute a 1d radial profile of variable, var, given by 'varloc'
 
         Parameters
         ----------
-        varloc: int or np.ndarray
-            integer index of the quantity that is defined under whatever(varloc)
-            OR you can supply an array that contains data. This will be flattened
+        varloc: str, int, np.ndarray
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
+            np.ndarray: quantity you want to have interpolated on the grid
         radius: None, np.ndarray
              None: default option, will use the internal radial_axis (every cell width)
              np.ndarray: array for the radial values to calculate the profile on
-        fname: None,int
+        fname: None, int
             None: default option, will grab current dump
             int: Dump number
         method: str
-            'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
-            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the form for the interpolation
-        derivative: str
-            The default is NO derivative, i.e an empty string.
-
-            Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
-            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments' method
-               method = 'moments': Use the analytic derivative of the moments quadratic function
-        logvarloc: bool
-            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are handled for method='moments'
-            The returned varloc_interpolated will be scaled back
+            'trilinear': Use a trilinear method to interpolate onto the points on igrid
+            'moments': Use a moments averaging within a cell and using a quadratic function
+                       as the form for the interpolation
+        logvar: bool
+            For better fitting should I do var = np.log10(var)? The returned rprof will be scaled
+            back to linear
 
         Returns
         -------
-        rad_prof, radial_axis: np.ndarray
-            Radial profile of whatever(varloc) and the Radial axis which
-            whatever(varloc) is averaged on
+        rad_prof: np.ndarray
+            Spherical average profile of the var referenced by 'varloc'
+        radial_axis: np.ndarray
+            The radial coordinates in which var was averaged on
         '''
 
         # are we using self.radial_axis?
-        if isinstance(radius,np.ndarray):
+        if isinstance(radius, np.ndarray):
 
             # make sure nothing is too large
             if np.max(radius) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
@@ -10810,30 +10809,20 @@ class MomsDataSet:
 
             # we basically just call interpolation over radius, trilinear is default
             # now, if we do have a derivative, quantity is a list
-            quantity = self.get_spherical_interpolation(varloc,radius,fname,method,derivative,logvarloc,plot_mollweide=False)
+            quantity = self.get_spherical_interpolation(varloc, radius, fname, method, logvarloc)
 
-            # i.e it is not empty
-            if derivative:
-                for i in range(len(quantity)):
-                    quantity[i] = np.mean(quantity[i],axis=1)
-            else:
-                # for an rprof we average all of those quantities at each radius
-                quantity = np.mean(quantity,axis=1)
+            # for an rprof we average all of those quantities at each radius
+            quantity = np.mean(quantity, axis=1)
 
         else:
             # we basically just call interpolation over self.radius, trilinear is default
             # now, if we do have a derivative, quantity is a list
-            quantity = self.get_spherical_interpolation(varloc,self.radial_axis,fname,method,derivative,logvarloc,plot_mollweide=False)
+            quantity = self.get_spherical_interpolation(varloc, self.radial_axis, fname, method, logvarloc)
 
-            # i.e it is not empty
-            if derivative:
-                for i in range(len(quantity)):
-                    quantity[i] = np.mean(quantity[i],axis=1)
-            else:
-                # for an rprof we average all of those quantities at each radius
-                quantity = np.mean(quantity,axis=1)
+            # for an rprof we average all of those quantities at each radius
+            quantity = np.mean(quantity,axis=1)
 
-        if isinstance(radius,np.ndarray):
+        if isinstance(radius, np.ndarray):
             return quantity, radius
         else:
             return quantity, self.radial_axis
@@ -10856,12 +10845,21 @@ class MomsDataSet:
 
     def get_cgrid(self):
         '''
-        Returns the central values of the grid for x,y and z of the moments data cube currently held
-        in memory. This is the cartesian grid and it is formatted as xc[z,y,x] and so
+        Returns the central values of the grid for x, y and z of the moments data cube currently
+        held in memory. This is the cartesian grid and it is formatted as xc[z,y,x]
+
+        IMPORTANT NOTE: This is a copy of the actual data. This is to ensure that a dump's data
+        will be deleted when new data is deleted i.e we are preserving that there will be no
+        references!
 
         Returns
         -------
-        xc,yc,zc: np.ndarray
+        xc: np.ndarray
+            The x-coordinate at the center of all cells in the grid
+        yc: np.ndarray
+            The y-coordinate at the center of all cells in the grid
+        zc: np.ndarray
+            The z-coordinate at the center of all cells in the grid
         '''
 
         # we use these internally, so we give copies
@@ -10869,13 +10867,24 @@ class MomsDataSet:
 
     def get_sgrid(self):
         '''
-        Returns the central values of the grid for r,theta and phi of the moments data cube currently held
-        in memory. This is of course the physics version where theta is defined as the angle from the z axis
-        and phi is the cylindrical angle. it is formatted as phi[z,y,x] and so phi[0,0,:] will give a plane of constant x
+        Returns the central values of the grid for r, theta and phi of the moments data cube
+        currently held in memory. The "physics" definition of the theta and phi angles are:
+
+        - Theta runs from 0 -> pi while going down from the positive z-axis
+        - Phi runs from 0 -> 2pi for the angle around the positive x-axis
+
+        IMPORTANT NOTE: This is a copy of the actual data. This is to ensure that a dump's data
+        will be deleted when new data is deleted i.e we are preserving that there will be no
+        references!
 
         Returns
         -------
-        radius,theta,phi: np.ndarray
+        r: np.ndarray
+            The r-coordinate at the center of all cells in the grid
+        theta: np.ndarray
+            The theta-coordinate at the center of all cells in the grid
+        phi: np.ndarray
+            The phi-coordinate at the center of all cells in the grid
         '''
 
         # does this exist yet?
@@ -10887,15 +10896,24 @@ class MomsDataSet:
 
     def get_mgrid(self):
         '''
-        Returns the central values of the grid for r,theta and phi of the moments data cube currently held
-        in memory. This is the mollweide definition of the theta and phi coordinates which are defined as:
+        Returns the central values of the grid for r, theta and phi of the moments data cube
+        currently held in memory. The "mollweide" definition of the theta and phi angles are:
 
-        Theta runs from pi/2 -> -pi/2 going down from the z axis while phi goes from 0 -> pi from quadrants 1->2 and then
-        0 -> -pi from quadrants 4->3. Useful for plotting projections.
+        - Theta runs from pi/2 -> -pi/2 going down from the positive z-axis
+        - Phi goes from 0 -> pi from quadrants 1->2 and then 0 -> -pi from quadrants 4->3.
+
+        IMPORTANT NOTE: This is a copy of the actual data. This is to ensure that a dump's data
+        will be deleted when new data is deleted i.e we are preserving that there will be no
+        references!
 
         Returns
         -------
-        radius,theta,phi: np.ndarray
+        r: np.ndarray
+            The r-coordinate at the center of all cells in the grid
+        theta: np.ndarray
+            The theta-coordinate at the center of all cells in the grid
+        phi: np.ndarray
+            The phi-coordinate at the center of all cells in the grid
         '''
 
         # DOES this exist yet?
@@ -10905,24 +10923,24 @@ class MomsDataSet:
         # these are not used internally and so we can give them the real grid
         return self._mollweide_theta_view.copy(), self._mollweide_phi_view()
 
-    def get_mollweide_coordinates(self,theta=None,phi=None):
+    def get_mollweide_coordinates(self, theta, phi):
         '''
-        Returns the "mollweide" definition of theta and phi coordinates of the input arrays.
-        The mollweide coordinates are defined as:
-
-        Theta runs from pi/2 -> -pi/2 going down from the z axis while phi goes from 0 -> pi from quadrants 1->2 and then
-        0 -> -pi from quadrants 4->3. Useful for plotting projections.
+        Transforms a "physics" spherical coordinates array into the "mollweide" spherical
+        coordinates that matplotlib uses for projection plots.
 
         Parameters
         ----------
         theta: np.ndarray
-            np.ndarray: Convert this theta from "physics" to "mollweide" definitions
+            An array of theta with the "physics" defined angle to be converted
         phi: np.ndarray
-            np.ndarray: Convert this phi from "physics" to "mollweide" definitions
+            An array of phi with the "physics" defined angle to be converted
 
         Returns
         -------
-        theta,phi: np.ndarray
+        theta: np.ndarray
+            theta transformed to the "mollweide" defined angle
+        phi: np.ndarray
+            phi transformed to the "mollweide" defined angle
         '''
 
         # am I converting?
@@ -10936,23 +10954,24 @@ class MomsDataSet:
         else:
             return None
 
-    def get_spherical_coordinates(self,theta=None,phi=None):
+    def get_spherical_coordinates(self, theta, phi):
         '''
-        Returns the "physics" definition of theta and phi coordinates of the grid or input arrays.
-        The spherical coordinates are defined as:
-
-        Theta is defined as the angle from the positive z-axis while phi is the cylindrical angle
+        Transforms a "mollweide" spherical coordinates array into the "physics" spherical
+        coordinates.
 
         Parameters
         ----------
         theta: np.ndarray
-            np.ndarray: Convert this theta from "mollweide" to "physics" definitions
+            An array of theta with the "mollweide" defined angle to be converted
         phi: np.ndarray
-            np.ndarray: Convert this phi from "mollweide" to "physics" definitions
+            An array of phi with the "mollweide" defined angle to be converted
 
         Returns
         -------
-        theta,phi: np.ndarray
+        theta: np.ndarray
+            theta transformed to the "physics" defined angle
+        phi: np.ndarray
+            phi transformed to the "physics" defined angle
         '''
 
         # am I converting?
@@ -10966,8 +10985,8 @@ class MomsDataSet:
         else:
             return None
 
-    def get_spherical_interpolation(self, varloc, radius, fname=None, method='trilinear', derivative='', logvarloc=False,
-                                    coefficients=False, get_igrid=False, plot_mollweide=True, npoints=5000):
+    def get_spherical_interpolation(self, varloc, radius, fname=None, npoints=5000, method='trilinear', logvar=False,
+                                    plot_mollweide=False, get_igrid=False, coefficients=False):
         '''
         Returns the interpolated array of values of 'varloc' at a radius of 'radius' for a computed uniform
         distribution of points, 'npoints', on that sphere(s). It can return the 'theta,phi' (mollweide)
@@ -10978,53 +10997,42 @@ class MomsDataSet:
         varloc: str, int, np.ndarray
             String: for the variable you want if defined on instantiation
             Int: index location of the variable you want
-            np.ndarray: quantity you want to have interpolated on the grid
+            np.ndarray: quantity you want to have interpolated on the sphere
         radius: float or np.ndarray
             The radius of the sphere you want 'varloc' to be interpolated to
-        fname: None,int
+        fname: None, int
             None: default option, will grab current dump
             int: Dump number
-        method: str
-            'trilinear' (fast): Use a trilinear method to interpolate onto the points on igrid
-            'moments' (slower): Use a moments averaging within a cell and using a quadratic function as the
-                                form for the interpolation
-        derivative: str
-            The default is NO derivative, i.e an empty string.
-
-            Do you want the interpolated values to be of the gradient of varloc in the 'xyz' directions?
-            If you only want the x direction supply the string 'x' or if x and z then 'xz'. Must be the 'moments'
-            method
-
-               method = 'moments': Use the analytic derivative of the moments quadratic function
-        logvarloc: bool
-            For better fitting should I do varloc = np.log10(varloc)? This also changes how derivatives are
-            handled for method='moments'. The returned varloc_interpolated will be scaled back
-        coefficients: bool
-            In some cases you may want the coefficients for a particular interpolation scheme
-        get_igrid: bool
-            In some cases you may want the actual grid points used for the particular interpolation scheme
-        plot_mollweide: bool
-            Typically you want the theta, phi coordinates of the interpolated values so that it can be plotted
-            with a projection method
         npoints: int
             The number of 'theta and phi' points you want for a projection plot
+        method: str
+            'trilinear': Use a trilinear method to interpolate onto the points on igrid
+            'moments': Use a moments averaging within a cell and using a quadratic function
+                       as the form for the interpolation
+        logvar: bool
+            For better fitting should I do var = np.log10(var)? The returned var_interpolated
+            will be scaled back to linear
+        plot_mollweide: bool
+            If you want returned the theta, phi coordinates of the interpolated values so that it
+            can be plotted with a projection method
+        get_igrid: bool
+            If you want returned the actual grid points (x,y,z) used for the interpolation
+        coefficients: bool
+            In some cases you may want the coefficients for the 'moments' interpolation
 
         Returns
         -------
-        plot_mollweide: True
-            varloc_interpolated, theta, phi: np.ndarray or list
-
-        plot_mollweide: False
-            varloc_interpolated: np.ndarray or list
-
-        derivative: Not Empty
-            [varloc_interpolated]
-
-        coefficients: True
-            varloc_interpolated, coefficients, ...
-
-        get_igrid: True
-            varloc_interpolated, ..., igrid
+        var_interpolated: np.ndarray
+            The array containing var interpolated at 'radius'
+        theta_grid: np.ndarray
+            The array containing the "mollweide" theta points that were interpolated to
+        phi_grid: np.ndarray
+            The array containing the "mollweide" phi points that were interpolated to
+        igrid: np.ndarray
+            The array containing the x,y,z coordinates of the points that were interpolated to
+        coefficients: list
+            The list containing arrays of the coefficients used in the interpolation scheme
+            'moments'
         '''
 
         # I will construct an appropriate igrid and let get_interpolation do the rest
@@ -11051,51 +11059,44 @@ class MomsDataSet:
 
         # More checks will be done with get_interpolation, are we doing coefficients?
         if coefficients:
-            varloc_interp, a = self.get_interpolation(varloc, igrid, fname, method, derivative, logvarloc, coefficients)
+            var_interp, a = self.get_interpolation(varloc, igrid, fname, method, logvar, coefficients)
         else:
-            varloc_interp = self.get_interpolation(varloc, igrid, fname, method, derivative, logvarloc, coefficients)
+            var_interp = self.get_interpolation(varloc, igrid, fname, method, logvar, coefficients)
 
-        # This varloc_interp and igrid COULD be a flattened array, let's reshape if so
+        # This var_interp and igrid COULD be a flattened array, let's reshape if so
         if len(radius) > 1:
 
             igrid = igrid.reshape(len(radius),npoints,3)
-
-            # did I take derivatives?
-            if derivative:
-                for i in range(len(varloc_interp)):
-                    varloc_interp[i] = varloc_interp[i].reshape(len(radius),npoints)
-            else:
-                varloc_interp = varloc_interp.reshape(len(radius),npoints)
+            var_interp = var_interp.reshape(len(radius),npoints)
 
         # Are we plotting mollweide, returning coefficients, and/or returning igrid?
         if get_igrid:
             if coefficients:
                 if plot_mollweide:
-                    return varloc_interp, coefficients, theta_grid, phi_grid, igrid
+                    return var_interp, theta_grid, phi_grid, igrid, coefficients
                 else:
-                    return varloc_interp, coefficients, igrid
+                    return var_interp, igrid, coefficients
             else:
                 if plot_mollweide:
-                    return varloc_interp, theta_grid, phi_grid, igrid
+                    return var_interp, theta_grid, phi_grid, igrid
                 else:
-                    return varloc_interp, igrid
+                    return var_interp, igrid
         else:
             if coefficients:
                 if plot_mollweide:
-                    return varloc_interp, coefficients, theta_grid, phi_grid
+                    return var_interp, theta_grid, phi_grid, coefficients
                 else:
-                    return varloc_interp, coefficients
+                    return var_interp, coefficients
             else:
                 if plot_mollweide:
-                    return varloc_interp, theta_grid, phi_grid
+                    return var_interp, theta_grid, phi_grid
                 else:
-                    return varloc_interp
+                    return var_interp
 
-    def get_spherical_components(self,ux,uy,uz,fname=None,igrid=None):
+    def get_spherical_components(self, ux, uy, uz, fname=None, igrid=None):
         '''
-        Most calculations are done in cartesian coordinates but we can transform them to
-        spherical coordinates using unit vectors. This can also be used to take derivatives
-        of a function in spherical coordinates. This returns the spherical components of u
+        Vector quantities are output in the cartesian coordinates but we can transform them to
+        spherical coordinates using unit vectors. This returns the spherical components of u
 
         Parameters
         ----------
@@ -11103,7 +11104,7 @@ class MomsDataSet:
             int: integer referring to varloc
             str: string referring to quantity varloc
             np.ndarray: array with quantities
-        fname: None,int
+        fname: None, int
             None: default option, will grab current dump
             int: Dump number
         igrid: np.ndarray
@@ -11112,7 +11113,7 @@ class MomsDataSet:
 
         Returns
         -------
-        ur, utheta, uphi: list of np.ndarray
+        u_spherical: list of np.ndarray
             The spherical components of u
         '''
 
@@ -11146,10 +11147,13 @@ class MomsDataSet:
 
     def get(self, varloc, fname=None):
         '''
-        Returns variable var at a specific point in the simulation's time
-        evolution. IMPORTANT NOTE: This is a copy of the actual data. This
-        is to ensure that a dump's data will be deleted when new data is deleted
-        i.e we are preserving that there will be no references!
+        Returns variable var at a specific point in the simulation's time evolution. var is
+        referenced from 'varloc' which can be a string (referring to var's name that you
+        specified and instantiation) or an integer referring to whatever[varloc]
+
+        IMPORTANT NOTE: This is a copy of the actual data. This is to ensure that a dump's data
+        will be deleted when new data is deleted i.e we are preserving that there will be no
+        references!
 
         Parameters
         ----------
@@ -11162,9 +11166,9 @@ class MomsDataSet:
 
         Returns
         -------
-        numpy.ndarray
-            Variable in index varloc as given by MomsData.get() if the MomsData
-            corresponding to fname exists.
+        var: np.ndarray
+            Variable referenced with 'varloc' as given by MomsData.get() if the MomsData
+            corresponding to 'fname' exists.
         '''
 
         # if fname is not specified use current dump
@@ -11201,7 +11205,7 @@ class MomsDataSet:
                 self._messenger.error(err)
                 raise e
 
-    def gradient(self,f,fname=None):
+    def gradient(self, f, fname=None):
         '''
         Take the gradient of a scalar field in CARTESIAN coordinates. This uses central
         differences using points directly on the grid (no interpolation).
@@ -11216,8 +11220,8 @@ class MomsDataSet:
 
         Returns
         -------
-        grad f: list of np.ndarray
-            list containing fx,fy and fz
+        grad_f: list of np.ndarray
+            list containing fx, fy and fz
         '''
 
         if not isinstance(f,np.ndarray):
@@ -11237,7 +11241,7 @@ class MomsDataSet:
 
         return gradf
 
-    def norm(self,ux,uy,uz,fname=None):
+    def norm(self, ux, uy, uz, fname=None):
         '''
         Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
         the definition |u| = sqrt(ux**2 + uy**2 + uz**2). The vector must be defined in an
@@ -11248,7 +11252,7 @@ class MomsDataSet:
         ux, uy, uz: int, str, np.ndarray
             int: integer referring to varloc
             str: string referring to quantity varloc
-            np.ndarray: array with quantities
+            np.ndarray: array with vector quantities
         fname: None,int
             None: default option, will grab current dump
             int: Dump number
@@ -11256,6 +11260,7 @@ class MomsDataSet:
         Returns
         -------
         |u|: np.ndarray
+            The norm of vector u
         '''
 
         if not isinstance(ux,np.ndarray):
@@ -11270,23 +11275,19 @@ class MomsDataSet:
 # now the 2X classes will override a couple of methods in the instantiation processes
 class MomsData2X(MomsData):
     '''
-    MomsData2x reads in the half briquette resolution datacube which will contain
-    only one quantity (we need 8 "varlocs" for one quantity!) In the
-    MomentsDataSet2X it is assumed that an rprof is supplied so that a suitable
-    grid can be made.
+    MomsData2x reads in the half briquette resolution datacube which will contain only one quantity
+    (we need 8 "varlocs" for one quantity!) In the MomentsDataSet2X it is assumed that an rprof is
+    supplied so that a suitable grid can be made.
+
+    Parameters
+    ----------
+    file_path: string
+        Path to the .aaa file.
+    verbose: integer
+        Verbosity level as defined in class Messenger.
     '''
 
     def __init__(self, file_path, verbose=3):
-        '''
-        Init method.
-        
-        Parameters
-        ----------
-        file_path: string
-            Path to the set of .aaa files.
-        verbose: integer
-            Verbosity level as defined in class Messenger.
-        '''        
 
         # we will call MomsData to read in everything in the standard fashion
         super().__init__(file_path, verbose)
@@ -11344,7 +11345,7 @@ class MomsData2X(MomsData):
         varloc: integer
             integer index of the quantity that is defined under whatever(varloc).
             This is completely ignored as there is only one variable
-        
+
         Returns
         -------
         np.ndarray
@@ -11359,28 +11360,25 @@ class MomsDataSet2X(MomsDataSet):
     '''
     MomsDataSet2X contains a set of dumps of MomsData2X from a single run of the
     Moments reader from PPMstar 2.0.
+
+    Parameters
+    ----------
+    dir_name: string
+        Name of the directory to be searched for .aaa uncompressed moms datacubes
+    rprofset: RprofSet
+        The grid MUST be constructed
+    init_dump_read: integer
+        The initial dump to read into memory when object is initialized
+    dumps_in_mem: integer
+        The number of dumps to be held into memory. These datacubes can be large (~2Gb for 384^3)
+    var_list: list
+        This is a list that can be filled with strings that will reference data. Since
+        this is a 2X quantity, there is only one quantity!
+    verbose: integer
+        Verbosity level as defined in class Messenger.
     '''
 
     def __init__(self, dir_name, rprofset, init_dump_read=0, dumps_in_mem=2, var_list=[], verbose=3):
-        '''
-        Init method.
-        
-        Parameters
-        ----------
-        dir_name: string
-            Name of the directory to be searched for .aaa uncompressed moms datacubes
-        rprofset: RprofSet
-            The grid MUST be constructed 
-        init_dump_read: integer
-            The initial dump to read into memory when object is initialized
-        dumps_in_mem: integer
-            The number of dumps to be held into memory. These datacubes can be large (~2Gb for 384^3)
-        var_list: list
-            This is a list that can be filled with strings that will reference data. Since
-            this is a 2X quantity, there is only one quantity!
-        verbose: integer
-            Verbosity level as defined in class Messenger.
-        '''        
 
         # we can call super init but override a few methods
         super().__init__(dir_name, init_dump_read, dumps_in_mem, var_list,
@@ -11390,17 +11388,18 @@ class MomsDataSet2X(MomsDataSet):
     def _get_dump(self, dump):
         '''
         Gets a new dump for MomsData2X or instantiates MomsData2X
-        
+
         Parameters
         ----------
         dump: integer
+            The dump which you want to read in
         '''
-        
+
         if dump not in self._dumps:
             err = 'Dump {:d} is not available.'.format(dump)
             self._messenger.error(err)
             return None
-        
+
         file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self._dir_name, \
                                                              dump, self._run_id, dump)
 
@@ -11429,10 +11428,15 @@ class MomsDataSet2X(MomsDataSet):
         # all is good. update what_dump_am_i
         self.what_dump_am_i = dump
 
-    def _set_dictionaries(self,var_list):
+    def _set_dictionaries(self, var_list):
         '''
         This function will setup the dictionaries that will house multiple moments data objects and
         a convenience dictionary to refer to the SINGLE FV2X variable by a string
+
+        Parameters
+        ---------
+        var_list: list
+            A list that may contain strings to associate the integer locations "varloc"
 
         Returns
         -------
@@ -11567,23 +11571,27 @@ class MomsDataSet2X(MomsDataSet):
 
     # The following methods are overridden as they are able to grab variables with varloc which is not
     # used in MomsDataSet2X
-    def get_spherical_components(self,ux,uy,uz,igrid=None):
+    def get_spherical_components(self,ux ,uy, uz, igrid=None):
         '''
-        Most calculations are done in cartesian coordinates but we can transform them to
-        spherical coordinates using unit vectors. This can also be used to take derivatives
-        of a function in spherical coordinates. This returns the spherical components of u
+        Vector quantities are output in the cartesian coordinates but we can transform them to
+        spherical coordinates using unit vectors. This returns the spherical components of u
 
         Parameters
         ----------
-        ux, uy, uz: np.ndarray
+        ux, uy, uz: int, str, np.ndarray
+            int: integer referring to varloc
+            str: string referring to quantity varloc
             np.ndarray: array with quantities
+        fname: None,int
+            None: default option, will grab current dump
+            int: Dump number
         igrid: np.ndarray
             igrid.shape = (len(ux.flatten()),3)
             igrid[:,0] = z, igrid[:,1] = y, igrid[:,2] = x
 
         Returns
         -------
-        ur, utheta, uphi: list of np.ndarray
+        u_spherical: list of np.ndarray
             The spherical components of u
         '''
 
@@ -11632,12 +11640,13 @@ class MomsDataSet2X(MomsDataSet):
 
         Parameters
         ----------
-        ux, uy, uz: np.ndarray
-            np.ndarray: array with quantities
+        ux, uy, uz: int, str, np.ndarray
+            array with vector quantities
 
         Returns
         -------
         |u|: np.ndarray
+            The norm of vector u
         '''
 
         # I cannot grab quantities!
