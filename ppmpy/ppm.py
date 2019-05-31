@@ -8971,10 +8971,7 @@ class RprofSet(PPMtools):
         boolean
             True when a set of .rprof files has been found. False otherwise.
         '''
-<<<<<< HEAD
-=======
 
->>>>>>> MomsData
         if not os.path.isdir(dir_name):
             err = "Directory '{:s}' does not exist.".format(dir_name)
             self.__messenger.error(err)
