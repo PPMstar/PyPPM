@@ -10863,7 +10863,7 @@ class MomsDataSet:
                 return var_interp, a
         else:
             # we just return w.e var_interp is, a list or an array
-            var_interp = self._get_interpolation(varloc, igrid, method, coefficients)
+            var_interp = self._get_interpolation(var, igrid, method, coefficients)
 
             # did we log it?
             if logvar:
@@ -11145,7 +11145,7 @@ class MomsDataSet:
         # do we have many radii?
         try:
             first_r = radius[0]
-        except IndexError as e:
+        except (TypeError, IndexError) as e:
             # ok, we have an error, it is a single float or int
             radius = [radius]
 
