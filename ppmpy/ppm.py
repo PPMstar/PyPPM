@@ -9010,20 +9010,7 @@ class RprofSet(PPMtools):
                        format(self.__dir_name, self.__run_id)
                 self.__messenger.warning(wrng)
                 continue
-
-            # Skip files that do not fit the rprof naming pattern.
-            if len(split1) < 2:
-                continue
-
-            # Get rid of the extension and try to parse the dump number.
-            # Skip files that do not fit the rprof naming pattern.
-            split2 = split1[1].split('.')
-            try:
-                dump_num = int(split2[0])
-                self.__dumps.append(dump_num)
-            except:
-                continue
-
+        
         self.__dumps = sorted(self.__dumps)
         msg = "{:d} rprof files found in '{:s}.\n".format(len(self.__dumps), \
               self.__dir_name)
