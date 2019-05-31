@@ -90,6 +90,8 @@ cb = utils.colourblind
 from dateutil.parser import parse
 import time
 import glob
+from ipywidgets import interact, interactive, fixed, interact_manual
+import ipywidgets as widgets
 
 # from rprofile import rprofile_reader
 
@@ -8787,8 +8789,8 @@ class RprofHistory:
         '''
         try:
             with open(file_path, 'r') as fin:
-                msg = "Reading history file '{:s}'.".format(file_path)
-                self.__messenger.message(msg)
+                #msg = "Reading history file '{:s}'.".format(file_path)
+                #self.__messenger.message(msg)
                 lines = fin.readlines()
             self.__file_path = file_path
         except FileNotFoundError as e:
@@ -8986,32 +8988,29 @@ class RprofSet(PPMtools):
 
         rprof_files = [os.path.basename(rprof_files[i]) \
                        for i in range(len(rprof_files))]
+        
+        # run_id is what is before the last dash, check that it is
+        # followed by 4 numeric characters
+        _ind   = rprof_files[0].rindex('-')                # index of last dash
+        self.__run_id = rprof_files[0][0:_ind] 
 
-        # run_id is always separated from the rest of the file name
-        # by a single dash.
-        self.__run_id = rprof_files[0].split('-')[0]
         for i in range(len(rprof_files)):
-            split1 = rprof_files[i].split('-')
-            if split1[0] != self.__run_id:
+            _ind   = rprof_files[i].rindex('-')   
+            if rprof_files[i][0:_ind] == self.__run_id:     # record dump number
+                dump_number = rprof_files[i][_ind+1:_ind+5]
+                if dump_number.isnumeric():
+                    self.__dumps.append(int(dump_number))
+                else:
+                    self.__messenger.error("rprof filename does not have 4 digits after last dash: "+\
+                                    rprof_files[i])
+                    return False
+            else:                                           # exclude files with non-matching runid
                 wrng = ("rprof files with multiple run ids found in '{:s}'."
                         "Using only those with run id '{:s}'.").\
                        format(self.__dir_name, self.__run_id)
                 self.__messenger.warning(wrng)
                 continue
-
-            # Skip files that do not fit the rprof naming pattern.
-            if len(split1) < 2:
-                continue
-
-            # Get rid of the extension and try to parse the dump number.
-            # Skip files that do not fit the rprof naming pattern.
-            split2 = split1[1].split('.')
-            try:
-                dump_num = int(split2[0])
-                self.__dumps.append(dump_num)
-            except:
-                continue
-
+        
         self.__dumps = sorted(self.__dumps)
         msg = "{:d} rprof files found in '{:s}.\n".format(len(self.__dumps), \
               self.__dir_name)
@@ -9155,6 +9154,112 @@ class RprofSet(PPMtools):
             return rp.get(var, resolution=resolution)
         else:
             return None
+
+    def rprofgui(self,ifig=11):
+        def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig):
+            self.rp_plot([dump1,dump2],ything,logy=log10y,ifig=ifig)
+        rp_hst = self.get_history()
+        dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
+        dumpmean = int(2*(-dumpmin + dumpmax)/3.)
+        things_list = self.get_dump(dumpmin).get_lr_variables()+\
+                          self.get_dump(dumpmin).get_hr_variables()
+        interact(w_plot,dump1=widgets.IntSlider(min=dumpmin,\
+                max=dumpmax,step=1,value=int(dumpmin+0.05*(dumpmean-dumpmin))),\
+                     dump2=widgets.IntSlider(min=dumpmin,\
+                max=dumpmax,step=1,value=int(dumpmax-0.05*(dumpmax-dumpmean))),\
+                     ything=things_list)
+        
+        
+    def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
+                xxlim=None, yylim=None, logy=False,newfig=True,idn=0):
+        '''
+        Plot one thing for a line profile
+
+        Parameters
+        ----------
+
+        ything : string
+            name of y quantity to plot, print(rp.get_hr_variables())
+            print(rp.get_lr_variables()) prints available options
+
+        dump : integer or list of integers
+            dump number or list of dump numbers
+
+        num_type : string
+            
+        xthing : string
+          name of x quantity to plot, default is 'R'
+
+        runlabel : str
+           label of this rp_set/case to appear in legend, defaults
+           to 'run1'
+
+        xxlim, yylim : float
+           x and y lims, tuple
+
+        logy : boolean
+           log10 of ything for plotting; defaults to False
+
+        newfig : boolean
+           close and create new figure if True, this is the default
+
+        idn : integer
+           set to some value >0 to generate new series of line selection integers
+        '''
+        if runlabel is None: runlabel = self.__run_id
+        # Ensure that dump is list type
+        if type(dump) is not list: 
+            dump=list(dump)
+        len_dump = len(dump)
+        # Get dump and assign it to a variable
+        rp = self.get_dump(dump[0])
+
+        # Define resolution and throw errors if they don't match;
+        # throw error if ything is not defined
+        if ything in rp.get_hr_variables(): 
+            if xthing not in rp.get_hr_variables():
+                print('ERROR: If ything is high resolution xthing must be too.')
+                return
+            res = 'h'    
+        if ything in rp.get_lr_variables(): 
+            if xthing not in rp.get_lr_variables():
+                print('ERROR: If ything is low resolution xthing must be too.')
+                return
+            res = 'l'
+        else:
+            print("ERROR: Don't know ything")
+            return
+
+        # Define x- and y-values to be plotted, determine if logy is
+        # necessary, generate plot
+        if newfig:
+            pl.close(ifig)
+            pl.figure(ifig)
+        for i,thisdump in enumerate(dump):
+            xquantity = self.get(xthing,thisdump,resolution=res)
+            yquantity = self.get(ything,thisdump,resolution=res)
+            if logy: 
+                yquantity = np.log10(yquantity)
+            pl.plot(xquantity,yquantity,label=runlabel+" dump "+str(thisdump),\
+                 color=utils.linestylecb(i+len_dump*idn)[2],\
+                    linestyle=utils.linestylecb(i+len_dump*idn)[0],\
+                 marker=utils.linestylecb(i+len_dump*idn)[1],\
+                    markevery=utils.linestyle(i+len_dump*idn,a=25,b=7)[1])
+
+        # Plot detailing
+        pl.legend()
+        pl.xlabel(xthing)
+
+        if logy == False:
+            pl.ylabel(ything)
+        else:
+            pl.ylabel('log '+ything)
+
+        if xxlim is not None:
+            pl.xlim(xxlim)
+
+        if yylim is not None:
+            pl.ylim(yylim)
 
     def plot_FV(self, fname, num_type='NDump', resolution='l', idec=3, xxlim=None, \
                 yylim=None,legend='', ylog=True):
