@@ -12,6 +12,7 @@ from nugridpy import astronomy as ast
 from ppmpy import ppm
 import numpy as np
 import sys
+import re
 from nugridpy.ascii_table import ascii_table 
 
 G_code = ast.grav_const*1000
@@ -358,7 +359,7 @@ def get_burning_coeffs(mesa_prof, r0, iso_fuel):
     print('Mass fractions of species with X > {:.1e} at r = {:.3f} Mm:'.\
           format(X_lim, r0))
     for iso in stable_isotopes:
-        if iso in p.cols:
+        if iso in mesa_prof.cols:
             # iso's mass fraction
             X_iso = mesa_prof.get(iso)[idx0]
 
@@ -384,3 +385,6 @@ def get_burning_coeffs(mesa_prof, r0, iso_fuel):
     A_iso_fuel = float(re.findall(r'\d+', iso_fuel)[0])
     Y_iso_fuel = X_iso_fuel/A_iso_fuel
     fk = Y_iso_fuel/Y_fluid
+    print('Number fraction of fuel ({:s}): {:.6f}\n'.format(iso_fuel, fk))
+    
+    return avg_A, fk
