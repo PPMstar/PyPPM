@@ -305,3 +305,82 @@ def mufromX(X, A, Z):
         mu_i_recip[i] = 1/np.sum(x[i]/a)   
     mu_tot = 1/(1/mu_e_recip+ 1/mu_i_recip)
     return(mu_tot)
+
+
+def get_burning_coeffs(mesa_prof, r0, iso_fuel):
+    stable_isotopes = (\
+    'h1   ','h2   ','he3  ','he4  ','li6  ','li7  ','be9  ','b10  ', \
+    'b11  ','c12  ','c13  ','n14  ','n15  ','o16  ','o17  ','o18  ', \
+    'f19  ','ne20 ','ne21 ','ne22 ','na23 ','mg24 ','mg25 ','mg26 ', \
+    'al27 ','si28 ','si29 ','si30 ','p31  ','s32  ','s33  ','s34  ', \
+    's36  ','cl35 ','cl37 ','ar36 ','ar38 ','ar40 ','k39  ','k40  ', \
+    'k41  ','ca40 ','ca42 ','ca43 ','ca44 ','ca46 ','ca48 ','sc45 ', \
+    'ti46 ','ti47 ','ti48 ','ti49 ','ti50 ','v50  ','v51  ','cr50 ', \
+    'cr52 ','cr53 ','cr54 ','mn55 ','fe54 ','fe56 ','fe57 ','fe58 ', \
+    'co59 ','ni58 ','ni60 ','ni61 ','ni62 ','ni64 ','cu63 ','cu65 ', \
+    'zn64 ','zn66 ','zn67 ','zn68 ','zn70 ','ga69 ','ga71 ','ge70 ', \
+    'ge72 ','ge73 ','ge74 ','ge76 ','as75 ','se74 ','se76 ','se77 ', \
+    'se78 ','se80 ','se82 ','br79 ','br81 ','kr78 ','kr80 ','kr82 ', \
+    'kr83 ','kr84 ','kr86 ','rb85 ','rb87 ','sr84 ','sr86 ','sr87 ', \
+    'sr88 ','y89  ','zr90 ','zr91 ','zr92 ','zr94 ','zr96 ','nb93 ', \
+    'mo92 ','mo94 ','mo95 ','mo96 ','mo97 ','mo98 ','mo100','ru96 ', \
+    'ru98 ','ru99 ','ru100','ru101','ru102','ru104','rh103','pd102', \
+    'pd104','pd105','pd106','pd108','pd110','ag107','ag109','cd106', \
+    'cd108','cd110','cd111','cd112','cd113','cd114','cd116','in113', \
+    'in115','sn112','sn114','sn115','sn116','sn117','sn118','sn119', \
+    'sn120','sn122','sn124','sb121','sb123','te120','te122','te123', \
+    'te124','te125','te126','te128','te130','i127 ','xe124','xe126', \
+    'xe128','xe129','xe130','xe131','xe132','xe134','xe136','cs133', \
+    'ba130','ba132','ba134','ba135','ba136','ba137','ba138','la138', \
+    'la139','ce136','ce138','ce140','ce142','pr141','nd142','nd143', \
+    'nd144','nd145','nd146','nd148','nd150','sm144','sm147','sm148', \
+    'sm149','sm150','sm152','sm154','eu151','eu153','gd152','gd154', \
+    'gd155','gd156','gd157','gd158','gd160','tb159','dy156','dy158', \
+    'dy160','dy161','dy162','dy163','dy164','ho165','er162','er164', \
+    'er166','er167','er168','er170','tm169','yb168','yb170','yb171', \
+    'yb172','yb173','yb174','yb176','lu175','lu176','hf174','hf176', \
+    'hf177','hf178','hf179','hf180','ta180','ta181','w180 ','w182 ', \
+    'w183 ','w184 ','w186 ','re185','re187','os184','os186','os187', \
+    'os188','os189','os190','os192','ir191','ir193','pt190','pt192', \
+    'pt194','pt195','pt196','pt198','au197','hg196','hg198','hg199', \
+    'hg200','hg201','hg202','hg204','tl203','tl205','pb204','pb206', \
+    'pb207','pb208','bi209','th232','u235 ','u238 ')
+    stable_isotopes = [iso.strip() for iso in stable_isotopes]
+
+    r = (ast.rsun_cm/1.e8)*mesa_prof.get('radius')
+    idx0 = np.argmin(np.abs(r - r0))
+    r0 = r[idx0]
+
+    # Average mass number.
+    avg_A = 0.
+    Y_fluid = 0.
+    X_lim = 1e-3
+    print('Mass fractions of species with X > {:.1e} at r = {:.3f} Mm:'.\
+          format(X_lim, r0))
+    for iso in stable_isotopes:
+        if iso in p.cols:
+            # iso's mass fraction
+            X_iso = mesa_prof.get(iso)[idx0]
+
+            # iso's mass number
+            A_iso = float(re.findall(r'\d+', iso)[0])
+
+            # We want to weight the average A by the number of nuclei.
+            # X_iso*dm is the mass of iso in the mixture of mass dm.
+            # X_iso*dm/(A_iso*amu), where amu is the atomic mass unit,
+            # is the number of nuclei of isotope iso in dm. The number
+            # fraction Y is defined for dm = amu.
+            Y_iso = X_iso/A_iso
+            Y_fluid += Y_iso
+
+            if X_iso > X_lim:
+                print(iso, X_iso)
+
+    # Y_fluid = X_fluid/avg_A; X_fluid = 1.
+    avg_A = 1./Y_fluid
+    print('Average mass number: {:.6f}'.format(avg_A))
+    
+    X_iso_fuel = mesa_prof.get(iso_fuel)[idx0]
+    A_iso_fuel = float(re.findall(r'\d+', iso_fuel)[0])
+    Y_iso_fuel = X_iso_fuel/A_iso_fuel
+    fk = Y_iso_fuel/Y_fluid
