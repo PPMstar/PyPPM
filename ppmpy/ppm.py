@@ -10020,8 +10020,7 @@ class MomsDataSet:
             split1 = moms_files[i].split('-')
             if split1[0] != self._run_id:
                 wrng = (".aaa files with multiple run ids found in '{:s}'."
-                        "Using only those with run id '{:s}'.").\
-                       format(self._dir_name, self._run_id)
+                        "Using only those with run id '{:s}'.").format(self._dir_name, self._run_id)
                 self._messenger.warning(wrng)
                 continue
 
@@ -10040,10 +10039,8 @@ class MomsDataSet:
                 continue
 
         self._dumps = sorted(self._dumps)
-        msg = "{:d} .aaa files found in '{:s}.\n".format(len(self._dumps), \
-              self._dir_name)
-        msg += "Dump numbers range from {:d} to {:d}.".format(\
-               self._dumps[0], self._dumps[-1])
+        msg = "{:d} .aaa files found in '{:s}.\n".format(len(self._dumps), self._dir_name)
+        msg += "Dump numbers range from {:d} to {:d}.".format(self._dumps[0], self._dumps[-1])
         self._messenger.message(msg)
         if (self._dumps[-1] - self._dumps[0] + 1) != len(self._dumps):
             wrng = 'Some dumps are missing!'
@@ -10094,7 +10091,49 @@ class MomsDataSet:
         # all is good. update what_dump_am_i
         self.what_dump_am_i = dump
 
-    def _interpolation_moments(self, var, igrid, x_idx, y_idx, z_idx, coefficients):
+    def _get_igrid(self, radius, theta, phi, npoints):
+        """
+        For interpolation methods I need to convert from spherical coordinates to cartesian. To
+        support scipy.interpolate.RegularGridInterpolator igrid is formatted as:
+
+        igrid.shape = [npoints,3]
+        igrid[:,0] = z, igrid[:,1] = y, igrid[:,2] = x
+
+        Parameters
+        ----------
+        radius: np.ndarray
+            The radius values for the interpolated quantity
+        theta: np.ndarray
+            The "physics" theta values for the interpolated quantity
+        phi: np.ndarray
+            The "physics" phi values for the interpolated quantity
+        npoints: int
+            The number of interpolated points to be used for each "radius"
+
+        Returns
+        -------
+        igrid: np.ndarray
+            The grid of x,y,z points to be interpolated to
+        """
+        
+        # we need to hold our coordinate values
+        igrid = np.zeros((len(radius)*npoints,3))
+
+        # using the spherical coordinates grid of theta and phi (and r) we can get x,y,z
+        igrid[:npoints, 0] = radius[0] * np.cos(theta)                  # z
+        igrid[:npoints, 1] = radius[0] * np.sin(theta) * np.sin(phi)    # y
+        igrid[:npoints, 2] = radius[0] * np.sin(theta) * np.cos(phi)    # x
+
+        # we can use a shortcut to get the coordinates at other radii
+        if len(radius) > 1:
+            for i in range(len(radius)-1):
+
+                # since x = r * const, y = r * const, z = r * const for any ray we can...
+                igrid[npoints*(i+1):npoints*(i+2)] = igrid[:npoints] * radius[i+1] / radius[0]
+
+        return igrid
+
+    def _interpolation_moments(self, var, igrid, x_idx, y_idx, z_idx):
         '''
         The interpolation form is quadratic:
 
@@ -10131,8 +10170,6 @@ class MomsDataSet:
             The y indices that the interpolation points are closest to
         z_idx: np.ndarray
             The z indices that the interpolation points are closest to
-        coefficients: bool
-            In some cases you may want the coefficients for the 'moments' interpolation
         '''
 
         # flatten igrid, now every 3 is either x,y or z values
@@ -10195,12 +10232,7 @@ class MomsDataSet:
                          a101*xiflat*ziflat + a011*yiflat*ziflat + a200*xiflat*xiflat +
                          a020*yiflat*yiflat + a002*ziflat*ziflat)
 
-        # Do I want to look at the coefficients used?
-        if coefficients:
-            coefficients = [a000, a100, a010, a001, a110, a101, a011, a200, a020, a002]
-            return var_interp, coefficients
-        else:
-            return var_interp
+        return var_interp
 
     def _set_dictionaries(self, var_list):
         '''
@@ -10326,40 +10358,75 @@ class MomsDataSet:
 
         return theta_copy, phi_copy
 
-    def _uniform_spherical_grid(self, radius, npoints):
+    def _sphericalHarmonics_grid(self, radius, N):
+        """
+        Create a uniformly spaced (in spherical coordinates) grid of points in which
+        the interpolation is done on to get a value of the quantity of radius r which
+        you intend to compute the spherical harmonics coefficients on. This requires a
+        special grid of points
+
+        Parameters
+        ----------
+        radius: np.ndarray
+            The radius values for the interpolated quantity
+        N: int
+            The number of subdivisions of theta between np.pi and 0
+
+        Returns
+        -------
+        igrid: np.ndarray
+            The grid of x,y,z points to be interpolated to
+        theta_interp: np.ndarray
+            The theta spherical coordinates (physics) of the "npoints"
+        phi_interp: np.ndarray
+            The phi spherical coordinates (physics) of the "npoints"
+        """
+
+        # to conform with spherical harmonics, start at 90 deg N, skip 90 deg S!
+        dangle = np.pi / (N)
+
+        theta_points = np.arange(0, N) * dangle
+        phi_points = np.arange(0, 2*N) * dangle
+
+        # theta changes with axis=1, phi changes wtih axis=0
+        phi, theta = np.meshgrid(phi_points, theta_points)
+
+        # now I need to flatten for igrid
+        igrid = self._get_igrid(radius, theta.flatten(), phi.flatten(), npoints)
+
+        # return these quantities
+        return igrid, theta_points, phi_points
+
+    def _constantArea_spherical_grid(self, radius, npoints):
         '''
         Create a uniformly spaced (in spherical coordinates) grid of points in which
         the interpolation is done on to get a value of quantity at radius r
 
         Parameters
         ----------
+        radius: np.ndarray
+            The radius values for the interpolated quantity
         npoints: int
             The number of points on the uniform grid. 5000 is plenty for most images
 
         Returns
         -------
-        xyz_grid: np.ndarray
-            The x, y, z coordinates of the "npoints"
+        igrid: np.ndarray
+            The grid of x,y,z points to be interpolated to
         theta_interp: np.ndarray
             The theta spherical coordinates (physics) of the "npoints"
         phi_interp: np.ndarray
             The phi spherical coordinates (physics) of the "npoints"
         '''
 
-        indices = np.arange(0, npoints, dtype=np.float32) + 0.5
+        indices = np.arange(0, npoints) + 0.5
 
         # Based on equal amount of points in equal area on a sphere...
         theta = np.arccos(1. - 2.*indices/float(npoints))
         phi = np.pi * (1 + 5**0.5) * indices  - 2*np.pi*np.floor(np.pi * (1 + 5**0.5) * indices / (2 * np.pi))
 
         # create the interp_grid. It is written in this fashion to work with interpolation, z,y,x
-        igrid = np.zeros((npoints,3))
-        igrid[:, 0] = radius * np.cos(theta)
-        igrid[:, 1] = radius * np.sin(theta) * np.sin(phi)
-        igrid[:, 2] = radius * np.sin(theta) * np.cos(phi)
-
-        # for mollweide we have to transform these
-        theta, phi = self._transform_mollweide(theta, phi)
+        igrid = self._get_igrid(radius, theta, phi, npoints)
 
         return igrid, theta, phi
 
@@ -10556,7 +10623,7 @@ class MomsDataSet:
         else:
             return True
 
-    def _get_interpolation(self, var, igrid, method, coefficients):
+    def _get_interpolation(self, var, igrid, method):
         '''
         This function controls the which method of interpolation is done and how it is done.
 
@@ -10566,25 +10633,17 @@ class MomsDataSet:
             The quantity on the grid
         igrid: np.ndarray
             The array that contains all of the points that are to be interpolated to
-            igrid.shape = [nset,ninterpolation_points,3]
-            igrid[nset,:,0] = z, igrid[nset,:,1] = y, igrid[nset,:,2] = z
+            igrid.shape = [ninterpolation_points,3]
+            igrid[:,0] = z, igrid[:,1] = y, igrid[:,2] = x
         method: str
             'trilinear': Use a trilinear method to interpolate onto the points on igrid
             'moments': Use a moments averaging within a cell and using a quadratic function
                        as the form for the interpolation
-        coefficients: bool
-            In some cases you may want the coefficients for the 'moments' interpolation
 
         Returns
         -------
-        coefficients: False
-            var_interp: np.ndarray
-                The var interpolated onto the 'igrid' points
-        coefficients: True
-            var_interp: np.ndarray
-                The var interpolated onto the 'igrid' points
-            coefficients: list
-                The coefficients used in the interpolation
+        var_interp: np.ndarray
+            The var interpolated onto the 'igrid' points
         '''
 
         # what method?
@@ -10613,8 +10672,8 @@ class MomsDataSet:
             out_of_bounds = np.logical_or((igrid > upper_bound),(igrid < lower_bound))
 
             if np.count_nonzero(out_of_bounds.flatten()) > 0:
-                err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'.format(
-                    np.count_nonzero(out_of_bounds.flatten()))
+                err = 'There are {:d} grid points that are at or outside of the boundary of the simulation'\
+                      .format(np.count_nonzero(out_of_bounds.flatten()))
 
                 self._messenger.error(err)
                 raise ValueError
@@ -10637,12 +10696,8 @@ class MomsDataSet:
             z_idx[np.where((self._unique_coord[z_idx] - igrid[:,0]) > np.mean(np.abs(np.diff(self._unique_coord)))/2.)] -= 1
 
             # now we call the actual interpolation
-            if coefficients:
-                var_interp, a = self._interpolation_moments(var, igrid, x_idx, y_idx, z_idx, coefficients)
-                return var_interp, a
-            else:
-                var_interp = self._interpolation_moments(var, igrid, x_idx, y_idx, z_idx, coefficients)
-                return var_interp
+            var_interp = self._interpolation_moments(var, igrid, x_idx, y_idx, z_idx)
+            return var_interp
 
     def _get_jacobian(self, x, y, z, r):
         '''
@@ -10754,6 +10809,11 @@ class MomsDataSet:
                 self._messenger.error(err)
                 raise e
 
+    # def get_ray_interpolation(self, radius, theta, phi, nrays):
+    #     """
+        
+    #     """
+
     def get_dump_list(self):
         '''
         Returns a list of dumps available.
@@ -10766,7 +10826,7 @@ class MomsDataSet:
 
         return list(self._dumps)
 
-    def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', logvar=False, coefficients=False):
+    def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', logvar=False):
         '''
         Returns the interpolated array of values (with a particular method) of the var given by
         'varloc' at the [z,y,x] grid points of igrid
@@ -10778,9 +10838,9 @@ class MomsDataSet:
             Int: index location of the variable you want
             np.ndarray: quantity you want to have interpolated on the grid
         igrid: np.ndarray
-           The array that contains all of the points that are to be interpolated to
-           igrid.shape = [nset,ninterpolation_points,3]
-           igrid[nset,:,0] = z, igrid[nset,:,1] = y, igrid[nset,:,2] = z
+            The array that contains all of the points that are to be interpolated to
+            igrid.shape = [ninterpolation_points,3]
+            igrid[:,0] = z, igrid[:,1] = y, igrid[:,2] = x
         fname: None, int
             None: default option, will grab current dump
             int: Dump number
@@ -10791,19 +10851,11 @@ class MomsDataSet:
         logvar: bool
             For better fitting should I do var = np.log10(var)? The returned var_interpolated
             will be scaled back to linear
-        coefficients: bool
-            In some cases you may want the coefficients for the 'moments' interpolation
 
         Returns
         -------
-        coefficients: False
-            var_interp: np.ndarray
-                The var interpolated onto the 'igrid' points
-        coefficients: True
-            var_interp: np.ndarray
-                The var interpolated onto the 'igrid' points
-            coefficients: list
-                The coefficients used in the interpolation
+        var_interp: np.ndarray
+            The var interpolated onto the 'igrid' points
         '''
 
         # first check if we have a np.ndarray or not
@@ -10840,36 +10892,21 @@ class MomsDataSet:
             self._messenger.error(err)
             raise ValueError
 
-        # to make sure we dont break the code, coefficients must be False for trilinear
-        elif method == self._interpolation_methods[0]:
-            coefficients = False
-
         # make sure that igrid is the correct shape
         if len(igrid.shape) != 2 or igrid.shape[1] != 3:
-            err = 'The igrid is not the correct shape. It must be [npoints,3] but it is {0}'.format(igrid.shape)
+            err = 'The igrid is not the correct shape. It must be [npoints,3] but it is {0}'\
+                  .format(igrid.shape)
             self._messenger.error(err)
             raise ValueError
 
         # Now all of the hard work is done in other methods for the interpolation
-        if coefficients:
+        var_interp = self._get_interpolation(var, igrid, method)
 
-            # we just return w.e var_interp is, a list or an array and the coefficients
-            var_interp, a = self._get_interpolation(var, igrid, method, coefficients)
-
-            # did we log it?
-            if logvar:
-                return np.power(10., var_interp), a
-            else:
-                return var_interp, a
+        # did we log it?
+        if logvar:
+            return np.power(10., var_interp)
         else:
-            # we just return w.e var_interp is, a list or an array
-            var_interp = self._get_interpolation(var, igrid, method, coefficients)
-
-            # did we log it?
-            if logvar:
-                return np.power(10., var_interp)
-            else:
-                return var_interp
+            return var_interp
 
     def get_rprof(self, varloc, radius=None, fname=None, method='trilinear', logvar=False):
         '''
@@ -10908,7 +10945,8 @@ class MomsDataSet:
 
             # make sure nothing is too large
             if np.max(radius) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
-                err = 'The input radius has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'.format(np.max(radius),np.max(self.radial_axis))
+                err = 'The input radius has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'\
+                      .format(np.max(radius),np.max(self.radial_axis))
                 self._messenger.error(err)
                 raise ValueError
 
@@ -11091,7 +11129,7 @@ class MomsDataSet:
             return None
 
     def get_spherical_interpolation(self, varloc, radius, fname=None, npoints=5000, method='trilinear', logvar=False,
-                                    plot_mollweide=False, get_igrid=False, coefficients=False):
+                                    plot_mollweide=False, get_igrid=False):
         '''
         Returns the interpolated array of values of 'varloc' at a radius of 'radius' for a computed uniform
         distribution of points, 'npoints', on that sphere(s). It can return the 'theta,phi' (mollweide)
@@ -11122,8 +11160,6 @@ class MomsDataSet:
             can be plotted with a projection method
         get_igrid: bool
             If you want returned the actual grid points (x,y,z) used for the interpolation
-        coefficients: bool
-            In some cases you may want the coefficients for the 'moments' interpolation
 
         Returns
         -------
@@ -11135,9 +11171,6 @@ class MomsDataSet:
             The array containing the "mollweide" phi points that were interpolated to
         igrid: np.ndarray
             The array containing the x,y,z coordinates of the points that were interpolated to
-        coefficients: list
-            The list containing arrays of the coefficients used in the interpolation scheme
-            'moments'
         '''
 
         # I will construct an appropriate igrid and let get_interpolation do the rest
@@ -11147,56 +11180,35 @@ class MomsDataSet:
             first_r = radius[0]
         except (TypeError, IndexError) as e:
             # ok, we have an error, it is a single float or int
-            radius = [radius]
+            radius = np.array([radius])
 
-        # we need to hold our coordinate values
-        igrid = np.zeros((len(radius)*npoints,3))
+        # get the grid to be interpolated to
+        igrid, theta_grid, phi_grid = self._constantArea_spherical_grid(radius, npoints)
 
-        # we only need the spherical grid once. We can update zyx_grid easily!
-        igrid[:npoints], theta_grid, phi_grid = self._uniform_spherical_grid(radius[0], npoints)
+        # for mollweide we have to transform these
+        theta_grid, phi_grid = self._transform_mollweide(theta_grid, phi_grid)
 
-        # now to get the rest of the coordinates if needed
-        if len(radius) > 1:
-            for i in range(len(radius)-1):
-
-                # since x = r * const, y = r * const, z = r * const for any ray we can...
-                igrid[npoints*(i+1):npoints*(i+2)] = igrid[:npoints] * radius[i+1] / radius[0]
-
-        # More checks will be done with get_interpolation, are we doing coefficients?
-        if coefficients:
-            var_interp, a = self.get_interpolation(varloc, igrid, fname, method, logvar, coefficients)
-        else:
-            var_interp = self.get_interpolation(varloc, igrid, fname, method, logvar, coefficients)
+        # More checks will be done with get_interpolation
+        var_interp = self.get_interpolation(varloc, igrid, fname, method, logvar)
 
         # This var_interp and igrid COULD be a flattened array, let's reshape if so
         if len(radius) > 1:
 
-            igrid = igrid.reshape(len(radius),npoints,3)
-            var_interp = var_interp.reshape(len(radius),npoints)
+            # to prevent copying array
+            igrid.shape = (len(radius),npoints,3)
+            var_interp.shape = (len(radius),npoints)
 
-        # Are we plotting mollweide, returning coefficients, and/or returning igrid?
+        # Are we plotting mollweide, and/or returning igrid?
         if get_igrid:
-            if coefficients:
-                if plot_mollweide:
-                    return var_interp, theta_grid, phi_grid, igrid, coefficients
-                else:
-                    return var_interp, igrid, coefficients
+            if plot_mollweide:
+                return var_interp, theta_grid, phi_grid, igrid
             else:
-                if plot_mollweide:
-                    return var_interp, theta_grid, phi_grid, igrid
-                else:
-                    return var_interp, igrid
+                return var_interp, igrid
         else:
-            if coefficients:
-                if plot_mollweide:
-                    return var_interp, theta_grid, phi_grid, coefficients
-                else:
-                    return var_interp, coefficients
+            if plot_mollweide:
+                return var_interp, theta_grid, phi_grid
             else:
-                if plot_mollweide:
-                    return var_interp, theta_grid, phi_grid
-                else:
-                    return var_interp
+                return var_interp
 
     def get_spherical_components(self, ux, uy, uz, fname=None, igrid=None):
         '''
@@ -11213,6 +11225,9 @@ class MomsDataSet:
             None: default option, will grab current dump
             int: Dump number
         igrid: np.ndarray
+            If the quantity is not defined on the entire grid we can still convert it if we know the
+            cartesian points that it is on. Note:
+
             igrid.shape = (len(ux.flatten()),3)
             igrid[:,0] = z, igrid[:,1] = y, igrid[:,2] = x
 
@@ -11227,7 +11242,8 @@ class MomsDataSet:
             if not self._grid_jacobian_exists:
 
                 # create the grid jacobian, keep this in memory
-                self._grid_jacobian = self._get_jacobian(self._xc_view,self._yc_view,self._zc_view, self._radius_view)
+                self._grid_jacobian = self._get_jacobian(self._xc_view,self._yc_view,self._zc_view,
+                                                         self._radius_view)
                 self._grid_jacobian_exists = True
 
             # local variable to reference internal jacobian
@@ -11334,7 +11350,8 @@ class MomsDataSet:
         else:
             # check len of shape of f
             if len(f.shape) != 3:
-                err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'.format(self.moms_ngridpoints)
+                err = 'The input f does not have its data formatted as f[z,y,x], make sure the shape is ({:0},{:0},{:0})'\
+                .format(self.moms_ngridpoints)
                 self._messenger.error(err)
                 raise ValueError
 
@@ -11345,6 +11362,134 @@ class MomsDataSet:
         gradf.reverse()
 
         return gradf
+
+    def sphericalHarmonics_format(self, varloc, radius, fname=None, lmax=None, method='trilinear',
+                                  theta_phi_grids=False, get_igrid=False):
+        '''
+        To describe a function on a sphere it can be decomposed into its modes through spherical
+        harmonics. To do this efficiently, a particular theta, phi grid is used which is different
+        from what the self.get_spherical_interpolation uses. Keep in mind that for a given lmax:
+
+        The number of theta subdivisions across its domain is N = 2*(l+1)
+        The number of phi subdivisions across its domain is 2*N = 4*(l+1)
+        The number of points being interpolated to is npoints = 8*(l+1)**2
+
+        Parameters
+        ----------
+        varloc: str, int, np.ndarray
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
+            np.ndarray: quantity you want to have interpolated on the sphere
+        radius: float
+            The radius of the sphere you want 'varloc' to be interpolated to
+        fname: None, int
+            None: default option, will grab current dump
+            int: Dump number
+        lmax: None, int
+            None: default option will use the maximum resolvable l for this 'radius' and moments
+                  data grid size, i.e lmax = pi * radius / self.moms_gridresolution
+            int: The maximum l value that you wish to use
+        method: str
+            'trilinear': Use a trilinear method to interpolate onto the points on igrid
+            'moments': Use a moments averaging within a cell and using a quadratic function
+                       as the form for the interpolation
+        get_theta_phi_grids: bool
+            If you want returned the theta, phi coordinates of the interpolated values ("physics")
+        get_igrid: bool
+            If you want returned the actual grid points (x,y,z) used for the interpolation
+
+        Returns
+        -------
+        var_interpolated: np.ndarray
+            The array containing var interpolated at 'radius'. Note that its shape is (N, 2*N)
+            to conform with pyshtools
+        theta_grid: np.ndarray
+            The array containing the "physics" theta points that were interpolated to
+        phi_grid: np.ndarray
+            The array containing the "physics" phi points that were interpolated to
+        igrid: np.ndarray
+            The array containing the x,y,z coordinates of the points that were interpolated to
+        '''
+
+        # first get our lmax
+        if lmax is None:
+            # I will calculate it
+            lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
+
+            # radius must be an array for creating an igrid
+            radius = np.array([radius])
+
+        else:
+            # ensure it is an integer
+            lmax = int(lmax)
+            N = 2*(lmax + 1)
+            npoints = N * 2*N
+
+            # radius must be an array for creating an igrid
+            radius = np.array([radius])
+            
+        # Now I need to get my grid to interpolate
+        igrid, theta_grid, phi_grid = self._sphericalHarmonics_grid(radius , N)
+
+        # interpolate our quantity
+        var_interp = self.get_interpolation(varloc, igrid, fname, method)
+
+        # reshape var_interp to what is needed
+        var_interp.shape = (N, 2*N)
+
+        # return everything that is wanted
+        if get_igrid:
+            if get_theta_phi_grids:
+                return var_interp, theta_grid, phi_grid, igrid
+            else:
+                return var_interp, igrid
+        else:
+            if get_theta_phi_grids:
+                return var_interp, theta_grid, phi_grid
+            else:
+                return var_interp
+        
+    def sphericalHarmonics_lmax(self, radius):
+        """
+        Calculate the maximum l (minimum angular scale) that can be resolved with our moments data
+        resolution. This is simply using the nyquist sampling theorem:
+
+        lambda = 2 * pi * r / sqrt(l*(l+1))
+        lambda_min = 2 * dx
+
+        -------------------------------------------------------------------------------------------
+        Keep in mind that for a given lmax:
+
+        The number of theta subdivisions across its domain is N = 2*(l+1)
+        The number of phi subdivisions across its domain is 2*N = 4*(l+1)
+        The number of points being interpolated to is npoints = 8*(l+1)**2
+
+        Parameters
+        ----------
+        radius: float
+            The radius that you want to know the maximum l resolvable
+
+        Returns
+        -------
+        lmax: int
+            The maximum l resolvable
+        N: int
+            The number of subdivisions of theta between np.pi and 0
+        npoints: int
+            The number of points to be interpolated at "radius"
+        """
+
+        # cast it into a quadratic equation of a * l^2 + b * l + c
+        a = 1
+        b = 1
+        c = -np.power(np.pi * radius / self.moms_gridresolution, 2.0)
+
+        # always take positive root and compute other quantities
+        lmax = int(np.round(-1 + np.sqrt(1 -4*a*c)))
+        N = 2 * (lmax + 1)
+        npoints = 8 * (lmax + 1)**2
+
+        return lmax, N, npoints
 
     def norm(self, ux, uy, uz, fname=None):
         '''
