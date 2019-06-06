@@ -10020,7 +10020,8 @@ class MomsDataSet:
             split1 = moms_files[i].split('-')
             if split1[0] != self._run_id:
                 wrng = (".aaa files with multiple run ids found in '{:s}'."
-                        "Using only those with run id '{:s}'.").format(self._dir_name, self._run_id)
+                        "Using only those with run id '{:s}'.").\
+                       format(self._dir_name, self._run_id)
                 self._messenger.warning(wrng)
                 continue
 
@@ -10039,8 +10040,10 @@ class MomsDataSet:
                 continue
 
         self._dumps = sorted(self._dumps)
-        msg = "{:d} .aaa files found in '{:s}.\n".format(len(self._dumps), self._dir_name)
-        msg += "Dump numbers range from {:d} to {:d}.".format(self._dumps[0], self._dumps[-1])
+        msg = "{:d} .aaa files found in '{:s}.\n".format(len(self._dumps), \
+              self._dir_name)
+        msg += "Dump numbers range from {:d} to {:d}.".format(\
+               self._dumps[0], self._dumps[-1])
         self._messenger.message(msg)
         if (self._dumps[-1] - self._dumps[0] + 1) != len(self._dumps):
             wrng = 'Some dumps are missing!'
@@ -11242,8 +11245,7 @@ class MomsDataSet:
             if not self._grid_jacobian_exists:
 
                 # create the grid jacobian, keep this in memory
-                self._grid_jacobian = self._get_jacobian(self._xc_view,self._yc_view,self._zc_view,
-                                                         self._radius_view)
+                self._grid_jacobian = self._get_jacobian(self._xc_view,self._yc_view,self._zc_view, self._radius_view)
                 self._grid_jacobian_exists = True
 
             # local variable to reference internal jacobian
@@ -11542,11 +11544,11 @@ class MomsData2X(MomsData):
         # we will call MomsData to read in everything in the standard fashion
         super().__init__(file_path, verbose)
 
-        # now I have a formatted self.data. I will assume the first 8 quantities
+        # now I have a formatted self.var. I will assume the first 8 quantities
         # are in fact the "2X" quantity and so I will construct the double
         # resolution grid
         self.ngridpoints = int(2*self.ngridpoints)
-        self.data2x = np.zeros((self.ngridpoints,self.ngridpoints,self.ngridpoints),
+        self.var2x = np.zeros((self.ngridpoints,self.ngridpoints,self.ngridpoints),
                                dtype=float32)
 
         # for an example, this is supposed to be fv2x then the following convention
@@ -11557,33 +11559,33 @@ class MomsData2X(MomsData):
         # for y coordinate: b is "bottom", t is "top"
         # for z coordinate: n is "near", f is "far"
 
-        fvlbn = self.data[0]
-        fvrbn = self.data[1]
+        fvlbn = self.var[0]
+        fvrbn = self.var[1]
 
-        fvltn = self.data[2]
-        fvrtn = self.data[3]
+        fvltn = self.var[2]
+        fvrtn = self.var[3]
 
-        fvlbf = self.data[4]
-        fvrbf = self.data[5]
+        fvlbf = self.var[4]
+        fvrbf = self.var[5]
 
-        fvltf = self.data[6]
-        fvrtf = self.data[7]
+        fvltf = self.var[6]
+        fvrtf = self.var[7]
 
         # since we have [z,y,x] we can do...
-        self.data2x[0:-1:2,0:-1:2,0:-1:2] = fvlbn
-        self.data2x[0:-1:2,0:-1:2,1::2] = fvrbn
+        self.var2x[0:-1:2,0:-1:2,0:-1:2] = fvlbn
+        self.var2x[0:-1:2,0:-1:2,1::2] = fvrbn
 
-        self.data2x[0:-1:2,1::2,0:-1:2] = fvltn
-        self.data2x[0:-1:2,1::2,1::2] = fvrtn
+        self.var2x[0:-1:2,1::2,0:-1:2] = fvltn
+        self.var2x[0:-1:2,1::2,1::2] = fvrtn
 
-        self.data2x[1::2,0:-1:2,0:-1:2] = fvlbf
-        self.data2x[1::2,0:-1:2,1::2] = fvrbf
+        self.var2x[1::2,0:-1:2,0:-1:2] = fvlbf
+        self.var2x[1::2,0:-1:2,1::2] = fvrbf
 
-        self.data2x[1::2,1::2,0:-1:2] = fvltf
-        self.data2x[1::2,1::2,1::2] = fvrtf
+        self.var2x[1::2,1::2,0:-1:2] = fvltf
+        self.var2x[1::2,1::2,1::2] = fvrtf
 
-        # delete data
-        del self.data
+        # delete var
+        del self.var
 
     # override get
     def get(self, varloc):
@@ -11603,7 +11605,7 @@ class MomsData2X(MomsData):
         '''
 
         # we have no other variables, only return data2x
-        return self.data2x
+        return self.var2x
 
 
 class MomsDataSet2X(MomsDataSet):
@@ -11836,6 +11838,9 @@ class MomsDataSet2X(MomsDataSet):
             None: default option, will grab current dump
             int: Dump number
         igrid: np.ndarray
+            If the quantity is not defined on the entire grid we can still convert it if we know the
+            cartesian points that it is on. Note:
+
             igrid.shape = (len(ux.flatten()),3)
             igrid[:,0] = z, igrid[:,1] = y, igrid[:,2] = x
 
