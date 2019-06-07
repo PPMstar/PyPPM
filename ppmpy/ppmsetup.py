@@ -13,7 +13,7 @@ from ppmpy import ppm
 import numpy as np
 import sys
 import re
-from nugridpy.ascii_table import ascii_table 
+from nugridpy.ascii_table import readTable
 
 G_code = ast.grav_const*1000
 a_cgs  = ast.radiation_constant
@@ -264,7 +264,10 @@ def rhs4(x,r,T,rho,S,P,a_code,R_code,mu):
     m,P = x
     rho,T = rhoTfromSP(T,rho,S,P,a_code,R_code,mu)
     f1 = 4.*np.pi*r**2*rho
-    f2 = -G_code*m*rho/r**2
+    if r == 0:    # for integration from zero
+        f2 = 0
+    else:
+        f2 = -G_code*m*rho/r**2
     return [f1,f2]
 
 
