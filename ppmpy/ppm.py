@@ -8988,14 +8988,14 @@ class RprofSet(PPMtools):
 
         rprof_files = [os.path.basename(rprof_files[i]) \
                        for i in range(len(rprof_files))]
-        
+
         # run_id is what is before the last dash, check that it is
         # followed by 4 numeric characters
         _ind   = rprof_files[0].rindex('-')                # index of last dash
-        self.__run_id = rprof_files[0][0:_ind] 
+        self.__run_id = rprof_files[0][0:_ind]
 
         for i in range(len(rprof_files)):
-            _ind   = rprof_files[i].rindex('-')   
+            _ind   = rprof_files[i].rindex('-')
             if rprof_files[i][0:_ind] == self.__run_id:     # record dump number
                 dump_number = rprof_files[i][_ind+1:_ind+5]
                 if dump_number.isnumeric():
@@ -9010,7 +9010,7 @@ class RprofSet(PPMtools):
                        format(self.__dir_name, self.__run_id)
                 self.__messenger.warning(wrng)
                 continue
-        
+
         self.__dumps = sorted(self.__dumps)
         msg = "{:d} rprof files found in '{:s}.\n".format(len(self.__dumps), \
               self.__dir_name)
@@ -9168,8 +9168,8 @@ class RprofSet(PPMtools):
                      dump2=widgets.IntSlider(min=dumpmin,\
                 max=dumpmax,step=1,value=int(dumpmax-0.05*(dumpmax-dumpmean))),\
                      ything=things_list)
-        
-        
+
+
     def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
                 xxlim=None, yylim=None, logy=False,newfig=True,idn=0):
         '''
@@ -9186,7 +9186,7 @@ class RprofSet(PPMtools):
             dump number or list of dump numbers
 
         num_type : string
-            
+
         xthing : string
           name of x quantity to plot, default is 'R'
 
@@ -9208,7 +9208,7 @@ class RprofSet(PPMtools):
         '''
         if runlabel is None: runlabel = self.__run_id
         # Ensure that dump is list type
-        if type(dump) is not list: 
+        if type(dump) is not list:
             dump=list(dump)
         len_dump = len(dump)
         # Get dump and assign it to a variable
@@ -9216,12 +9216,12 @@ class RprofSet(PPMtools):
 
         # Define resolution and throw errors if they don't match;
         # throw error if ything is not defined
-        if ything in rp.get_hr_variables(): 
+        if ything in rp.get_hr_variables():
             if xthing not in rp.get_hr_variables():
                 print('ERROR: If ything is high resolution xthing must be too.')
                 return
-            res = 'h'    
-        if ything in rp.get_lr_variables(): 
+            res = 'h'
+        elif ything in rp.get_lr_variables():
             if xthing not in rp.get_lr_variables():
                 print('ERROR: If ything is low resolution xthing must be too.')
                 return
@@ -9238,7 +9238,7 @@ class RprofSet(PPMtools):
         for i,thisdump in enumerate(dump):
             xquantity = self.get(xthing,thisdump,resolution=res)
             yquantity = self.get(ything,thisdump,resolution=res)
-            if logy: 
+            if logy:
                 yquantity = np.log10(yquantity)
             pl.plot(xquantity,yquantity,label=runlabel+" dump "+str(thisdump),\
                  color=utils.linestylecb(i+len_dump*idn)[2],\
