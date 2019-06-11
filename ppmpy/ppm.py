@@ -10395,6 +10395,7 @@ class MomsDataSet:
         phi, theta = np.meshgrid(phi_points, theta_points)
 
         # now I need to flatten for igrid
+        npoints = N * 2*N
         igrid = self._get_igrid(radius, theta.flatten(), phi.flatten(), npoints)
 
         # return these quantities
@@ -11366,7 +11367,7 @@ class MomsDataSet:
         return gradf
 
     def sphericalHarmonics_format(self, varloc, radius, fname=None, lmax=None, method='trilinear',
-                                  theta_phi_grids=False, get_igrid=False):
+                                  get_theta_phi_grids=False, get_igrid=False):
         '''
         To describe a function on a sphere it can be decomposed into its modes through spherical
         harmonics. To do this efficiently, a particular theta, phi grid is used which is different
@@ -11489,7 +11490,7 @@ class MomsDataSet:
         # always take positive root and compute other quantities
         lmax = int(np.round(-1 + np.sqrt(1 -4*a*c)))
         N = 2 * (lmax + 1)
-        npoints = 8 * (lmax + 1)**2
+        npoints = int(8 * (lmax + 1)**2)
 
         return lmax, N, npoints
 
