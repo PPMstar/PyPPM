@@ -11460,6 +11460,9 @@ class MomsDataSet:
         lambda = 2 * pi * r / sqrt(l*(l+1))
         lambda_min = 2 * dx
 
+        With large l, sqrt(l*(l+1)) ~ l
+        lmax ~ pi * r / dx
+
         -------------------------------------------------------------------------------------------
         Keep in mind that for a given lmax:
 
@@ -11482,13 +11485,8 @@ class MomsDataSet:
             The number of points to be interpolated at "radius"
         """
 
-        # cast it into a quadratic equation of a * l^2 + b * l + c
-        a = 1
-        b = 1
-        c = -np.power(np.pi * radius / self.moms_gridresolution, 2.0)
-
-        # always take positive root and compute other quantities
-        lmax = int(np.round(-1 + np.sqrt(1 -4*a*c)))
+        # using approximation above
+        lmax = np.pi * radius / self.moms_gridresolution
         N = 2 * (lmax + 1)
         npoints = int(8 * (lmax + 1)**2)
 
