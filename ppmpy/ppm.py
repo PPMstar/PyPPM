@@ -10014,30 +10014,33 @@ class MomsDataSet:
                        for i in range(len(moms_files))]
 
         # run_id is always separated from the rest of the file name
-        # by a single dash.
-        self._run_id = moms_files[0].split('-')[0]
+        # by a dash at the END of the file
+        _ind = moms_files[0].rindex('-')
+        self._run_id = moms_files[0][0:_ind]
+
         for i in range(len(moms_files)):
-            split1 = moms_files[i].split('-')
-            if split1[0] != self._run_id:
+
+            _ind = moms_files[i].rindex('-')
+            check_runId = moms_files[i][0:_ind]
+            if check_runId != self._run_id:
                 wrng = (".aaa files with multiple run ids found in '{:s}'."
                         "Using only those with run id '{:s}'.").\
                        format(self._dir_name, self._run_id)
                 self._messenger.warning(wrng)
                 continue
 
-            # Skip files that do not fit the momsdata naming pattern.
-            if len(split1) < 2:
-                continue
-
             # Get rid of the extension and try to parse the dump number.
             # Skip files that do not fit the momsdata naming pattern.
-            split2 = split1[1].split('.')
-            try:
-                # there is always BQav prefix before dump
-                dump_num = int(split2[0][4:])
-                self._dumps.append(dump_num)
-            except:
-                continue
+            split = moms_files[i][_ind+1:].split('.')
+
+            # there is always BQav prefix before dump
+            dump_num = split[0][4:]
+            if dump_num.isnumeric():
+                self._dumps.append(int(dump_num))
+            else:
+                self.__messenger.error("moms filename does not have 4 digits after -BQav"+\
+                                moms_files[i])
+                return False
 
         self._dumps = sorted(self._dumps)
         msg = "{:d} .aaa files found in '{:s}.\n".format(len(self._dumps), \
