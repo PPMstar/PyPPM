@@ -11419,26 +11419,23 @@ class MomsDataSet:
 
         # first get our lmax
         if lmax is None:
+
             # I will calculate it
             lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
-            
-            # ensure it is an integer
-            lmax = int(lmax)
-            N = 2*(lmax + 1)
-            npoints = N * 2*N
-            
+
             # radius must be an array for creating an igrid
             radius = np.array([radius])
 
         else:
-            # ensure it is an integer
+
+            # This is from a user, ensure it is an integer
             lmax = int(lmax)
-            N = 2*(lmax + 1)
-            npoints = N * 2*N
+            N = int(2 * (lmax + 1))
+            npoints = int(N * 2*N)
 
             # radius must be an array for creating an igrid
             radius = np.array([radius])
-            
+
         # Now I need to get my grid to interpolate
         igrid, theta_grid, phi_grid = self._sphericalHarmonics_grid(radius , N)
 
@@ -11459,7 +11456,7 @@ class MomsDataSet:
                 return var_interp, theta_grid, phi_grid
             else:
                 return var_interp
-        
+
     def sphericalHarmonics_lmax(self, radius):
         """
         Calculate the maximum l (minimum angular scale) that can be resolved with our moments data
@@ -11494,8 +11491,8 @@ class MomsDataSet:
         """
 
         # using approximation above
-        lmax = np.pi * radius / self.moms_gridresolution
-        N = 2 * (lmax + 1)
+        lmax = int(np.pi * radius / self.moms_gridresolution)
+        N = int(2 * (lmax + 1))
         npoints = int(8 * (lmax + 1)**2)
 
         return lmax, N, npoints
