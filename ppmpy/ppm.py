@@ -677,8 +677,6 @@ class PPMtools:
         var_list = any2list(var)
         avg_profs = {}
 
-        # The grid is assumed to be static, so we get the radial
-        # scale only once at fname_list[0].
         if self.__isyprofile:
             radius_variable = 'Y'
             r = self.get(radius_variable, fname_list[0], resolution='l')
@@ -689,6 +687,9 @@ class PPMtools:
             r = self.get(radius_variable, fname_list[0], resolution='l')
             rp = self.get_dump(fname_list[0])
             gettable_variables = rp.get_anyr_variables()
+
+        if radius_variable not in var_list:
+            var_list.append(radius_variable)
 
         computable_quantities = self.__computable_quantities
 
@@ -714,8 +715,6 @@ class PPMtools:
 
         for v in var_list:
             avg_profs[v] = np.zeros(data_slice[-1] - data_slice[0] + 1)
-            avg_profs[radius_variable] = np.zeros(data_slice[-1] - \
-                                                  data_slice[0] + 1)
 
             for i, fnm in enumerate(fname_list):
                 if func is not None:
@@ -730,18 +729,14 @@ class PPMtools:
                          format(v))
                     break
 
-                rr = r
                 if lagrangian:
                     # Interpolate everything on the initial mass scale.
                     mt = self.compute('mt', fnm, num_type=num_type)
                     data = interpolate(mt, data, mt0)
-                    rr = interpolate(mt, rr, mt0)
 
                 avg_profs[v] += data
-                avg_profs[radius_variable] += rr
 
             avg_profs[v] /= float(len(fname_list))
-            avg_profs[radius_variable] /= float(len(fname_list))
 
         return avg_profs
 
