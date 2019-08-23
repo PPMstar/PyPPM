@@ -293,6 +293,12 @@ class PPMtools:
         # This sets which method computes which quantity.
         self.__compute_methods = {'enuc_C12pg':self.compute_enuc_C12pg, \
                                   'Hp':self.compute_Hp, \
+                                  'nabla_rho':self.compute_nabla_rho, \
+                                  'nabla_rho_ad':self.compute_nabla_rho_ad, \
+                                  'prad':self.compute_prad, \
+                                  'pgas_by_ptot':self.compute_pgas_by_ptot, \
+                                  'g':self.compute_g, \
+                                  'N2':self.compute_N2, \
                                   'm':self.compute_m, \
                                   'mt':self.compute_mt, \
                                   'r4rho2':self.compute_r4rho2, \
@@ -452,6 +458,98 @@ class PPMtools:
 
         Hp = np.abs(cdiff(r))/(np.abs(cdiff(np.log(p))) + 1e-100)
         return Hp
+
+    def compute_nabla_rho(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+
+        nabla_rho = cdiff(np.log(rho))/(cdiff(np.log(p)) + 1e-100)
+        return nabla_rho
+
+    def compute_nabla_rho_ad(self, fname, num_type='ndump', radeos=True):
+        if radeos:
+            beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
+            gamma3 = 1. + (2./3.)*(4. - 3.*beta)/(8. - 7.*beta)
+            gamma1 = beta + (4. - 3.*beta)*(gamma3 - 1.)
+            nabla_rho_ad = 1./gamma1
+        else:
+            if self.__isyprofile:
+                r = self.get('Y', fname, num_type=num_type, resolution='l')
+
+            if self.__isRprofSet:
+                r = self.get('R', fname, num_type=num_type, resolution='l')
+
+            nabla_rho_ad = (3./5.)*np.ones(len(r))
+
+        return nabla_rho_ad
+
+    def compute_prad(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            print('compute_prad() not implemented for YProfile input.')
+            return None
+
+        if self.__isRprofSet:
+            T9 = self.get('T9', fname, num_type=num_type, resolution='l')
+
+        # rad_const = 7.56577e-15 erg/cm^3/K^4
+        rad_const = 7.56577e-15/1e43*(1e8)**3*(1e9)**4
+        prad = (rad_const/3.)*T9**4
+        return prad
+
+    def compute_pgas_by_ptot(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            print('compute_pgas_by_ptot() not implemented for YProfile input.')
+            return None
+
+        if self.__isRprofSet:
+            ptot = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                   self.get('P1', fname, num_type=num_type, resolution='l')
+
+        prad = self.compute_prad(fname, num_type=num_type)
+        pgas = ptot - prad
+        return pgas/ptot
+
+    def compute_g(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            r = self.get('Y', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', fname, num_type=num_type, resolution='l')
+       
+        m = self.compute_m(fname, num_type=num_type)
+        print('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'
+              'This will not work for shell setups and wrong gravity will be returned.')
+
+        # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
+        G_code = ast.grav_const/1e-3
+        g = G_code*m/r**2
+        return g
+    
+    def compute_N2(self, fname, num_type='ndump', radeos=True):
+        if self.__isyprofile:
+            if radeos:
+                print('radeos option not implemented for YProfile input.')
+                return None
+            r = self.get('Y', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            r = self.get('R', fname, num_type=num_type, resolution='l')
+       
+        g = self.compute_g(fname, num_type=num_type)
+        Hp = self.compute_Hp(fname, num_type=num_type)
+        nabla_rho = self.compute_nabla_rho(fname, num_type=num_type)
+        nabla_rho_ad = self.compute_nabla_rho_ad(fname, num_type=num_type,
+                       radeos=radeos)
+        N2 = (g/Hp)*(nabla_rho - nabla_rho_ad)
+
+        return N2
 
     def compute_m(self, fname, num_type='ndump'):
         if self.__isyprofile:
