@@ -11071,7 +11071,7 @@ class MomsDataSet:
             self._get_mgrid()
 
         # these are not used internally and so we can give them the real grid
-        return self._mollweide_theta_view.copy(), self._mollweide_phi_view()
+        return self._radius_view.copy(), self._mollweide_theta_view.copy(), self._mollweide_phi_view()
 
     def get_mollweide_coordinates(self, theta, phi):
         '''
