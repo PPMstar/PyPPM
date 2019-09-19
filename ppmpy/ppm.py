@@ -10521,9 +10521,9 @@ class MomsDataSet:
             self.radial_axis = self._radial_boundary - delta_r/2.
 
             # # construct the bins for computing averages ON radial_axis, these are "right edges"
-            # delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
-            # radialbins = self.radial_axis + delta_r
-            # self.radial_bins = np.insert(radialbins,0,0)
+            delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+            radialbins = self.radial_axis + delta_r
+            self.radial_bins = np.insert(radialbins,0,0)
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self._xc_view = self._xc.view()
