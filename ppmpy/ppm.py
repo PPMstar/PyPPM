@@ -1212,7 +1212,7 @@ class PPMtools:
 
         res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
                'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
-               'D':D}
+               'D':D, 'f_CBM':f_CBM}
         return res
 
     def bound_rad(self, cycles, r_min, r_max, var='ut', \
