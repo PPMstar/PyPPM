@@ -1090,7 +1090,7 @@ class PPMtools:
                 if varlim is not None:
                     ax2.set_ylim(varlim)
                 else:
-                    ax2.set_ylim((0., 1.))
+                    ax2.set_ylim((None, None))
                 ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
                 ax2.set_ylabel(var_lbl)
 
@@ -1149,7 +1149,7 @@ class PPMtools:
                 if varlim is not None:
                     ax2.set_ylim(varlim)
                 else:
-                    ax2.set_ylim((0., 1.))
+                    ax2.set_ylim((None, None))
                 ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
                 ax2.set_ylabel(var_lbl)
 
@@ -1201,7 +1201,7 @@ class PPMtools:
                 if varlim is not None:
                     ax2.set_ylim(varlim)
                 else:
-                    ax2.set_ylim((0., 1.))
+                    ax2.set_ylim((None, None))
                 ax2.set_xlabel('r / Mm')
                 ax2.set_ylabel(var_lbl)
 
