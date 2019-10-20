@@ -78,7 +78,7 @@ from matplotlib import gridspec
 import nugridpy.mesa as ms
 import os
 import re
-import nugridpy.astronomy as ast
+import nugridpy.constants as nuconst
 import scipy.interpolate
 import scipy.stats
 from scipy import optimize
@@ -92,6 +92,9 @@ import time
 import glob
 from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
+
+# The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
+G_code = nuconst.grav_const*1000.
 
 # from rprofile import rprofile_reader
 
@@ -527,8 +530,6 @@ class PPMtools:
         print('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'
               'This will not work for shell setups and wrong gravity will be returned.')
 
-        # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
-        G_code = ast.grav_const/1e-3
         g = G_code*m/r**2
         return g
     
@@ -1061,7 +1062,7 @@ class PPMtools:
             ax1 = fig.gca()
             lns = []
             plt_func = ax1.semilogx if logmt else ax1.plot
-            lns += plt_func((1e27/ast.msun_g)*mt, (1e27/ast.msun_g)*flux_iph, '-', \
+            lns += plt_func((1e27/nuconst.m_sun)*mt, (1e27/nuconst.m_sun)*flux_iph, '-', \
                             color='k', label=r'flux')
             ax1.ticklabel_format(style='sci',scilimits=(0,0),axis='y')
             if mtlim is not None:
@@ -1080,9 +1081,9 @@ class PPMtools:
                 elif logvar:
                         plt_func = ax2.semilogy
 
-                lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
+                lns += plt_func((1e27/nuconst.m_sun)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
-                lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
+                lns += plt_func((1e27/nuconst.m_sun)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
 
                 if mtlim is not None:
@@ -1117,9 +1118,9 @@ class PPMtools:
             ax1 = fig.gca()
             lns = []
             plt_func = ax1.loglog if logmt else ax1.semilogy
-            lns += plt_func((1e27/ast.msun_g)*mt, 1e54*sigma, '-', \
+            lns += plt_func((1e27/nuconst.m_sun)*mt, 1e54*sigma, '-', \
                             color='k', label=r'$\sigma$ > 0')
-            lns += plt_func((1e27/ast.msun_g)*mt, -1e54*sigma, '--', \
+            lns += plt_func((1e27/nuconst.m_sun)*mt, -1e54*sigma, '--', \
                             color='k', label=r'$\sigma$ < 0')
             if mtlim is not None:
                 ax1.set_xlim(mtlim)
@@ -1139,9 +1140,9 @@ class PPMtools:
                 elif logvar:
                         plt_func = ax2.semilogy
 
-                lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
+                lns += plt_func((1e27/nuconst.m_sun)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
-                lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
+                lns += plt_func((1e27/nuconst.m_sun)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
 
                 if mtlim is not None:
@@ -1531,10 +1532,10 @@ class PPMtools:
         print('{:d}/{:d} cycles processed.'.format(i+1, len(cycles)))
         print('Done.')
 
-        mir *= 1e27/ast.msun_g
+        mir *= 1e27/nuconst.m_sun
         # mb = mass burnt
         mb = integrate.cumtrapz(burn_rate, x=t, initial=0.)
-        mb *= 1e27/ast.msun_g
+        mb *= 1e27/nuconst.m_sun
         mtot = mir + mb
 
         fit_idx0 = 0
@@ -2182,9 +2183,6 @@ class yprofile(DataPlot, PPMtools):
                     missing_args.append(this_arg)
 
             return missing_args
-
-        # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
-        G_code = ast.grav_const/1e-3
 
         nabla_ad = 0.4
 
@@ -3816,8 +3814,6 @@ class yprofile(DataPlot, PPMtools):
         '''
 
         # the whole calculation is done in code units
-        # the unit of G in the code is 10^{-3} g cm^3 s^{-2}
-        G_code = ast.grav_const/1e-3
 
         if fname1 < 0 or fname1 > np.max(list(self.ndumpDict.keys())):
             raise IOError("fname1 out of range.")
@@ -5460,7 +5456,7 @@ class yprofile(DataPlot, PPMtools):
         X_H = fkcld*1./AtomicNocld
         mdot_L = 1.*amu*ndot/X_H
         dt = cdiff(t)
-        m_HHe_burnt = (1e27/ast.msun_g)*np.cumsum(mdot_L*dt)
+        m_HHe_burnt = (1e27/nuconst.m_sun)*np.cumsum(mdot_L*dt)
 
         m_HHe_present = self.entrainment_rate(dumps,r1,r2, var='vxz', criterion='min_grad', offset=-1., \
                         integrate_both_fluids=False, show_output=False, return_time_series=True)
@@ -5579,7 +5575,7 @@ class yprofile(DataPlot, PPMtools):
         ndot = 2.*L_C12C12/(Q*1.60218e-6/1e43)
         mdot_L = 12.*amu*ndot/X_C12
 
-        m_HHe_burnt = (1e27/ast.msun_g)*integrate.cumtrapz(mdot_L, x=t, initial=0.)
+        m_HHe_burnt = (1e27/nuconst.m_sun)*integrate.cumtrapz(mdot_L, x=t, initial=0.)
 
         m_HHe_present = self.entrainment_rate(dumps,r1,r2, var='vxz', criterion='min_grad', offset=-1., \
                             integrate_both_fluids=False, show_output=False, return_time_series=True)
@@ -5732,7 +5728,7 @@ class yprofile(DataPlot, PPMtools):
                 m_ir[i] = np.sum(dm[0:(idx_top + 1)])
 
         # fc = fit coefficients
-        m_ir *= 1e27/ast.msun_g
+        m_ir *= 1e27/nuconst.m_sun
         m_ir_fc = np.polyfit(time, m_ir, 1)
         m_ir_fit = m_ir_fc[0]*timelong + m_ir_fc[1]
         if integrate_upwards:
@@ -7122,9 +7118,9 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
     L_He = 2.25*2.98384E-03
 
     ifig = 1; pl.close(ifig); pl.figure(ifig)
-    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_yp, color = cb(6), \
+    pl.semilogy(t/60., (1e43/nuconst.l_sun)*L_H_yp, color = cb(6), \
                  zorder = 2, label = r'L$_\mathrm{H}$')
-    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
+    pl.axhline((1e43/nuconst.l_sun)*L_He, ls = '--', color = cb(4), \
                 zorder = 1, label = r'L$_\mathrm{He}$')
     pl.xlabel('t / min')
     pl.ylabel(r'L / L$_\odot$')
@@ -7134,11 +7130,11 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
     pl.tight_layout()
 
     ifig = 2; pl.close(ifig); pl.figure(ifig)
-    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_yp, color = cb(5), \
+    pl.semilogy(t/60., (1e43/nuconst.l_sun)*L_H_yp, color = cb(5), \
                  lw = 2., zorder = 2, label = r'L$_\mathrm{H,yp}$')
-    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_rp, color = cb(6), \
+    pl.semilogy(t/60., (1e43/nuconst.l_sun)*L_H_rp, color = cb(6), \
                  zorder = 4, label = r'L$_\mathrm{H,rp}$')
-    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
+    pl.axhline((1e43/nuconst.l_sun)*L_He, ls = '--', color = cb(4), \
                 zorder = 1, label = r'L$_\mathrm{He}$')
     pl.xlabel('t / min')
     pl.ylabel(r'L / L$_\odot$')
@@ -7221,7 +7217,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airm
                 k += 1
 
     pl.close(ifig); pl.figure(ifig)
-    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
+    pl.axhline((1e43/nuconst.l_sun)*L_He, ls = '--', color = cb(4), \
         label = r'L$_\mathrm{He}$')
 
     markers = ['o','v', '^', '<', '>', 's']
@@ -7231,7 +7227,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airm
 
     for this_case in cases:
         lbl = r'{:s} $\left({:d}^3\right)$'.format(this_case, res[this_case])
-        pl.semilogy(t[this_case]/60., (1e43/ast.lsun_erg_s)*L_H[this_case], \
+        pl.semilogy(t[this_case]/60., (1e43/nuconst.l_sun)*L_H[this_case], \
             ls = '-', color = cb(colours[i]), marker= markers[j], \
             label = this_case)
         i+=1
@@ -8118,7 +8114,6 @@ def get_N2(yp, dump):
         Brunt Vaisala frequency [rad^2 s^-1]
     '''
 
-    G_code = ast.grav_const/1e-3
     nabla_ad = 0.4
 
     R_bot = float(yp.hattrs['At base of the convection zone R'])
@@ -8182,7 +8177,7 @@ def plot_N2(case, dump1, dump2, lims1, lims2,mesa_logs_path, mesa_model_num):
     yp = yprofile(os.path.join(ppm_path + case))
     mesa_A_prof = ms.mesa_profile(mesa_logs_path, mesa_model_num)
     # convert the mesa variables to code units
-    mesa_A_r = (ast.rsun_cm/1e8)*mesa_A_prof.get('radius')
+    mesa_A_r = (nuconst.r_sun/1e8)*mesa_A_prof.get('radius')
     mesa_A_N2 = mesa_A_prof.get('brunt_N2')
     mesa_A_N2_mu = mesa_A_prof.get('brunt_N2_composition_term')
     mesa_A_N2_T = mesa_A_prof.get('brunt_N2_structure_term')
@@ -8297,7 +8292,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
     # plot simulation boundaries
     rad1 = 3.0 # Mm
     rad2 = 9.8 # Mm
-    rad  = 10. ** p.get('logR') * ast.rsun_cm / 1.e8
+    rad  = 10. ** p.get('logR') * nuconst.r_sun / 1.e8
     if not silent:
         print(rad)
 
@@ -8376,7 +8371,6 @@ def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153)
     array
         array with vectors [radius, mass, energy estimate]
     '''
-    G_code = ast.grav_const/1e-3
 
     r = yprof.get('Y', fname = 0, resolution = 'l')
     rho = yprof.get('Rho', fname = 0, resolution = 'l')
@@ -8477,7 +8471,7 @@ def get_mesa_time_evo(mesa_path,mesa_logs,t_end,save = False):
         L = 10.**p.get('logL')[idxu:idxl]
         epsgrav = p.get('eps_grav')[idxu:idxl]
         peakL_Lsun = np.max(L)/1.e10
-        peakL = peakL_Lsun*1.e10*ast.lsun_erg_s/1.e44
+        peakL = peakL_Lsun*1.e10*nuconst.l_sun/1.e44
         peakepsgrav = np.max(epsgrav)
         ipL = L.argmax()
         mu = p.get('mu')[idxu:idxl]
@@ -8485,10 +8479,10 @@ def get_mesa_time_evo(mesa_path,mesa_logs,t_end,save = False):
             itop = np.where(mt[:ipL]!=1)[0][-1]
         except:
             continue
-        rtop = rad[:ipL][itop]*ast.rsun_cm/1.e8
+        rtop = rad[:ipL][itop]*nuconst.r_sun/1.e8
         mtop = mass[itop]
         ibot = np.where(mt==1)[0][-1]
-        rbot = rad[ibot]*ast.rsun_cm/1.e8
+        rbot = rad[ibot]*nuconst.r_sun/1.e8
         mbot = mass[ibot]
         mu = mu[int((itop+ibot)/2)]
         # time from end of core O burning
@@ -8728,14 +8722,14 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
     Dav = (1./3.) * vav * alpha * Hp
 
     p=ms.mesa_profile(dir+'/LOGS',model)
-    rm = p.get('radius') * ast.rsun_cm / 1.e8
+    rm = p.get('radius') * nuconst.r_sun / 1.e8
     idx = np.abs(rm-rtop).argmin()
     rm = rm[idx:]
     Dm = p.get('log_mlt_D_mix')
     Dm = Dm[idx:]
 
     v_mlt = 10.**p.get('log_conv_vel')[idx:]
-    Hpmes = p.get('pressure_scale_height')[idx:]*ast.rsun_cm
+    Hpmes = p.get('pressure_scale_height')[idx:]*nuconst.r_sun
     Davmes = (1./3.) * v_mlt * np.minimum(alpha * Hpmes,rtop*1.e8-rm*1.e8)
 
     Dav2 = (1./3.) * vav * np.minimum(alpha * Hp,rtop*1.e8-r*1.e8)
@@ -9508,7 +9502,7 @@ class RprofSet(PPMtools):
                 m_ir[i] = np.sum(dm[0:(idx_top + 1)])
 
         # fc = fit coefficients
-        m_ir *= 1e27/ast.msun_g
+        m_ir *= 1e27/nuconst.m_sun
         m_ir_fc = np.polyfit(time, m_ir, 1)
         m_ir_fit = m_ir_fc[0]*timelong + m_ir_fc[1]
         if integrate_upwards:

@@ -8,17 +8,17 @@ FH, 20140907
 OC, 20180414 , 20190211
 '''
 from nugridpy import mesa as ms
-from nugridpy import astronomy as ast
+import nugridpy.constants
 from ppmpy import ppm
 import numpy as np
 import sys
 import re
 from nugridpy.ascii_table import readTable
 
-G_code = ast.grav_const*1000
-a_cgs  = ast.radiation_constant
+G_code = ppm.G_code
+a_cgs  = nugridpy.constants.radiation_const
 a_code = a_cgs * 10**17
-R_cgs  = ast.boltzmann_constant*ast.avogadro_constant
+R_cgs  = nugridpy.constants.boltzmann_const*nugridpy.constants.avogadro_const
 R_code = R_cgs /1.0e7
 
 
@@ -70,8 +70,7 @@ def Tppm(p_ppm,rho_ppm, airmu):
     p_ppm is the total pressure
     rho_ppm is the density of the convective fluid, Rho_conv
     '''
-    Rgasconst = ast.boltzmann_constant*ast.avogadro_constant/1e7
-    amuairbyR = airmu / Rgasconst
+    amuairbyR = airmu / R_code
     T9 = amuairbyR * p_ppm / rho_ppm
     return T9
 
@@ -91,8 +90,7 @@ def Pppm(T9,rho_ppm,mu):
     p_ppm   total pressure
     '''
     
-    Rgasconst = ast.boltzmann_constant*ast.avogadro_constant/1e7 
-    mubyR = mu / Rgasconst
+    mubyR = mu / R_code
     p_ppm = T9 *rho_ppm / mubyR 
     return p_ppm
 
@@ -351,7 +349,7 @@ def get_burning_coeffs(mesa_prof, r0, iso_fuel):
     'pb207','pb208','bi209','th232','u235 ','u238 ')
     stable_isotopes = [iso.strip() for iso in stable_isotopes]
 
-    r = (ast.rsun_cm/1.e8)*mesa_prof.get('radius')
+    r = (nugridpy.constants.r_sun/1.e8)*mesa_prof.get('radius')
     idx0 = np.argmin(np.abs(r - r0))
     r0 = r[idx0]
 
