@@ -16,7 +16,7 @@ import re
 from nugridpy.ascii_table import readTable
 
 G_code = ppm.G_code
-a_cgs  = nugridpy.constants.radiation_const
+a_cgs  = nugridpy.constants.rad_const
 a_code = a_cgs * 10**17
 R_cgs  = nugridpy.constants.boltzmann_const*nugridpy.constants.avogadro_const
 R_code = R_cgs /1.0e7
