@@ -1051,6 +1051,15 @@ class PPMtools:
         # Convert the Lagrangian diffusion coefficient sigma to an Eulerian
         # diffusion coefficient D. The way we define r4rho2 may matter here.
         D = sigma/(16.*np.pi**2*r4rho2)
+        if fit_rlim is not None:
+            i0 = np.argmin(np.abs(r - fit_rlim[0]))
+            i1 = np.argmin(np.abs(r - fit_rlim[1]))
+            r_fit = r[i1:i0+1]
+            D_data = D[i1:i0+1]
+            fit_coeffs = np.polyfit(r_fit[D_data > 0], \
+                        np.log(D_data[D_data > 0]), 1)
+            D_fit = np.exp(r_fit*fit_coeffs[0] + fit_coeffs[1])
+            f_CBM = -2./(fit_coeffs[0]*Hp[i0])
 
         if show_plots:
             var_lbl = var
@@ -1163,19 +1172,12 @@ class PPMtools:
             ifig=ifig0+2; pl.close(ifig); fig=pl.figure(ifig)
             ax1 = fig.gca()
             lns = []
+            # fit_rlim was here, FH moved it to before this plot section so
+            # that f parameters can be returned even if show_plots = False
             if fit_rlim is not None:
-                i0 = np.argmin(np.abs(r - fit_rlim[0]))
-                i1 = np.argmin(np.abs(r - fit_rlim[1]))
-                r_fit = r[i1:i0+1]
-                D_data = D[i1:i0+1]
-                fit_coeffs = np.polyfit(r_fit[D_data > 0], \
-                            np.log(D_data[D_data > 0]), 1)
-                D_fit = np.exp(r_fit*fit_coeffs[0] + fit_coeffs[1])
-                f_CBM = -2./(fit_coeffs[0]*Hp[i0])
                 lbl = r'f$_\mathrm{{CBM}}$ = {:.3f}'.format(f_CBM)
                 lns += ax1.semilogy(r_fit, 1e16*D_fit, '-', color='g', \
-                            lw=4., label=lbl)
-
+                            lw=4., label=lbl)            
             lns += ax1.semilogy(r, 1e16*D, '-', color='k', label='D > 0')
             lns += ax1.semilogy(r, -1e16*D, '--', color='k', label='D < 0')
             if rlim is not None:
@@ -1211,14 +1213,14 @@ class PPMtools:
             ncol = 2 if plot_var else 1
             pl.legend(lns, lbls, loc=0, ncol=ncol)
 
-            if fit_rlim is not None:
-                res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
-                 'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
-                 'D':1.e16*D, 'f_CBM':f_CBM}
-            else:
-                res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
-                 'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
-                 'D':1.e16*D}
+        if fit_rlim is not None:
+            res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
+             'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
+             'D':1.e16*D, 'f_CBM':f_CBM}
+        else:
+            res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
+             'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
+             'D':1.e16*D}
         return res
 
     def bound_rad(self, cycles, r_min, r_max, var='ut', \
