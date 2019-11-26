@@ -78,7 +78,7 @@ from matplotlib import gridspec
 import nugridpy.mesa as ms
 import os
 import re
-import nugridpy.constants as nuconst
+import nugridpy.astronomy as ast
 import scipy.interpolate
 import scipy.stats
 from scipy import optimize
@@ -92,9 +92,6 @@ import time
 import glob
 from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
-
-# The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
-G_code = nuconst.grav_const*1000.
 
 # from rprofile import rprofile_reader
 
@@ -296,12 +293,6 @@ class PPMtools:
         # This sets which method computes which quantity.
         self.__compute_methods = {'enuc_C12pg':self.compute_enuc_C12pg, \
                                   'Hp':self.compute_Hp, \
-                                  'nabla_rho':self.compute_nabla_rho, \
-                                  'nabla_rho_ad':self.compute_nabla_rho_ad, \
-                                  'prad':self.compute_prad, \
-                                  'pgas_by_ptot':self.compute_pgas_by_ptot, \
-                                  'g':self.compute_g, \
-                                  'N2':self.compute_N2, \
                                   'm':self.compute_m, \
                                   'mt':self.compute_mt, \
                                   'r4rho2':self.compute_r4rho2, \
@@ -461,96 +452,6 @@ class PPMtools:
 
         Hp = np.abs(cdiff(r))/(np.abs(cdiff(np.log(p))) + 1e-100)
         return Hp
-
-    def compute_nabla_rho(self, fname, num_type='ndump'):
-        if self.__isyprofile:
-            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
-            p = self.get('P', fname, num_type=num_type, resolution='l')
-
-        if self.__isRprofSet:
-            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
-                  self.get('Rho1', fname, num_type=num_type, resolution='l')
-            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
-                self.get('P1', fname, num_type=num_type, resolution='l')
-
-        nabla_rho = cdiff(np.log(rho))/(cdiff(np.log(p)) + 1e-100)
-        return nabla_rho
-
-    def compute_nabla_rho_ad(self, fname, num_type='ndump', radeos=True):
-        if radeos:
-            beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
-            gamma3 = 1. + (2./3.)*(4. - 3.*beta)/(8. - 7.*beta)
-            gamma1 = beta + (4. - 3.*beta)*(gamma3 - 1.)
-            nabla_rho_ad = 1./gamma1
-        else:
-            if self.__isyprofile:
-                r = self.get('Y', fname, num_type=num_type, resolution='l')
-
-            if self.__isRprofSet:
-                r = self.get('R', fname, num_type=num_type, resolution='l')
-
-            nabla_rho_ad = (3./5.)*np.ones(len(r))
-
-        return nabla_rho_ad
-
-    def compute_prad(self, fname, num_type='ndump'):
-        if self.__isyprofile:
-            print('compute_prad() not implemented for YProfile input.')
-            return None
-
-        if self.__isRprofSet:
-            T9 = self.get('T9', fname, num_type=num_type, resolution='l')
-
-        # rad_const = 7.56577e-15 erg/cm^3/K^4
-        rad_const = 7.56577e-15/1e43*(1e8)**3*(1e9)**4
-        prad = (rad_const/3.)*T9**4
-        return prad
-
-    def compute_pgas_by_ptot(self, fname, num_type='ndump'):
-        if self.__isyprofile:
-            print('compute_pgas_by_ptot() not implemented for YProfile input.')
-            return None
-
-        if self.__isRprofSet:
-            ptot = self.get('P0', fname, num_type=num_type, resolution='l') + \
-                   self.get('P1', fname, num_type=num_type, resolution='l')
-
-        prad = self.compute_prad(fname, num_type=num_type)
-        pgas = ptot - prad
-        return pgas/ptot
-
-    def compute_g(self, fname, num_type='ndump'):
-        if self.__isyprofile:
-            r = self.get('Y', fname, num_type=num_type, resolution='l')
-
-        if self.__isRprofSet:
-            r = self.get('R', fname, num_type=num_type, resolution='l')
-       
-        m = self.compute_m(fname, num_type=num_type)
-        print('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'
-              'This will not work for shell setups and wrong gravity will be returned.')
-
-        g = G_code*m/r**2
-        return g
-    
-    def compute_N2(self, fname, num_type='ndump', radeos=True):
-        if self.__isyprofile:
-            if radeos:
-                print('radeos option not implemented for YProfile input.')
-                return None
-            r = self.get('Y', fname, num_type=num_type, resolution='l')
-
-        if self.__isRprofSet:
-            r = self.get('R', fname, num_type=num_type, resolution='l')
-       
-        g = self.compute_g(fname, num_type=num_type)
-        Hp = self.compute_Hp(fname, num_type=num_type)
-        nabla_rho = self.compute_nabla_rho(fname, num_type=num_type)
-        nabla_rho_ad = self.compute_nabla_rho_ad(fname, num_type=num_type,
-                       radeos=radeos)
-        N2 = (g/Hp)*(nabla_rho - nabla_rho_ad)
-
-        return N2
 
     def compute_m(self, fname, num_type='ndump'):
         if self.__isyprofile:
@@ -776,6 +677,8 @@ class PPMtools:
         var_list = any2list(var)
         avg_profs = {}
 
+        # The grid is assumed to be static, so we get the radial
+        # scale only once at fname_list[0].
         if self.__isyprofile:
             radius_variable = 'Y'
             r = self.get(radius_variable, fname_list[0], resolution='l')
@@ -786,9 +689,6 @@ class PPMtools:
             r = self.get(radius_variable, fname_list[0], resolution='l')
             rp = self.get_dump(fname_list[0])
             gettable_variables = rp.get_anyr_variables()
-
-        if radius_variable not in var_list:
-            var_list.append(radius_variable)
 
         computable_quantities = self.__computable_quantities
 
@@ -814,6 +714,8 @@ class PPMtools:
 
         for v in var_list:
             avg_profs[v] = np.zeros(data_slice[-1] - data_slice[0] + 1)
+            avg_profs[radius_variable] = np.zeros(data_slice[-1] - \
+                                                  data_slice[0] + 1)
 
             for i, fnm in enumerate(fname_list):
                 if func is not None:
@@ -828,14 +730,18 @@ class PPMtools:
                          format(v))
                     break
 
+                rr = r
                 if lagrangian:
                     # Interpolate everything on the initial mass scale.
                     mt = self.compute('mt', fnm, num_type=num_type)
                     data = interpolate(mt, data, mt0)
+                    rr = interpolate(mt, rr, mt0)
 
                 avg_profs[v] += data
+                avg_profs[radius_variable] += rr
 
             avg_profs[v] /= float(len(fname_list))
+            avg_profs[radius_variable] /= float(len(fname_list))
 
         return avg_profs
 
@@ -1051,15 +957,6 @@ class PPMtools:
         # Convert the Lagrangian diffusion coefficient sigma to an Eulerian
         # diffusion coefficient D. The way we define r4rho2 may matter here.
         D = sigma/(16.*np.pi**2*r4rho2)
-        if fit_rlim is not None:
-            i0 = np.argmin(np.abs(r - fit_rlim[0]))
-            i1 = np.argmin(np.abs(r - fit_rlim[1]))
-            r_fit = r[i1:i0+1]
-            D_data = D[i1:i0+1]
-            fit_coeffs = np.polyfit(r_fit[D_data > 0], \
-                        np.log(D_data[D_data > 0]), 1)
-            D_fit = np.exp(r_fit*fit_coeffs[0] + fit_coeffs[1])
-            f_CBM = -2./(fit_coeffs[0]*Hp[i0])
 
         if show_plots:
             var_lbl = var
@@ -1071,7 +968,7 @@ class PPMtools:
             ax1 = fig.gca()
             lns = []
             plt_func = ax1.semilogx if logmt else ax1.plot
-            lns += plt_func((1e27/nuconst.m_sun)*mt, (1e27/nuconst.m_sun)*flux_iph, '-', \
+            lns += plt_func((1e27/ast.msun_g)*mt, (1e27/ast.msun_g)*flux_iph, '-', \
                             color='k', label=r'flux')
             ax1.ticklabel_format(style='sci',scilimits=(0,0),axis='y')
             if mtlim is not None:
@@ -1090,9 +987,9 @@ class PPMtools:
                 elif logvar:
                         plt_func = ax2.semilogy
 
-                lns += plt_func((1e27/nuconst.m_sun)*mt, x1, '-', color='b', \
+                lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
-                lns += plt_func((1e27/nuconst.m_sun)*mt, x2, '--', color='r', \
+                lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
 
                 if mtlim is not None:
@@ -1100,7 +997,7 @@ class PPMtools:
                 if varlim is not None:
                     ax2.set_ylim(varlim)
                 else:
-                    ax2.set_ylim((None, None))
+                    ax2.set_ylim((0., 1.))
                 ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
                 ax2.set_ylabel(var_lbl)
 
@@ -1127,9 +1024,9 @@ class PPMtools:
             ax1 = fig.gca()
             lns = []
             plt_func = ax1.loglog if logmt else ax1.semilogy
-            lns += plt_func((1e27/nuconst.m_sun)*mt, 1e54*sigma, '-', \
+            lns += plt_func((1e27/ast.msun_g)*mt, 1e54*sigma, '-', \
                             color='k', label=r'$\sigma$ > 0')
-            lns += plt_func((1e27/nuconst.m_sun)*mt, -1e54*sigma, '--', \
+            lns += plt_func((1e27/ast.msun_g)*mt, -1e54*sigma, '--', \
                             color='k', label=r'$\sigma$ < 0')
             if mtlim is not None:
                 ax1.set_xlim(mtlim)
@@ -1149,9 +1046,9 @@ class PPMtools:
                 elif logvar:
                         plt_func = ax2.semilogy
 
-                lns += plt_func((1e27/nuconst.m_sun)*mt, x1, '-', color='b', \
+                lns += plt_func((1e27/ast.msun_g)*mt, x1, '-', color='b', \
                                 label=var_lbl+r'$_1$')
-                lns += plt_func((1e27/nuconst.m_sun)*mt, x2, '--', color='r', \
+                lns += plt_func((1e27/ast.msun_g)*mt, x2, '--', color='r', \
                                 label=var_lbl+r'$_2$')
 
                 if mtlim is not None:
@@ -1159,7 +1056,7 @@ class PPMtools:
                 if varlim is not None:
                     ax2.set_ylim(varlim)
                 else:
-                    ax2.set_ylim((None, None))
+                    ax2.set_ylim((0., 1.))
                 ax2.set_xlabel(r'm$_\mathrm{top}$ / M$_\odot$')
                 ax2.set_ylabel(var_lbl)
 
@@ -1172,12 +1069,19 @@ class PPMtools:
             ifig=ifig0+2; pl.close(ifig); fig=pl.figure(ifig)
             ax1 = fig.gca()
             lns = []
-            # fit_rlim was here, FH moved it to before this plot section so
-            # that f parameters can be returned even if show_plots = False
             if fit_rlim is not None:
+                i0 = np.argmin(np.abs(r - fit_rlim[0]))
+                i1 = np.argmin(np.abs(r - fit_rlim[1]))
+                r_fit = r[i1:i0+1]
+                D_data = D[i1:i0+1]
+                fit_coeffs = np.polyfit(r_fit[D_data > 0], \
+                            np.log(D_data[D_data > 0]), 1)
+                D_fit = np.exp(r_fit*fit_coeffs[0] + fit_coeffs[1])
+                f_CBM = -2./(fit_coeffs[0]*Hp[i0])
                 lbl = r'f$_\mathrm{{CBM}}$ = {:.3f}'.format(f_CBM)
                 lns += ax1.semilogy(r_fit, 1e16*D_fit, '-', color='g', \
-                            lw=4., label=lbl)            
+                            lw=4., label=lbl)
+
             lns += ax1.semilogy(r, 1e16*D, '-', color='k', label='D > 0')
             lns += ax1.semilogy(r, -1e16*D, '--', color='k', label='D < 0')
             if rlim is not None:
@@ -1204,7 +1108,7 @@ class PPMtools:
                 if varlim is not None:
                     ax2.set_ylim(varlim)
                 else:
-                    ax2.set_ylim((None, None))
+                    ax2.set_ylim((0., 1.))
                 ax2.set_xlabel('r / Mm')
                 ax2.set_ylabel(var_lbl)
 
@@ -1213,14 +1117,9 @@ class PPMtools:
             ncol = 2 if plot_var else 1
             pl.legend(lns, lbls, loc=0, ncol=ncol)
 
-        if fit_rlim is not None:
-            res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
-             'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
-             'D':1.e16*D, 'f_CBM':f_CBM}
-        else:
-            res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
-             'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
-             'D':1.e16*D}
+        res = {'t1':t1, 't2':t2, 'mt':mt, 'r1':r1, 'r2':r2, 'Hp1':Hp1, \
+               'Hp2':Hp2, 'x1':x1, 'x2':x2, 'xsrc':xsrc, 'sigma':sigma, \
+               'D':D}
         return res
 
     def bound_rad(self, cycles, r_min, r_max, var='ut', \
@@ -1534,10 +1433,10 @@ class PPMtools:
         print('{:d}/{:d} cycles processed.'.format(i+1, len(cycles)))
         print('Done.')
 
-        mir *= 1e27/nuconst.m_sun
+        mir *= 1e27/ast.msun_g
         # mb = mass burnt
         mb = integrate.cumtrapz(burn_rate, x=t, initial=0.)
-        mb *= 1e27/nuconst.m_sun
+        mb *= 1e27/ast.msun_g
         mtot = mir + mb
 
         fit_idx0 = 0
@@ -2185,6 +2084,9 @@ class yprofile(DataPlot, PPMtools):
                     missing_args.append(this_arg)
 
             return missing_args
+
+        # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
+        G_code = ast.grav_const/1e-3
 
         nabla_ad = 0.4
 
@@ -3816,6 +3718,8 @@ class yprofile(DataPlot, PPMtools):
         '''
 
         # the whole calculation is done in code units
+        # the unit of G in the code is 10^{-3} g cm^3 s^{-2}
+        G_code = ast.grav_const/1e-3
 
         if fname1 < 0 or fname1 > np.max(list(self.ndumpDict.keys())):
             raise IOError("fname1 out of range.")
@@ -5458,7 +5362,7 @@ class yprofile(DataPlot, PPMtools):
         X_H = fkcld*1./AtomicNocld
         mdot_L = 1.*amu*ndot/X_H
         dt = cdiff(t)
-        m_HHe_burnt = (1e27/nuconst.m_sun)*np.cumsum(mdot_L*dt)
+        m_HHe_burnt = (1e27/ast.msun_g)*np.cumsum(mdot_L*dt)
 
         m_HHe_present = self.entrainment_rate(dumps,r1,r2, var='vxz', criterion='min_grad', offset=-1., \
                         integrate_both_fluids=False, show_output=False, return_time_series=True)
@@ -5577,7 +5481,7 @@ class yprofile(DataPlot, PPMtools):
         ndot = 2.*L_C12C12/(Q*1.60218e-6/1e43)
         mdot_L = 12.*amu*ndot/X_C12
 
-        m_HHe_burnt = (1e27/nuconst.m_sun)*integrate.cumtrapz(mdot_L, x=t, initial=0.)
+        m_HHe_burnt = (1e27/ast.msun_g)*integrate.cumtrapz(mdot_L, x=t, initial=0.)
 
         m_HHe_present = self.entrainment_rate(dumps,r1,r2, var='vxz', criterion='min_grad', offset=-1., \
                             integrate_both_fluids=False, show_output=False, return_time_series=True)
@@ -5730,7 +5634,7 @@ class yprofile(DataPlot, PPMtools):
                 m_ir[i] = np.sum(dm[0:(idx_top + 1)])
 
         # fc = fit coefficients
-        m_ir *= 1e27/nuconst.m_sun
+        m_ir *= 1e27/ast.msun_g
         m_ir_fc = np.polyfit(time, m_ir, 1)
         m_ir_fit = m_ir_fc[0]*timelong + m_ir_fc[1]
         if integrate_upwards:
@@ -7120,9 +7024,9 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
     L_He = 2.25*2.98384E-03
 
     ifig = 1; pl.close(ifig); pl.figure(ifig)
-    pl.semilogy(t/60., (1e43/nuconst.l_sun)*L_H_yp, color = cb(6), \
+    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_yp, color = cb(6), \
                  zorder = 2, label = r'L$_\mathrm{H}$')
-    pl.axhline((1e43/nuconst.l_sun)*L_He, ls = '--', color = cb(4), \
+    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
                 zorder = 1, label = r'L$_\mathrm{He}$')
     pl.xlabel('t / min')
     pl.ylabel(r'L / L$_\odot$')
@@ -7132,11 +7036,11 @@ def plot_luminosity(L_H_yp,L_H_rp,t):
     pl.tight_layout()
 
     ifig = 2; pl.close(ifig); pl.figure(ifig)
-    pl.semilogy(t/60., (1e43/nuconst.l_sun)*L_H_yp, color = cb(5), \
+    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_yp, color = cb(5), \
                  lw = 2., zorder = 2, label = r'L$_\mathrm{H,yp}$')
-    pl.semilogy(t/60., (1e43/nuconst.l_sun)*L_H_rp, color = cb(6), \
+    pl.semilogy(t/60., (1e43/ast.lsun_erg_s)*L_H_rp, color = cb(6), \
                  zorder = 4, label = r'L$_\mathrm{H,rp}$')
-    pl.axhline((1e43/nuconst.l_sun)*L_He, ls = '--', color = cb(4), \
+    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
                 zorder = 1, label = r'L$_\mathrm{He}$')
     pl.xlabel('t / min')
     pl.ylabel(r'L / L$_\odot$')
@@ -7219,7 +7123,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airm
                 k += 1
 
     pl.close(ifig); pl.figure(ifig)
-    pl.axhline((1e43/nuconst.l_sun)*L_He, ls = '--', color = cb(4), \
+    pl.axhline((1e43/ast.lsun_erg_s)*L_He, ls = '--', color = cb(4), \
         label = r'L$_\mathrm{He}$')
 
     markers = ['o','v', '^', '<', '>', 's']
@@ -7229,7 +7133,7 @@ def L_H_L_He_comparison(cases, sparse = 1, ifig=101,L_He = 2.25*2.98384E-03,airm
 
     for this_case in cases:
         lbl = r'{:s} $\left({:d}^3\right)$'.format(this_case, res[this_case])
-        pl.semilogy(t[this_case]/60., (1e43/nuconst.l_sun)*L_H[this_case], \
+        pl.semilogy(t[this_case]/60., (1e43/ast.lsun_erg_s)*L_H[this_case], \
             ls = '-', color = cb(colours[i]), marker= markers[j], \
             label = this_case)
         i+=1
@@ -8116,6 +8020,7 @@ def get_N2(yp, dump):
         Brunt Vaisala frequency [rad^2 s^-1]
     '''
 
+    G_code = ast.grav_const/1e-3
     nabla_ad = 0.4
 
     R_bot = float(yp.hattrs['At base of the convection zone R'])
@@ -8179,7 +8084,7 @@ def plot_N2(case, dump1, dump2, lims1, lims2,mesa_logs_path, mesa_model_num):
     yp = yprofile(os.path.join(ppm_path + case))
     mesa_A_prof = ms.mesa_profile(mesa_logs_path, mesa_model_num)
     # convert the mesa variables to code units
-    mesa_A_r = (nuconst.r_sun/1e8)*mesa_A_prof.get('radius')
+    mesa_A_r = (ast.rsun_cm/1e8)*mesa_A_prof.get('radius')
     mesa_A_N2 = mesa_A_prof.get('brunt_N2')
     mesa_A_N2_mu = mesa_A_prof.get('brunt_N2_composition_term')
     mesa_A_N2_T = mesa_A_prof.get('brunt_N2_structure_term')
@@ -8294,7 +8199,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
     # plot simulation boundaries
     rad1 = 3.0 # Mm
     rad2 = 9.8 # Mm
-    rad  = 10. ** p.get('logR') * nuconst.r_sun / 1.e8
+    rad  = 10. ** p.get('logR') * ast.rsun_cm / 1.e8
     if not silent:
         print(rad)
 
@@ -8373,6 +8278,7 @@ def get_heat_source(yprof, radbase = 4.1297, dlayerbot = 0.5, totallum = 20.153)
     array
         array with vectors [radius, mass, energy estimate]
     '''
+    G_code = ast.grav_const/1e-3
 
     r = yprof.get('Y', fname = 0, resolution = 'l')
     rho = yprof.get('Rho', fname = 0, resolution = 'l')
@@ -8473,7 +8379,7 @@ def get_mesa_time_evo(mesa_path,mesa_logs,t_end,save = False):
         L = 10.**p.get('logL')[idxu:idxl]
         epsgrav = p.get('eps_grav')[idxu:idxl]
         peakL_Lsun = np.max(L)/1.e10
-        peakL = peakL_Lsun*1.e10*nuconst.l_sun/1.e44
+        peakL = peakL_Lsun*1.e10*ast.lsun_erg_s/1.e44
         peakepsgrav = np.max(epsgrav)
         ipL = L.argmax()
         mu = p.get('mu')[idxu:idxl]
@@ -8481,10 +8387,10 @@ def get_mesa_time_evo(mesa_path,mesa_logs,t_end,save = False):
             itop = np.where(mt[:ipL]!=1)[0][-1]
         except:
             continue
-        rtop = rad[:ipL][itop]*nuconst.r_sun/1.e8
+        rtop = rad[:ipL][itop]*ast.rsun_cm/1.e8
         mtop = mass[itop]
         ibot = np.where(mt==1)[0][-1]
-        rbot = rad[ibot]*nuconst.r_sun/1.e8
+        rbot = rad[ibot]*ast.rsun_cm/1.e8
         mbot = mass[ibot]
         mu = mu[int((itop+ibot)/2)]
         # time from end of core O burning
@@ -8724,14 +8630,14 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
     Dav = (1./3.) * vav * alpha * Hp
 
     p=ms.mesa_profile(dir+'/LOGS',model)
-    rm = p.get('radius') * nuconst.r_sun / 1.e8
+    rm = p.get('radius') * ast.rsun_cm / 1.e8
     idx = np.abs(rm-rtop).argmin()
     rm = rm[idx:]
     Dm = p.get('log_mlt_D_mix')
     Dm = Dm[idx:]
 
     v_mlt = 10.**p.get('log_conv_vel')[idx:]
-    Hpmes = p.get('pressure_scale_height')[idx:]*nuconst.r_sun
+    Hpmes = p.get('pressure_scale_height')[idx:]*ast.rsun_cm
     Davmes = (1./3.) * v_mlt * np.minimum(alpha * Hpmes,rtop*1.e8-rm*1.e8)
 
     Dav2 = (1./3.) * vav * np.minimum(alpha * Hp,rtop*1.e8-r*1.e8)
@@ -9082,14 +8988,14 @@ class RprofSet(PPMtools):
 
         rprof_files = [os.path.basename(rprof_files[i]) \
                        for i in range(len(rprof_files))]
-
+        
         # run_id is what is before the last dash, check that it is
         # followed by 4 numeric characters
         _ind   = rprof_files[0].rindex('-')                # index of last dash
-        self.__run_id = rprof_files[0][0:_ind]
+        self.__run_id = rprof_files[0][0:_ind] 
 
         for i in range(len(rprof_files)):
-            _ind   = rprof_files[i].rindex('-')
+            _ind   = rprof_files[i].rindex('-')   
             if rprof_files[i][0:_ind] == self.__run_id:     # record dump number
                 dump_number = rprof_files[i][_ind+1:_ind+5]
                 if dump_number.isnumeric():
@@ -9104,7 +9010,7 @@ class RprofSet(PPMtools):
                        format(self.__dir_name, self.__run_id)
                 self.__messenger.warning(wrng)
                 continue
-
+        
         self.__dumps = sorted(self.__dumps)
         msg = "{:d} rprof files found in '{:s}.\n".format(len(self.__dumps), \
               self.__dir_name)
@@ -9262,8 +9168,8 @@ class RprofSet(PPMtools):
                      dump2=widgets.IntSlider(min=dumpmin,\
                 max=dumpmax,step=1,value=int(dumpmax-0.05*(dumpmax-dumpmean))),\
                      ything=things_list)
-
-
+        
+        
     def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
                 xxlim=None, yylim=None, logy=False,newfig=True,idn=0):
         '''
@@ -9280,7 +9186,7 @@ class RprofSet(PPMtools):
             dump number or list of dump numbers
 
         num_type : string
-
+            
         xthing : string
           name of x quantity to plot, default is 'R'
 
@@ -9302,7 +9208,7 @@ class RprofSet(PPMtools):
         '''
         if runlabel is None: runlabel = self.__run_id
         # Ensure that dump is list type
-        if type(dump) is not list:
+        if type(dump) is not list: 
             dump=list(dump)
         len_dump = len(dump)
         # Get dump and assign it to a variable
@@ -9310,12 +9216,12 @@ class RprofSet(PPMtools):
 
         # Define resolution and throw errors if they don't match;
         # throw error if ything is not defined
-        if ything in rp.get_hr_variables():
+        if ything in rp.get_hr_variables(): 
             if xthing not in rp.get_hr_variables():
                 print('ERROR: If ything is high resolution xthing must be too.')
                 return
-            res = 'h'
-        elif ything in rp.get_lr_variables():
+            res = 'h'    
+        if ything in rp.get_lr_variables(): 
             if xthing not in rp.get_lr_variables():
                 print('ERROR: If ything is low resolution xthing must be too.')
                 return
@@ -9332,7 +9238,7 @@ class RprofSet(PPMtools):
         for i,thisdump in enumerate(dump):
             xquantity = self.get(xthing,thisdump,resolution=res)
             yquantity = self.get(ything,thisdump,resolution=res)
-            if logy:
+            if logy: 
                 yquantity = np.log10(yquantity)
             pl.plot(xquantity,yquantity,label=runlabel+" dump "+str(thisdump),\
                  color=utils.linestylecb(i+len_dump*idn)[2],\
@@ -9504,7 +9410,7 @@ class RprofSet(PPMtools):
                 m_ir[i] = np.sum(dm[0:(idx_top + 1)])
 
         # fc = fit coefficients
-        m_ir *= 1e27/nuconst.m_sun
+        m_ir *= 1e27/ast.msun_g
         m_ir_fc = np.polyfit(time, m_ir, 1)
         m_ir_fit = m_ir_fc[0]*timelong + m_ir_fc[1]
         if integrate_upwards:
@@ -10615,9 +10521,9 @@ class MomsDataSet:
             self.radial_axis = self._radial_boundary - delta_r/2.
 
             # # construct the bins for computing averages ON radial_axis, these are "right edges"
-            delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
-            radialbins = self.radial_axis + delta_r
-            self.radial_bins = np.insert(radialbins,0,0)
+            # delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+            # radialbins = self.radial_axis + delta_r
+            # self.radial_bins = np.insert(radialbins,0,0)
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self._xc_view = self._xc.view()
@@ -11165,7 +11071,7 @@ class MomsDataSet:
             self._get_mgrid()
 
         # these are not used internally and so we can give them the real grid
-        return self._radius_view.copy(), self._mollweide_theta_view.copy(), self._mollweide_phi_view.copy()
+        return self._mollweide_theta_view.copy(), self._mollweide_phi_view()
 
     def get_mollweide_coordinates(self, theta, phi):
         '''
@@ -11513,23 +11419,26 @@ class MomsDataSet:
 
         # first get our lmax
         if lmax is None:
-
             # I will calculate it
             lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
-
+            
+            # ensure it is an integer
+            lmax = int(lmax)
+            N = 2*(lmax + 1)
+            npoints = N * 2*N
+            
             # radius must be an array for creating an igrid
             radius = np.array([radius])
 
         else:
-
-            # This is from a user, ensure it is an integer
+            # ensure it is an integer
             lmax = int(lmax)
-            N = int(2 * (lmax + 1))
-            npoints = int(N * 2*N)
+            N = 2*(lmax + 1)
+            npoints = N * 2*N
 
             # radius must be an array for creating an igrid
             radius = np.array([radius])
-
+            
         # Now I need to get my grid to interpolate
         igrid, theta_grid, phi_grid = self._sphericalHarmonics_grid(radius , N)
 
@@ -11550,7 +11459,7 @@ class MomsDataSet:
                 return var_interp, theta_grid, phi_grid
             else:
                 return var_interp
-
+        
     def sphericalHarmonics_lmax(self, radius):
         """
         Calculate the maximum l (minimum angular scale) that can be resolved with our moments data
@@ -11585,8 +11494,8 @@ class MomsDataSet:
         """
 
         # using approximation above
-        lmax = int(np.pi * radius / self.moms_gridresolution)
-        N = int(2 * (lmax + 1))
+        lmax = np.pi * radius / self.moms_gridresolution
+        N = 2 * (lmax + 1)
         npoints = int(8 * (lmax + 1)**2)
 
         return lmax, N, npoints
@@ -11892,10 +11801,10 @@ class MomsDataSet2X(MomsDataSet):
             # these are the boundaries, now I need what is my "actual" r value
             self.radial_axis = self._radial_boundary - delta_r/2.
 
-            # construct the bins for computing averages ON radial_axis, these are "right edges"
-            delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
-            radialbins = self.radial_axis + delta_r
-            self.radial_bins = np.insert(radialbins,0,0)
+            # # construct the bins for computing averages ON radial_axis, these are "right edges"
+            # delta_r = (self.radial_axis[1] - self.radial_axis[0])/2.
+            # radialbins = self.radial_axis + delta_r
+            # self.radial_bins = np.insert(radialbins,0,0)
 
             # in some cases, it is more convenient to work with xc[z,y,x] so lets store views
             self._xc_view = self._xc.view()
