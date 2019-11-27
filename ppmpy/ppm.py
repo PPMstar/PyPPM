@@ -8,6 +8,18 @@
 # (c) 2016 - 2018 Robert Andrassy, Jericho O'Connell, Falk Herwig
 # (c) 2018 - 2019 David Stephens, Falk Herwig
 
+
+# updates:
+    
+#     * rp_plot can now plot computable quantities
+#     * rprofgui now can plot computable quantities
+#     * there is a new plot called plot_vrad_prof that makes a plot of all velocity 
+#       components for a given dump, or list of dumps (or times) with km/s y unit
+#       in publication ready format, and print a pdf if requested.
+#     * move 'WARNING: PPMtools.compute_m() integrates mass from r = 0.\n' from 
+#       compute_g to compute_m as it applies to all cases where compute_m is used
+
+    
 """
 ppmpy.ppm
 
@@ -119,6 +131,18 @@ def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
     subprocess.call([link_command],shell=True)
     return data_dir
 
+def index_nearest_value(a,afind):
+    '''Return index of value in a which is closest to afind
+    
+    Parameters
+    ----------
+    
+    a : array
+    afind : scalar
+    '''
+    aabs = abs(a-afind)
+    return where(min(aabs) == aabs)[0][0]
+
 def set_nice_params():
     fsize=14
 
@@ -182,8 +206,8 @@ def prof_compare(cases,ndump=None,yaxis_thing='FV H+He',ifig=None,num_type='ndum
     num_type : string, optional
         Designates how this function acts and how it interprets
         fname.  If numType is 'file', this function will get the
-        desired attribute from that file.  If numType is 'NDump'
-        function will look at the cycle with that nDump.  If
+        desired attribute from that file.  If numType is 'ndump'
+        function will look at the cycle with that ndump.  If
         numType is 'T' or 'time' function will find the _cycle
         with the closest time stamp.  The default is "ndump".
     labels : list, optional
@@ -308,6 +332,7 @@ class PPMtools:
                                   'rhodot_C12pg':self.compute_rhodot_C12pg, \
                                   'T9':self.compute_T9, \
                                   'T9corr':self.compute_T9corr, \
+                                  '|Ur|':self.compute_Ur, \
                                   'Xcld':self.compute_Xcld, \
                                   'Xdot_C12pg':self.compute_Xdot_C12pg}
         self.__computable_quantities = self.__compute_methods.keys()
@@ -462,6 +487,17 @@ class PPMtools:
         Hp = np.abs(cdiff(r))/(np.abs(cdiff(np.log(p))) + 1e-100)
         return Hp
 
+    def compute_Ur(self, fname, num_type='ndump'):
+        if self.__isyprofile:
+            print("Nothing to compute for YProfile ....")
+            return None
+        if self.__isRprofSet:
+            Ut = self.get('|Ut|', fname, num_type=num_type, resolution='l') 
+            U = self.get('|U|', fname, num_type=num_type, resolution='l') 
+        Ur = np.sqrt(U**2 - Ut**2)
+        return Ur
+
+    
     def compute_nabla_rho(self, fname, num_type='ndump'):
         if self.__isyprofile:
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
@@ -527,8 +563,6 @@ class PPMtools:
             r = self.get('R', fname, num_type=num_type, resolution='l')
        
         m = self.compute_m(fname, num_type=num_type)
-        print('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'
-              'This will not work for shell setups and wrong gravity will be returned.')
 
         g = G_code*m/r**2
         return g
@@ -567,6 +601,8 @@ class PPMtools:
 
         # We store everything from the surface to the core.
         m = m[-1] - m
+        print('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'
+              'This will not work for shell setups and wrong gravity will be returned.')
 
         return m
 
@@ -9256,18 +9292,18 @@ class RprofSet(PPMtools):
         dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
         dumpmean = int(2*(-dumpmin + dumpmax)/3.)
         things_list = self.get_dump(dumpmin).get_lr_variables()+\
-                          self.get_dump(dumpmin).get_hr_variables()
+                          self.get_dump(dumpmin).get_hr_variables()+\
+                    self.get_computable_quantities()
         interact(w_plot,dump1=widgets.IntSlider(min=dumpmin,\
                 max=dumpmax,step=1,value=int(dumpmin+0.05*(dumpmean-dumpmin))),\
                      dump2=widgets.IntSlider(min=dumpmin,\
                 max=dumpmax,step=1,value=int(dumpmax-0.05*(dumpmax-dumpmean))),\
-                     ything=things_list)
-
+                     ything=things_list,ifig=fixed(ifig))
 
     def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
                 xxlim=None, yylim=None, logy=False,newfig=True,idn=0):
         '''
-        Plot one thing for a line profile
+        Plot one thing or list for a line profile
 
         Parameters
         ----------
@@ -9279,14 +9315,17 @@ class RprofSet(PPMtools):
         dump : integer or list of integers
             dump number or list of dump numbers
 
-        num_type : string
+        num_type: string (case insensitive)
+            If 'ndump' fname is expected to be a dump number (integer).
+            If 't' fname is expected to be a time value in seconds; run           
+            history file (.hstry) must be available to search by time value.
 
         xthing : string
           name of x quantity to plot, default is 'R'
 
         runlabel : str
            label of this rp_set/case to appear in legend, defaults
-           to 'run1'
+           to run_id pulled from rprof header
 
         xxlim, yylim : float
            x and y lims, tuple
@@ -9303,13 +9342,14 @@ class RprofSet(PPMtools):
         if runlabel is None: runlabel = self.__run_id
         # Ensure that dump is list type
         if type(dump) is not list:
-            dump=list(dump)
+            dump = [dump]
         len_dump = len(dump)
         # Get dump and assign it to a variable
-        rp = self.get_dump(dump[0])
+        rp = self.get_dump(self.get_dump_list()[0])
 
         # Define resolution and throw errors if they don't match;
         # throw error if ything is not defined
+        ything_computable = False
         if ything in rp.get_hr_variables():
             if xthing not in rp.get_hr_variables():
                 print('ERROR: If ything is high resolution xthing must be too.')
@@ -9319,6 +9359,13 @@ class RprofSet(PPMtools):
             if xthing not in rp.get_lr_variables():
                 print('ERROR: If ything is low resolution xthing must be too.')
                 return
+            res = 'l'
+        elif ything in self.get_computable_quantities():
+            if xthing not in rp.get_lr_variables():
+                # it seems all computable things are low res
+                print('ERROR: If ything is computable xthing must be low res.')
+                return
+            ything_computable = True
             res = 'l'
         else:
             print("ERROR: Don't know ything")
@@ -9330,11 +9377,17 @@ class RprofSet(PPMtools):
             pl.close(ifig)
             pl.figure(ifig)
         for i,thisdump in enumerate(dump):
-            xquantity = self.get(xthing,thisdump,resolution=res)
-            yquantity = self.get(ything,thisdump,resolution=res)
-            if logy:
-                yquantity = np.log10(yquantity)
-            pl.plot(xquantity,yquantity,label=runlabel+" dump "+str(thisdump),\
+            xquantity = self.get(xthing,thisdump,num_type=num_type,resolution=res)
+            if ything_computable:
+                yquantity = self.compute(ything,thisdump,num_type=num_type)
+            else:
+                yquantity = self.get(ything,thisdump,num_type=num_type,resolution=res)
+            if logy: yquantity = np.log10(yquantity)
+            if num_type == 't':
+                time_thing = " t/[min]="; d_num = thisdump/60.
+            else:
+                time_thing = " dump ="; d_num = thisdump
+            pl.plot(xquantity,yquantity,label=runlabel+time_thing+str(d_num),\
                  color=utils.linestylecb(i+len_dump*idn)[2],\
                     linestyle=utils.linestylecb(i+len_dump*idn)[0],\
                  marker=utils.linestylecb(i+len_dump*idn)[1],\
@@ -9357,6 +9410,8 @@ class RprofSet(PPMtools):
 
     def plot_FV(self, fname, num_type='NDump', resolution='l', idec=3, xxlim=None, \
                 yylim=None,legend='', ylog=True):
+        print("Warning: plot_FV is deprecated. Use rp_plot instead.")
+        return
         np.warnings.filterwarnings('ignore')
         R = self.get('R', fname=fname, num_type=num_type, resolution='l')
         FV = self.get('FV', fname=fname, num_type=num_type, resolution='l')
@@ -9375,6 +9430,10 @@ class RprofSet(PPMtools):
 
     def plot_A(self, fname, num_type='NDump', resolution='l', idec=3,xxlim=None, \
                yylim=None, legend=''):
+        print("Warning: plot_FV is deprecated. Use rp_plot instead.")
+        print("(Method not yet deleted, but marked for deleation.)")
+        return
+
         R = self.get('R', fname=fname, num_type=num_type, resolution='l')
         A = self.get('A', fname=fname, num_type=num_type, resolution='l')
         t = self.get('t', fname=fname, num_type=num_type)
@@ -9387,6 +9446,72 @@ class RprofSet(PPMtools):
         pl.ylabel('A')
         pl.legend(loc=2)
         pl.tight_layout()
+
+    def plot_vrad_prof(self,fname,num_type='NDump', vel_comps=['|U|','|Ut|','|Ur|'],\
+                       plot_title=None,ifig=102,save_fig=True,logy=True,close_fig=True,\
+                      id=0):
+        '''Plot velocity profiles for one dump
+        
+        fname : int, list
+          dump or list of dumps or times to be plotted
+          
+        num_type : str
+          defaults to 'NDump' for fname to be dump number, set to
+          't' for fname to be time in s
+
+        vel_comps : list of str
+          list of velocity components to be plotted
+        
+        '''
+        
+        if type(fname) is not list:
+            fname = [fname]
+        if close_fig: pl.close(ifig)
+        ymax = 0.
+        for j,dump in enumerate(fname):
+            Ut = self.get('|Ut|',dump,num_type=num_type)
+            U = self.get('|U|',dump,num_type=num_type)
+            Ur = np.sqrt(U**2 - Ut**2)
+            vels = [U, Ut, Ur]
+            vel_keys=['|U|','|Ut|','|Ur|']
+            labels = ['$U$', '$ U_\mathrm{h} $', '$U_\mathrm{r}$ ']
+            vel_dict = {}; vel_dict['vel'] = {}; vel_dict['label'] = {}
+            for i,vel_key in enumerate(vel_keys):
+                vel_dict['vel'][vel_key] =  vels[i]
+                vel_dict['label'][vel_key] =  labels[i]
+
+            ifig=ifig
+            if not pl.fignum_exists(ifig): pl.figure(ifig)
+            
+            cb = utils.colourblind
+            R = self.get('R',dump,num_type=num_type)
+            for i,vel in enumerate(vel_comps):
+                if num_type == 't':
+                    time_thing = " t/[min]="; d_num = dump/60.
+                else:
+                    time_thing = " dump ="; d_num = dump
+                ything = vel_dict['vel'][vel]*1000.
+                if logy: 
+                    ything = np.log10(ything)  
+                    ymax = max(ymax,ything.max())
+                pl.plot(R,ything,utils.linestylecb(j+id)[0],\
+                    color = utils.linestylecb(i+id)[2],label=vel_dict['label'][vel]\
+                        +time_thing+str(d_num))
+        ylab = '$U/\mathrm{[km/s]}$' 
+        if logy: 
+            ylab = '$log_\mathrm{10}$ '+ylab
+            pl.ylim(ymax-2.5,ymax+0.1)
+        pl.legend(loc=0); pl.xlabel('$R/\mathrm{[Mm]}$');pl.ylabel(ylab)
+        if plot_title is not None: pyl.title(plot_title+", "+str(dump))
+            
+        if save_fig: 
+            if plot_title is not None:
+                pl.savefig("v-profiles_"+plot_title+"_"+str(dump)+".pdf")
+            else:
+                pl.savefig("v-profiles_"+str(dump)+".pdf")
+                
+        Ur_max = np.max(Ur)            # max radial velocity in Mm
+        return Ur_max*1000.  # return Ur_max in km/s 
 
     def entrainment_rate(self, cycles, r_min, r_max, airmu, cldmu, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False,
