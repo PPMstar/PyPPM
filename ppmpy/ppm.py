@@ -9,8 +9,12 @@
 # (c) 2018 - 2019 David Stephens, Falk Herwig
 
 
-# updates:
-    
+# TBD:
+# * add getting computable quantities from `compute` method directly to get method, and simplify `rp_plot` accordingly
+# * check that compute_m adds the core mass correctly by pulling the appropriate boundary conditions and calculating the 
+#   mass at the inner boundary correctly
+
+# updates Nov 26 (FH):
 #     * rp_plot can now plot computable quantities
 #     * rprofgui now can plot computable quantities
 #     * there is a new plot called plot_vrad_prof that makes a plot of all velocity 
