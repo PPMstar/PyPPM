@@ -605,9 +605,8 @@ class PPMtools:
 
         # We store everything from the surface to the core.
         m = m[-1] - m
-        print('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'
+        self.__messenger.warning('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'+\
               'This will not work for shell setups and wrong gravity will be returned.')
-
         return m
 
     def compute_mt(self, fname, num_type='ndump'):
@@ -8815,7 +8814,6 @@ class Messenger:
             warnings (2), everything (3). Negative values are replaced
             with 0 and any values greater than 3 are considered to be 3.
         '''
-
         # Print everything by default (verbose=3).
         self.__print_messages = True
         self.__print_warnings = True
@@ -9061,7 +9059,7 @@ class RprofSet(PPMtools):
             Verbosity level as defined in class Messenger.
         '''
 
-        PPMtools.__init__(self)
+        PPMtools.__init__(self,verbose=verbose)
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
 
