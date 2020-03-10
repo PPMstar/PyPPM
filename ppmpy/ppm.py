@@ -9838,7 +9838,7 @@ class Rprof:
                 if is_hr and col_names[i] not in self.__hr_vars:
                     self.__hr_vars.append(col_names[i])
                     self.__hr_data[col_names[i]] = np.zeros(n)
-                elif col_names[i] not in self.__lr_vars:
+                elif not is_hr and col_names[i] not in self.__lr_vars:
                     self.__lr_vars.append(col_names[i])
                     self.__lr_data[col_names[i]] = np.zeros(n)
 
