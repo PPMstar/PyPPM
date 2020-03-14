@@ -9348,7 +9348,7 @@ class RprofSet(PPMtools):
         len_dump = len(dump)
         # Get dump and assign it to a variable
         rp = self.get_dump(self.get_dump_list()[0])
-
+        print(rp.get_hr_variables())
         # Define resolution and throw errors if they don't match;
         # throw error if ything is not defined
         ything_computable = False
@@ -9869,7 +9869,10 @@ class Rprof:
                         if '.' in sline[i+1]:
                             par_value = float(sline[i+1])
                         else:
-                            par_value = int(sline[i+1])
+                            try: 
+                                par_value = int(sline[i+1])
+                            except ValueError:
+                                par_value = sline[i+1]
 
                         # Although we are technically in the file's footer, we
                         # call these parameters "header variables".
