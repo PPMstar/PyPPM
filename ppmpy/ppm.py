@@ -11,19 +11,18 @@
 
 # TBD:
 # * add getting computable quantities from `compute` method directly to get method, and simplify `rp_plot` accordingly
-# * check that compute_m adds the core mass correctly by pulling the appropriate boundary conditions and calculating the 
+# * check that compute_m adds the core mass correctly by pulling the appropriate boundary conditions and calculating the
 #   mass at the inner boundary correctly
 
 # updates Nov 26 (FH):
 #     * rp_plot can now plot computable quantities
 #     * rprofgui now can plot computable quantities
-#     * there is a new plot called plot_vrad_prof that makes a plot of all velocity 
+#     * there is a new plot called plot_vrad_prof that makes a plot of all velocity
 #       components for a given dump, or list of dumps (or times) with km/s y unit
 #       in publication ready format, and print a pdf if requested.
-#     * move 'WARNING: PPMtools.compute_m() integrates mass from r = 0.\n' from 
 #       compute_g to compute_m as it applies to all cases where compute_m is used
 
-    
+
 """
 ppmpy.ppm
 
@@ -91,6 +90,8 @@ import matplotlib.pylab as pyl
 import matplotlib.pyplot as pl
 from matplotlib import rcParams
 from matplotlib import gridspec
+from matplotlib import cm
+from matplotlib import colors
 import nugridpy.mesa as ms
 import os
 import re
@@ -108,6 +109,9 @@ import time
 import glob
 from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
+from datetime import date
+import pickle
+import collections
 
 # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
 G_code = nuconst.grav_const*1000.
@@ -137,10 +141,10 @@ def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
 
 def index_nearest_value(a,afind):
     '''Return index of value in a which is closest to afind
-    
+
     Parameters
     ----------
-    
+
     a : array
     afind : scalar
     '''
@@ -496,12 +500,12 @@ class PPMtools:
             print("Nothing to compute for YProfile ....")
             return None
         if self.__isRprofSet:
-            Ut = self.get('|Ut|', fname, num_type=num_type, resolution='l') 
-            U = self.get('|U|', fname, num_type=num_type, resolution='l') 
+            Ut = self.get('|Ut|', fname, num_type=num_type, resolution='l')
+            U = self.get('|U|', fname, num_type=num_type, resolution='l')
         Ur = np.sqrt(U**2 - Ut**2)
         return Ur
 
-    
+
     def compute_nabla_rho(self, fname, num_type='ndump'):
         if self.__isyprofile:
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
@@ -565,12 +569,12 @@ class PPMtools:
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
-       
+
         m = self.compute_m(fname, num_type=num_type)
 
         g = G_code*m/r**2
         return g
-    
+
     def compute_N2(self, fname, num_type='ndump', radeos=True):
         if self.__isyprofile:
             if radeos:
@@ -580,7 +584,7 @@ class PPMtools:
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
-       
+
         g = self.compute_g(fname, num_type=num_type)
         Hp = self.compute_Hp(fname, num_type=num_type)
         nabla_rho = self.compute_nabla_rho(fname, num_type=num_type)
@@ -1216,7 +1220,7 @@ class PPMtools:
             if fit_rlim is not None:
                 lbl = r'f$_\mathrm{{CBM}}$ = {:.3f}'.format(f_CBM)
                 lns += ax1.semilogy(r_fit, 1e16*D_fit, '-', color='g', \
-                            lw=4., label=lbl)            
+                            lw=4., label=lbl)
             lns += ax1.semilogy(r, 1e16*D, '-', color='k', label='D > 0')
             lns += ax1.semilogy(r, -1e16*D, '--', color='k', label='D < 0')
             if rlim is not None:
@@ -9319,7 +9323,7 @@ class RprofSet(PPMtools):
 
         num_type: string (case insensitive)
             If 'ndump' fname is expected to be a dump number (integer).
-            If 't' fname is expected to be a time value in seconds; run           
+            If 't' fname is expected to be a time value in seconds; run
             history file (.hstry) must be available to search by time value.
 
         xthing : string
@@ -9348,7 +9352,7 @@ class RprofSet(PPMtools):
         len_dump = len(dump)
         # Get dump and assign it to a variable
         rp = self.get_dump(self.get_dump_list()[0])
-        print(rp.get_hr_variables())
+
         # Define resolution and throw errors if they don't match;
         # throw error if ything is not defined
         ything_computable = False
@@ -9453,19 +9457,19 @@ class RprofSet(PPMtools):
                        plot_title=None,ifig=102,save_fig=True,logy=True,close_fig=True,\
                       id=0):
         '''Plot velocity profiles for one dump
-        
+
         fname : int, list
           dump or list of dumps or times to be plotted
-          
+
         num_type : str
           defaults to 'NDump' for fname to be dump number, set to
           't' for fname to be time in s
 
         vel_comps : list of str
           list of velocity components to be plotted
-        
+
         '''
-        
+
         if type(fname) is not list:
             fname = [fname]
         if close_fig: pl.close(ifig)
@@ -9484,7 +9488,7 @@ class RprofSet(PPMtools):
 
             ifig=ifig
             if not pl.fignum_exists(ifig): pl.figure(ifig)
-            
+
             cb = utils.colourblind
             R = self.get('R',dump,num_type=num_type)
             for i,vel in enumerate(vel_comps):
@@ -9493,27 +9497,27 @@ class RprofSet(PPMtools):
                 else:
                     time_thing = " dump ="; d_num = dump
                 ything = vel_dict['vel'][vel]*1000.
-                if logy: 
-                    ything = np.log10(ything)  
+                if logy:
+                    ything = np.log10(ything)
                     ymax = max(ymax,ything.max())
                 pl.plot(R,ything,utils.linestylecb(j+id)[0],\
                     color = utils.linestylecb(i+id)[2],label=vel_dict['label'][vel]\
                         +time_thing+str(d_num))
-        ylab = '$U/\mathrm{[km/s]}$' 
-        if logy: 
+        ylab = '$U/\mathrm{[km/s]}$'
+        if logy:
             ylab = '$log_\mathrm{10}$ '+ylab
             pl.ylim(ymax-2.5,ymax+0.1)
         pl.legend(loc=0); pl.xlabel('$R/\mathrm{[Mm]}$');pl.ylabel(ylab)
         if plot_title is not None: pyl.title(plot_title+", "+str(dump))
-            
-        if save_fig: 
+
+        if save_fig:
             if plot_title is not None:
                 pl.savefig("v-profiles_"+plot_title+"_"+str(dump)+".pdf")
             else:
                 pl.savefig("v-profiles_"+str(dump)+".pdf")
-                
+
         Ur_max = np.max(Ur)            # max radial velocity in Mm
-        return Ur_max*1000.  # return Ur_max in km/s 
+        return Ur_max*1000.  # return Ur_max in km/s
 
     def entrainment_rate(self, cycles, r_min, r_max, airmu, cldmu, var='vxz', criterion='min_grad', \
                          offset=0., integrate_both_fluids=False,
@@ -9838,7 +9842,7 @@ class Rprof:
                 if is_hr and col_names[i] not in self.__hr_vars:
                     self.__hr_vars.append(col_names[i])
                     self.__hr_data[col_names[i]] = np.zeros(n)
-                elif not is_hr and col_names[i] not in self.__lr_vars:
+                elif col_names[i] not in self.__lr_vars:
                     self.__lr_vars.append(col_names[i])
                     self.__lr_data[col_names[i]] = np.zeros(n)
 
@@ -9869,10 +9873,7 @@ class Rprof:
                         if '.' in sline[i+1]:
                             par_value = float(sline[i+1])
                         else:
-                            try: 
-                                par_value = int(sline[i+1])
-                            except ValueError:
-                                par_value = sline[i+1]
+                            par_value = int(sline[i+1])
 
                         # Although we are technically in the file's footer, we
                         # call these parameters "header variables".
@@ -10345,7 +10346,7 @@ class MomsDataSet:
         igrid: np.ndarray
             The grid of x,y,z points to be interpolated to
         """
-        
+
         # we need to hold our coordinate values
         igrid = np.zeros((len(radius)*npoints,3))
 
@@ -11042,7 +11043,7 @@ class MomsDataSet:
 
     # def get_ray_interpolation(self, radius, theta, phi, nrays):
     #     """
-        
+
     #     """
 
     def get_dump_list(self):
@@ -11751,6 +11752,466 @@ class MomsDataSet:
             uz = self._get(uz,fname)
 
         return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
+
+    def build_cmap(self, colours, ranges, num_colours, vmin, vmax):
+        diff = vmax - vmin
+        reduced_colours = list(colours[0:num_colours])
+        reduced_ranges = list(ranges[0:num_colours])
+        cmap_rgba = [matplotlib.colors.to_rgba(colour) for colour in reduced_colours]
+        cmap = list(zip(reduced_ranges, cmap_rgba))
+        sorted_cmap = sorted(cmap, key = lambda tup: tup[0])
+        colormap = matplotlib.colors.LinearSegmentedColormap.from_list('custom_cmap', sorted_cmap)
+        pl.register_cmap('custom_cmap', colormap)
+
+        return colormap
+
+    def get_indexed_quantities(self):
+        return [('x', 0), ('u_x', 1), ('u_y', 2), ('u_z', 3), ('|u_t|', 4), ('|u_r|', 5), ('|w|', 6), ('P', 7), ('rho' , 8), ('fv' , 9)]
+
+    def get_colourpicker(self, active_colours):
+        '''
+            colorpicker gui for slice and mollweide_gui
+        '''
+        colour0 = widgets.ColorPicker(concise=False, value='blue', disabled=False, layout=widgets.Layout(width='150px'))
+        colour1 = widgets.ColorPicker(concise=False, value='white', disabled=False, layout=widgets.Layout(width='150px'))
+        colour2 = widgets.ColorPicker(concise=False, value='red', disabled=False, layout=widgets.Layout(width='150px'))
+        colour3 = widgets.ColorPicker(concise=False, value='yellow', disabled=True, layout=widgets.Layout(width='150px'))
+        colour4 = widgets.ColorPicker(concise=False, value='green', disabled=True, layout=widgets.Layout(width='150px'))
+        colour5 = widgets.ColorPicker(concise=False, value='gray', disabled=True, layout=widgets.Layout(width='150px'))
+        colour6 = widgets.ColorPicker(concise=False, value='lime', disabled=True, layout=widgets.Layout(width='150px'))
+        colour7 = widgets.ColorPicker(concise=False, value='cyan', disabled=True, layout=widgets.Layout(width='150px'))
+        colour8 = widgets.ColorPicker(concise=False, value='olive', disabled=True, layout=widgets.Layout(width='150px'))
+        colour9 = widgets.ColorPicker(concise=False, value='teal', disabled=True, layout=widgets.Layout(width='150px'))
+        colour10 = widgets.ColorPicker(concise=False, value='maroon', disabled=True, layout=widgets.Layout(width='150px'))
+        colour11 = widgets.ColorPicker(concise=False, value='silver', disabled=True, layout=widgets.Layout(width='150px'))
+
+        range0 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.00, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range1 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.50, disabled=False, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range2 = widgets.FloatSlider(min=0., max=1., step=0.01, value=1.00, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range3 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.60, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range4 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.80, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range5 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.20, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range6 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.10, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range7 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.30, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range8 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.40, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range9 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.75, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range10 = widgets.FloatSlider(min=0., max=1., step=0.01, value=0.90, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+        range11 = widgets.FloatSlider(min=0., max=1., step=0.01, value=1.00, disabled=True, readout_format='.2f', continuous_update=False, \
+            layout=widgets.Layout(width='200px'))
+
+        def on_colour_change(change):
+            if change['name'] == 'value' and (change['new'] != change['old']):
+                ranges = [range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11]
+                colours = [colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, colour8, colour9, colour10, colour11]
+                for i in range(0, len(ranges)):
+                    if i < change['new']:
+                        ranges[i].disabled = False
+                        colours[i].disabled = False
+                    else:
+                        ranges[i].disabled = True
+                        colours[i].disabled = True
+                ranges[change['new']-1].value = 1.0
+                ranges[change['new']-1].disabled = True
+        colour_select = widgets.Dropdown(options=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12], value=3, description='Colours', disabled=False, layout=widgets.Layout(width='150px'))
+        colour_select.observe(on_colour_change)
+        if active_colours != 3:
+            range2.value = 0.7
+        colour_select.value = active_colours
+
+        combo0 = widgets.HBox([colour0, range0])
+        combo1 = widgets.HBox([colour1, range1])
+        combo2 = widgets.HBox([colour2, range2])
+        combo3 = widgets.HBox([colour3, range3])
+        combo4 = widgets.HBox([colour4, range4])
+        combo5 = widgets.HBox([colour5, range5])
+        combo6 = widgets.HBox([colour6, range6])
+        combo7 = widgets.HBox([colour7, range7])
+        combo8 = widgets.HBox([colour8, range8])
+        combo9 = widgets.HBox([colour9, range9])
+        combo10 = widgets.HBox([colour10, range10])
+        combo11 = widgets.HBox([colour11, range11])
+
+        colour_vbox1 = widgets.VBox([colour_select])
+        colour_vbox2 = widgets.VBox([combo0, combo1, combo2, combo3])
+        colour_vbox3 = widgets.VBox([combo4, combo5, combo6, combo7])
+        colour_vbox4 = widgets.VBox([combo8, combo9, combo10, combo11])
+        colourPicker = widgets.HBox([colour_vbox1, colour_vbox2, colour_vbox3, colour_vbox4])
+
+        return [colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, colour8, colour9, colour10, colour11], \
+            [range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11], colour_select, colourPicker
+
+    def slice_plot(self, dump, quantity, direction, vmin, vmax, log, slice_index, colours, ranges, num_colours, size, ifig, interpolation):
+        cmap = self.build_cmap(colours, ranges, num_colours, vmin, vmax)
+        values = self.get(quantity, dump)
+        x, y, z = self.get_cgrid()
+        indexed_quantities = self.get_indexed_quantities()
+
+        if direction == 'x':
+            values = values[slice_index][:][:]
+            extent = [np.min(y),np.max(y),np.min(z),np.max(z)]
+        elif direction == 'y':
+            values = values[:][slice_index][:]
+            extent = [np.min(x),np.max(x),np.min(z),np.max(z)]
+        else:
+            values = values[:][:][slice_index]
+            extent = [np.min(x),np.max(x),np.min(y),np.max(y)]
+        pl.close(ifig)
+        fig = pl.figure(ifig)
+        fig.canvas.layout.height = str(0.9*size)+'in'   # This is a hack to prevent ipympl
+        fig.canvas.layout.width  = str(1.1*size)+'in'   # to adjust horizontal figure size
+
+        if quantity == 5:
+            if log == True:
+                logrange = [vmin, vmax]
+                log_mid = vmin + ((vmax - vmin)/2.)
+                finv = lambda x: -x -log_mid
+                for i in range(len(values[:][0])-1):
+                    row = values[i][:]
+                    rowBool = row > 0
+                    for j in range(len(rowBool)):
+                        if rowBool[j]:
+                            row[j] = finv(-np.log10(row[j]))
+                        else:
+                            if row[j] != 0:
+                                row[j] = -finv(-np.log10(-row[j]))
+                        if row[j] > vmax:
+                            row[j] = vmax
+                        elif row[j] < vmin:
+                            row[j] = vmin
+                    values[i][:] = row
+            pl.imshow(values, extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
+        else:
+            if log == True:
+                pl.imshow(np.log10(values), extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
+            else:
+                pl.imshow(values, extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
+
+        cbar = pl.colorbar()
+
+    def slice_gui(self, size=8, ifig=123, interpolation='kaiser'):
+        dump_min, dump_max = self.get_dump_list()[0], self.get_dump_list()[-1]
+        dump_mean = int(2*(-dump_min + dump_max)/3.)
+
+        # left-most widgets in graph settings
+        dump = widgets.IntSlider(min=dump_min, max=dump_max, step=1, value=dump_mean, description='Dump', disabled=False, layout=widgets.Layout(width='335px'))
+        slice_index = widgets.IntSlider(min=0, max=191, step=1, value=45, description='Slice', disabled=False, layout=widgets.Layout(width='335px'))
+        val_range = widgets.FloatRangeSlider(value=[-4.5, -2.5], min=-10., max=10., step=0.001, description="Value Range", continuous_update=False, \
+            readout_format='.3f', layout=widgets.Layout(width='350px'))
+
+        left_widgets = widgets.VBox([dump, slice_index, val_range], layout=widgets.Layout(width="30%"))
+
+        # center widgets in graph settings
+        quantity = widgets.Dropdown(options=self.get_indexed_quantities(), value=4, description="Quantity", disabled=False)
+        direction = widgets.RadioButtons(options=['x', 'y', 'z'], description='Slice plane', disabled=False, layout= widgets.Layout(display='flex', flex_flow='row'))
+        log = widgets.Checkbox(value=True, description='Log Values', disabled=False, indent=False)
+        dir_log = widgets.HBox([direction, log])
+
+        center_widgets = widgets.VBox([quantity, dir_log], layout=widgets.Layout(width="30%"))
+
+        # right-most widgets in graphs settings
+        save_load_label = widgets.Label(value="Save/Load Configuration (.pickle):")
+        save_filename = widgets.Text(value='', placeholder='Filename (w/out extension)', disabled=False, layout=widgets.Layout(width='200px'))
+        save_button = widgets.Button(description='Save Config', tooltip='Save Config', disabled=False)
+        save_combo = widgets.HBox([save_button, save_filename], layout=widgets.Layout(margin="0px 0px 0px 20px"))
+
+        load_filename = widgets.Text(value='', placeholder='Filename (w/out extension)', disabled=False, layout=widgets.Layout(width='200px'))
+        load_button = widgets.Button(description='Load Config', tooltip='Load Config', disabled=False)
+        load_combo = widgets.HBox([load_button, load_filename], layout=widgets.Layout(margin="0px 0px 0px 20px"))
+
+        right_widgets = widgets.VBox([save_load_label, save_combo, load_combo])
+
+        colours, ranges, colour_select, colourpicker = self.get_colourpicker(6)
+        graph_settings = widgets.HBox([left_widgets, center_widgets, right_widgets])
+
+        ui = widgets.Tab(children=[graph_settings, colourpicker])
+        ui.set_title(0, "Graph Settings")
+        ui.set_title(1, "Colour Picker")
+
+
+        def plot(dump, quantity, direction, log, slice_index, val_range, colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, colour8, colour9, colour10, \
+            colour11, range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11, colour_select):
+            self.slice_plot(dump, quantity, direction, val_range[0], val_range[1], log, slice_index, [colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, \
+                colour8, colour9, colour10, colour11], [range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11], colour_select, \
+                size, ifig, interpolation)
+
+        def on_click_save(b):
+            pickle_info = {
+                'dump': dump.value,
+                'slice_index': slice_index.value,
+                'val_range': val_range.value,
+                'quantity': quantity.value,
+                'direction': direction.value,
+                'log': log.value,
+                'colour_select': colour_select.value
+            }
+            pickle_info['colours'] = []
+            pickle_info['ranges'] = []
+            for index in range(0, 12):
+                pickle_info['colours'].append((colours[index].value, colours[index].disabled))
+                pickle_info['ranges'].append((ranges[index].value, ranges[index].disabled))
+            try:
+                if save_filename.value != '':
+                    f = open('%s.pickle' % save_filename.value, 'wb')
+                else:
+                    f = open('%s.pickle' % date.today(), 'wb')
+                pickle.dump(pickle_info, f)
+                f.close()
+            except:
+                print('Failed to save file')
+        save_button.on_click(on_click_save)
+
+        def on_click_load(b):
+            if load_filename.value != '':
+                try:
+                    f = open('%s.pickle' % load_filename.value, 'rb')
+                    pickle_info = pickle.load(f)
+                    dump.value = pickle_info['dump']
+                    slice_index.value = pickle_info['slice_index']
+                    val_range.value = pickle_info['val_range']
+                    quantity.value = pickle_info['quantity']
+                    direction.value = pickle_info['direction']
+                    log.value = pickle_info['log']
+                    colour_select.value = pickle_info['colour_select']
+                    saved_colours = pickle_info['colours']
+                    saved_ranges = pickle_info['ranges']
+                    for i in range(0, 12):
+                        colours[i].value, colours[i].disabled = saved_colours[i][0], saved_colours[i][1]
+                        ranges[i].value, ranges[i].disabled = saved_ranges[i][0], saved_ranges[i][1]
+                    f.close()
+                except:
+                    print('Failed to load file')
+        load_button.on_click(on_click_load)
+
+        output = widgets.interactive_output(plot, {'dump': dump, 'quantity': quantity, 'direction': direction, 'log': log, \
+            'slice_index': slice_index, 'val_range': val_range, 'colour0': colours[0], 'colour1': colours[1], 'colour2': colours[2], \
+            'colour3': colours[3], 'colour4': colours[4], 'colour5': colours[5], 'colour6': colours[6], 'colour7': colours[7], \
+            'colour8': colours[8], 'colour9': colours[9], 'colour10': colours[10], 'colour11': colours[11], 'range0': ranges[0], \
+            'range1': ranges[1], 'range2': ranges[2], 'range3': ranges[3], 'range4': ranges[4], 'range5': ranges[5], 'range6': ranges[6], \
+            'range7': ranges[7], 'range8': ranges[8], 'range9': ranges[9], 'range10': ranges[10], 'range11': ranges[11], \
+            'colour_select': colour_select})
+
+        display(ui, output)
+
+    def get_mollweide_data(self, dump, radius, quantity, constants):
+        npoints = self.sphericalHarmonics_lmax(radius)[-1]
+        ux = self.get(1, dump)
+        uy = self.get(2, dump)
+        uz = self.get(3, dump)
+        ur, utheta, uphi = self.get_spherical_components(ux, uy, uz)
+        ur_r, utheta_r, uphi_r = self.get_spherical_interpolation(ur, radius, npoints=npoints, plot_mollweide=True)
+        plot_val = []
+
+        if quantity == 0:
+            ur_r *= 1e3 # convert to km/s
+            plot_val = ur_r
+        elif quantity == 1:
+            u_t = self.get(4, dump)
+            plot_val = self.get_spherical_interpolation(u_t, radius, npoints=npoints)
+        elif quantity == 2 or quantity == 3:
+            fv = self.get(9, dump)
+            if quantity == 2:
+                plot_val = self.get_spherical_interpolation(fv, radius, npoints=npoints)
+            else:
+                Xcld = fv/((1. - fv)*(constants['airmu']/constants['cldmu']) + fv)
+                XH = constants['atomicnoH']*(constants['fkcld']/constants['atomicnocld'])*Xcld
+                plot_val = self.get_spherical_interpolation(XH, radius, npoints=npoints)
+        elif quantity == 4:
+            rho = self.get(8, dump)
+            rho_trilinear_r = self.get_spherical_interpolation(rho, radius, npoints=npoints, method='trilinear')
+            avg_rho_trilinear = rho_trilinear_r.mean()
+            plot_val = (rho_trilinear_r - avg_rho_trilinear) / avg_rho_trilinear
+        elif quantity == 5:
+            omega = self.get(6, dump)
+            plot_val = self.get_spherical_interpolation(omega, radius, npoints=npoints)
+
+        return {
+            'utheta_r': utheta_r,
+            'uphi_r': uphi_r,
+            'npoints': npoints,
+            'plot_val': plot_val
+        }
+
+    def mollweide_plot(self, dump, radius, quantity, log, vmin, vmax, colour_select, colours, ranges, quant_log_update, constants, size, ifig):
+        data = self.get_mollweide_data(dump, radius, quantity, constants)
+        if quant_log_update == True and log == True:
+            if data['plot_val'].min() < 0:
+                vmin = -np.log(-data['plot_val'].min())
+            else:
+                vmin = np.log(data['plot_val'].min())
+            if data['plot_val'].max() < 0:
+                -np.log(-data['plot_val'].max())
+            else:
+                np.log(data['plot_val'].max())
+        elif quant_log_update == True:
+            vmin = data['plot_val'].min()
+            vmax = data['plot_val'].max()
+
+        if log == True and data['plot_val'].min() < 0:
+            plot_val = data['plot_val']
+            logrange = [vmin, vmax]
+            log_mid = vmin + ((vmax - vmin)/2.)
+            finv = lambda x: -x -log_mid
+            plot_bool = plot_val > 0
+            for i in range(len(plot_val)-1):
+                if plot_bool[i]:
+                    plot_val[i] = finv(-np.log10(plot_val[i]))
+                else:
+                    plot_val[i] = -finv(-np.log10(-plot_val[i]))
+                if plot_val[i] > vmax:
+                    plot_val[i] = vmax
+                elif plot_val[i] < vmin:
+                    plot_val[i] = vmin
+            data['plot_val'] = plot_val
+        elif log == True:
+            np.log10(data['plot_val'])
+
+        pl.close(ifig)
+        pl.rcParams.update({'font.size': 5})
+        fig = pl.figure(ifig, dpi=300)
+        fig.canvas.layout.height = str(0.9*size) + 'in'   # This is a hack to prevent ipympl
+        fig.canvas.layout.width  = str(1.1*size) + 'in'   # to adjust horizontal figure size
+        mollweide_plot = fig.add_axes([0.1, 0.2, 0.88, 0.88], projection='mollweide')
+        mollweide_plot.grid("True")
+        cax = fig.add_axes([0.12, 0.2, 0.84, 0.02])
+        cmap = self.build_cmap(colours, ranges, colour_select, vmin, vmax)
+
+        if (quantity == 2 or quantity == 3 or quantity == 5) and vmin >= 0:
+            mollweide_plot.scatter(data['uphi_r'], data['utheta_r'], s=(72./fig.dpi)**2, marker=',', c=data['plot_val'], cmap=cmap, norm=colors.LogNorm(*[vmin, vmax]))
+        else:
+            mollweide_plot.scatter(data['uphi_r'], data['utheta_r'], s=(72./fig.dpi)**2, marker=',', c=data['plot_val'], cmap=cmap, vmin=vmin, vmax=vmax)
+
+        cbar1 = fig.colorbar(mollweide_plot.collections[0], cax=cax, orientation='horizontal')
+
+        return data['plot_val']
+
+    def mollweide_gui(self, constants, size=10, ifig=124):
+        dump_min, dump_max = self.get_dump_list()[0], self.get_dump_list()[-1]
+        dump_mean = int(2*(-dump_min + dump_max)/3.)
+        self.quant_log_update = True
+
+        # left-most widgets in graph settings
+        dump = widgets.IntSlider(value=dump_mean, min=dump_min, max=dump_max, step=1, description="Dump", disabled=False, continuous_update=False, orientation="horizontal", layout=widgets.Layout(width='350px'))
+        radius = widgets.FloatSlider(value=16.0, min=0.0, max=25.0, step=0.1, description="Radius", disabled=False, continuous_update=False, layout=widgets.Layout(width='350px'))
+        quantity = widgets.Dropdown(options=[('u_r', 0), ('u_t', 1), ('fv', 2), ('X_H', 3), ('rho', 4), ('|w|', 5)], value=0, description="Quantity", layout=widgets.Layout(width='200px'))
+        log = widgets.Checkbox(value=True, description="Log Values", disabled=False, indent=True)
+        quant_log = widgets.HBox([quantity, log], layout=widgets.Layout(margin='0px 0px 0px 10px'))
+
+        left_widgets = widgets.VBox([dump, radius, quant_log], layout=widgets.Layout(width='30%'))
+
+        # center widgets in graph settings
+        value_label = widgets.Label(value="Value Range to Display:")
+        value_min = widgets.BoundedFloatText(value=-85., min=-1000., max=84.9999999, step=1e-7, readout_format=".7f", description="Min Value", layout=widgets.Layout(width='335px'))
+        value_max = widgets.BoundedFloatText(value=85, min=-84.9999999, max=1000., step=1e-7, readout_format=".7f", description="Max Value", layout=widgets.Layout(width='335px'))
+
+        center_widgets = widgets.VBox([value_label, value_min, value_max], layout=widgets.Layout(width='30%'))
+
+        # right-most widgets in graph settings
+        save_load_label = widgets.Label(value="Save/Load Configuration (.pickle):")
+        save_button = widgets.Button(description="Save Config", disabled=False)
+        save_filename = widgets.Text(placeholder="Enter name w/out file extension", disabled=False, layout=widgets.Layout(width='250px'))
+        save_combo = widgets.HBox([save_button, save_filename], layout=widgets.Layout(margin="0px 0px 0px 20px"))
+
+        load_button = widgets.Button(description="Load Config", disabled=False)
+        load_filename = widgets.Text(placeholder="Enter filename w/out file extension", disabled=False, layout=widgets.Layout(width='250px'))
+        load_combo = widgets.HBox([load_button, load_filename], layout=widgets.Layout(margin="0px 0px 0px 20px"))
+
+        right_widgets = widgets.VBox([save_load_label, save_combo, load_combo], layout=widgets.Layout(margin="0px 0px 0px 20px", width='30%'))
+
+        # Layout of all widgets and tabs
+        graph_settings = widgets.HBox([left_widgets, center_widgets, right_widgets])
+        colours, ranges, colour_select, colourpicker = self.get_colourpicker(3)
+        gui = widgets.Tab(children=[graph_settings, colourpicker])
+        gui.set_title(0, "Graph Settings")
+        gui.set_title(1, "Colour Picker")
+
+        def plot(dump, radius, quantity, log, vmin, vmax, colour_select, colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, colour8, colour9, colour10, \
+            colour11, range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11):
+            plot_val = self.mollweide_plot(dump, radius, quantity, log, vmin, vmax, colour_select, [colour0, colour1, colour2, colour3, \
+                colour4, colour5, colour6, colour7, colour8, colour9, colour10, colour11], [range0, range1, range2, range3, range4, range5, range6, \
+                range7, range8, range9, range10, range11], self.quant_log_update, constants, size, ifig)
+            if self.quant_log_update:
+                self.quant_log_update = False
+                value_min.value = plot_val.min()
+                value_max.value = plot_val.max()
+
+        def min_max_link(change):
+            if change['owner'].description == "Min Value":
+                value_max.min = value_min.value + 1e-7
+            elif change['owner'].description == "Max Value":
+                value_min.max = value_max.value - 1e-7
+        value_min.observe(min_max_link), value_max.observe(min_max_link)
+
+        def on_quant_log_change(change):
+            self.quant_log_update = True
+        quantity.observe(on_quant_log_change), log.observe(on_quant_log_change)
+
+        def on_click_save(b):
+            pickle_info = {
+                'dump': dump.value,
+                'radius': radius.value,
+                'quantity': quantity.value,
+                'log': log.value,
+                'value_min': value_min.value,
+                'value_max': value_max.value,
+                'colour_select': colour_select.value,
+                'colours': [],
+                'ranges': []
+            }
+            for index in range(0, 12):
+                pickle_info['colours'].append((colours[index].value, colours[index].disabled))
+                pickle_info['ranges'].append((ranges[index].value, ranges[index].disabled))
+            try:
+                if save_filename.value != '':
+                    f = open('%s.pickle' % save_filename.value, 'wb')
+                else:
+                    f = open('%s.pickle' % date.today(), 'wb')
+                pickle.dump(pickle_info, f)
+                f.close()
+            except:
+                print('Failed to save file')
+        save_button.on_click(on_click_save)
+
+        def on_click_load(b):
+            if load_filename.value != '':
+                try:
+                    f = open('%s.pickle' % load_filename.value, 'rb')
+                    pickle_info = pickle.load(f)
+                    dump.value = pickle_info['dump']
+                    radius.value = pickle_info['radius']
+                    quantity.value = pickle_info['quantity']
+                    log.value = pickle_info['log']
+                    colour_select.value = pickle_info['colour_select']
+                    value_min.value = pickle_info['value_min']
+                    value_max.value = pickle_info['value_max']
+                    saved_colours = pickle_info['colours']
+                    saved_ranges = pickle_info['ranges']
+                    for i in range(0, 12):
+                        colours[i].value, colours[i].disabled = saved_colours[i][0], saved_colours[i][1]
+                        ranges[i].value, ranges[i].disabled = saved_ranges[i][0], saved_ranges[i][1]
+                    f.close()
+                except:
+                    print('Failed to load file')
+        load_button.on_click(on_click_load)
+
+        # Output for all widgets
+        output = widgets.interactive_output(plot, {'dump': dump, 'radius': radius, 'quantity': quantity, 'log': log, 'vmin': value_min, 'vmax': value_max, \
+            'colour_select': colour_select, 'colour0': colours[0], 'colour1': colours[1], 'colour2': colours[2], 'colour3': colours[3], 'colour4': colours[4], \
+            'colour5': colours[5], 'colour6': colours[6], 'colour7': colours[7], 'colour8': colours[8], 'colour9': colours[9], 'colour10': colours[10], \
+            'colour11': colours[11], 'range0': ranges[0], 'range1': ranges[1], 'range2': ranges[2], 'range3': ranges[3], 'range4': ranges[4], 'range5': ranges[5], \
+            'range6': ranges[6], 'range7': ranges[7], 'range8': ranges[8], 'range9': ranges[9], 'range10': ranges[10], 'range11': ranges[11]})
+
+        display(gui, output)
 
 # now the 2X classes will override a couple of methods in the instantiation processes
 class MomsData2X(MomsData):
