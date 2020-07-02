@@ -11766,7 +11766,7 @@ class MomsDataSet:
         return colormap
 
     def get_indexed_quantities(self):
-        return [('x', 0), ('u_x', 1), ('u_y', 2), ('u_z', 3), ('|u_t|', 4), ('|u_r|', 5), ('|w|', 6), ('P', 7), ('rho' , 8), ('fv' , 9)]
+        return [('x', 0), ('u_x', 1), ('u_y', 2), ('u_z', 3), ('|u_t|', 4), ('u_r', 5), ('|w|', 6), ('P', 7), ('rho' , 8), ('fv' , 9)]
 
     def get_colourpicker(self, active_colours):
         '''
@@ -11851,76 +11851,84 @@ class MomsDataSet:
         return [colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, colour8, colour9, colour10, colour11], \
             [range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11], colour_select, colourPicker
 
-    def ipympl_hack_noadjust(self, fig, size):
-        fig.canvas.layout.height = str(0.9*size)+'in'   # This is a hack to prevent ipympl
-        fig.canvas.layout.width  = str(1.1*size)+'in'   # to adjust horizontal figure size
-    
-    def slice_plot(self, dump, quantity, direction, vmin, vmax, log, slice_index, colours, ranges, num_colours, size, ifig, interpolation, ipympl_hack=True):
+    def slice_plot(self, dump, quantity, direction, vmin, vmax, log, slice_index, colours, ranges, num_colours, size, ifig, interpolation):
         cmap = self.build_cmap(colours, ranges, num_colours, vmin, vmax)
         values = self.get(quantity, dump)
         x, y, z = self.get_cgrid()
         indexed_quantities = self.get_indexed_quantities()
 
         if direction == 'x':
-            values = values[slice_index][:][:]
+            trimmed_vals = values[slice_index, :, :]
             extent = [np.min(y),np.max(y),np.min(z),np.max(z)]
         elif direction == 'y':
-            values = values[:][slice_index][:]
+            trimmed_vals = values[:, slice_index, :]
             extent = [np.min(x),np.max(x),np.min(z),np.max(z)]
         else:
-            values = values[:][:][slice_index]
+            trimmed_vals = values[:, :, slice_index]
             extent = [np.min(x),np.max(x),np.min(y),np.max(y)]
         pl.close(ifig)
         fig = pl.figure(ifig)
-        if ipympl_hack: self.ipympl_hack_noadjust(fig, size)
+        fig.canvas.layout.height = str(0.9*size)+'in'   # This is a hack to prevent ipympl
+        fig.canvas.layout.width  = str(1.1*size)+'in'   # to adjust horizontal figure size
 
-        if quantity == 5:
-            if log == True:
-                logrange = [vmin, vmax]
-                log_mid = vmin + ((vmax - vmin)/2.)
-                finv = lambda x: -x -log_mid
-                for i in range(len(values[:][0])-1):
-                    row = values[i][:]
-                    rowBool = row > 0
-                    for j in range(len(rowBool)):
-                        if rowBool[j]:
-                            row[j] = finv(-np.log10(row[j]))
+        if self.slice_gui_range_update == True and log == False:
+            vmin = np.amin(trimmed_vals)
+            vmax = np.amax(trimmed_vals)
+
+        if log == True:
+            log_min = np.abs(np.log10(vmin))
+            for i in range(len(trimmed_vals[:][0])-1):
+                row = trimmed_vals[i][:]
+                rowBool = row > 0
+                for index, val in enumerate(row):
+                    if rowBool[index] == True:
+                        if vmin <= val and val <= vmax:
+                            row[index] = np.log10(val) + log_min
                         else:
-                            if row[j] != 0:
-                                row[j] = -finv(-np.log10(-row[j]))
-                        if row[j] > vmax:
-                            row[j] = vmax
-                        elif row[j] < vmin:
-                            row[j] = vmin
-                    values[i][:] = row
-            pl.imshow(values, extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
+                            row[index] = 0
+                    else:
+                        if val != 0:
+                            if -vmax <= val and val <= -vmin:
+                                row[index] = -np.log10(-val) - log_min
+                            else:
+                                row[index] = 0
+                trimmed_vals[i][:] = row
+            pl.imshow(trimmed_vals, extent=extent, vmin=np.amin(trimmed_vals), vmax=np.amax(trimmed_vals), cmap=cmap, interpolation=interpolation)
         else:
-            if log == True:
-                pl.imshow(np.log10(values), extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
-            else:
-                pl.imshow(values, extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
+            pl.imshow(trimmed_vals, extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
 
-        cbar = pl.colorbar()
+        pl.colorbar()
+        return [vmin, vmax]
 
     def slice_gui(self, size=8, ifig=123, interpolation='kaiser'):
         dump_min, dump_max = self.get_dump_list()[0], self.get_dump_list()[-1]
         dump_mean = int(2*(-dump_min + dump_max)/3.)
+        self.slice_gui_range_update = True
 
         # left-most widgets in graph settings
         dump = widgets.IntSlider(min=dump_min, max=dump_max, step=1, value=dump_mean, description='Dump', disabled=False, layout=widgets.Layout(width='335px'))
         slice_index = widgets.IntSlider(min=0, max=191, step=1, value=45, description='Slice', disabled=False, layout=widgets.Layout(width='335px'))
-        val_range = widgets.FloatRangeSlider(value=[-4.5, -2.5], min=-10., max=10., step=0.001, description="Value Range", continuous_update=False, \
-            readout_format='.3f', layout=widgets.Layout(width='350px'))
-
-        left_widgets = widgets.VBox([dump, slice_index, val_range], layout=widgets.Layout(width="30%"))
-
-        # center widgets in graph settings
         quantity = widgets.Dropdown(options=self.get_indexed_quantities(), value=4, description="Quantity", disabled=False)
         direction = widgets.RadioButtons(options=['x', 'y', 'z'], description='Slice plane', disabled=False, layout= widgets.Layout(display='flex', flex_flow='row'))
-        log = widgets.Checkbox(value=True, description='Log Values', disabled=False, indent=False)
-        dir_log = widgets.HBox([direction, log])
 
-        center_widgets = widgets.VBox([quantity, dir_log], layout=widgets.Layout(width="30%"))
+        left_widgets = widgets.VBox([dump, slice_index, quantity, direction], layout=widgets.Layout(width="30%"))
+
+        # center widgets in graph settings
+        value_label = widgets.Label(value="Value Range to Display:")
+        value_min = widgets.BoundedFloatText(value=-85., min=-1000., max=84.9999999, step=1e-7, readout_format=".7f", description="Min Value", layout=widgets.Layout(width='335px'))
+        value_max = widgets.BoundedFloatText(value=85, min=-84.9999999, max=1000., step=1e-7, readout_format=".7f", description="Max Value", layout=widgets.Layout(width='335px'))
+
+        log_label = widgets.Label(value="Log Value Range to Display (Applied symmetrically):")
+        log_min = widgets.BoundedFloatText(value=1e-5, min=1e-7, max=9.99999e-2, step=1e-7, readout_format=".7f", description="Log Min", layout=widgets.Layout(width='335px'))
+        log_max = widgets.BoundedFloatText(value=1e-1, min=1.0001e-5, max=2e4, step=1e-7, readout_format=".7f", description="Log Max", layout=widgets.Layout(width='335px'))
+
+        value_range = widgets.VBox([value_label, value_min, value_max], layout=widgets.Layout(width='100%'))
+        value_range.layout.display = 'none' # hide these controls intially as log == True on init
+        log_range = widgets.VBox([log_label, log_min, log_max], layout=widgets.Layout(width='100%'))
+
+        log = widgets.Checkbox(value=True, description='Log Values', disabled=False, indent=False)
+
+        center_widgets = widgets.VBox([value_range, log_range, log], layout=widgets.Layout(width='30%'));
 
         # right-most widgets in graphs settings
         save_load_label = widgets.Label(value="Save/Load Configuration (.pickle):")
@@ -11932,7 +11940,7 @@ class MomsDataSet:
         load_button = widgets.Button(description='Load Config', tooltip='Load Config', disabled=False)
         load_combo = widgets.HBox([load_button, load_filename], layout=widgets.Layout(margin="0px 0px 0px 20px"))
 
-        right_widgets = widgets.VBox([save_load_label, save_combo, load_combo])
+        right_widgets = widgets.VBox([save_load_label, save_combo, load_combo], layout=widgets.Layout(width='30%'))
 
         colours, ranges, colour_select, colourpicker = self.get_colourpicker(6)
         graph_settings = widgets.HBox([left_widgets, center_widgets, right_widgets])
@@ -11941,18 +11949,29 @@ class MomsDataSet:
         ui.set_title(0, "Graph Settings")
         ui.set_title(1, "Colour Picker")
 
-
-        def plot(dump, quantity, direction, log, slice_index, val_range, colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, colour8, colour9, colour10, \
-            colour11, range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11, colour_select):
-            self.slice_plot(dump, quantity, direction, val_range[0], val_range[1], log, slice_index, [colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, \
-                colour8, colour9, colour10, colour11], [range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11], colour_select, \
-                size, ifig, interpolation)
+        def plot(dump, quantity, direction, log, slice_index, vmin, vmax, log_min, log_max, colour0, colour1, colour2, colour3, colour4, colour5, colour6, \
+            colour7, colour8, colour9, colour10, colour11, range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11, colour_select):
+            if log == True:
+                self.slice_plot(dump, quantity, direction, log_min, log_max, log, slice_index, [colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, \
+                    colour8, colour9, colour10, colour11], [range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11], colour_select, \
+                    size, ifig, interpolation)
+            else:
+                max_min = self.slice_plot(dump, quantity, direction, vmin, vmax, log, slice_index, [colour0, colour1, colour2, colour3, colour4, colour5, colour6, \
+                    colour7, colour8, colour9, colour10, colour11], [range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11], \
+                    colour_select, size, ifig, interpolation)
+                if self.slice_gui_range_update == True:
+                    value_min.value = max_min[0]
+                    value_max.value = max_min[1]
+                    self.slice_gui_range_update = False
 
         def on_click_save(b):
             pickle_info = {
                 'dump': dump.value,
                 'slice_index': slice_index.value,
-                'val_range': val_range.value,
+                'value_min': value_min.value,
+                'value_max': value_max.value,
+                'log_min': log_min.value,
+                'log_max': log_max.value,
                 'quantity': quantity.value,
                 'direction': direction.value,
                 'log': log.value,
@@ -11981,7 +12000,10 @@ class MomsDataSet:
                     pickle_info = pickle.load(f)
                     dump.value = pickle_info['dump']
                     slice_index.value = pickle_info['slice_index']
-                    val_range.value = pickle_info['val_range']
+                    value_min.value = pickle_info['value_min']
+                    value_max.value = pickle_info['value_max']
+                    log_min.value = pickle_info['log_min']
+                    log_max.value = pickle_info['log_max']
                     quantity.value = pickle_info['quantity']
                     direction.value = pickle_info['direction']
                     log.value = pickle_info['log']
@@ -11996,17 +12018,57 @@ class MomsDataSet:
                     print('Failed to load file')
         load_button.on_click(on_click_load)
 
+        def min_max_link(change):
+            if change['owner'].description == "Min Value":
+                value_max.min = value_min.value + 1e-7
+            elif change['owner'].description == "Log Min":
+                log_max.min = log_min.value + 1e-7
+            elif change['owner'].description == "Max Value":
+                value_min.max = value_max.value - 1e-7
+            elif change['owner'].description == "Log Max":
+                log_min.max = log_max.value - 1e-7
+        value_min.observe(min_max_link)
+        value_max.observe(min_max_link)
+        log_min.observe(min_max_link)
+        log_max.observe(min_max_link)
+
+        def on_ddqs_change(change):
+            if change['name'] == 'value' and (change['new'] != change['old']):
+                self.slice_gui_range_update = True
+        dump.observe(on_ddqs_change)
+        direction.observe(on_ddqs_change)
+        quantity.observe(on_ddqs_change)
+        slice_index.observe(on_ddqs_change)
+
+        def on_log_change(change):
+            if change['name'] == 'value' and (change['new'] != change['old']):
+                self.slice_gui_range_update = True
+                if change['new'] == True:
+                    log_range.layout.display = 'block'
+                    value_range.layout.display = 'none'
+                else:
+                    value_range.layout.display = 'block'
+                    log_range.layout.display = 'none'
+        log.observe(on_log_change)
+
         output = widgets.interactive_output(plot, {'dump': dump, 'quantity': quantity, 'direction': direction, 'log': log, \
-            'slice_index': slice_index, 'val_range': val_range, 'colour0': colours[0], 'colour1': colours[1], 'colour2': colours[2], \
-            'colour3': colours[3], 'colour4': colours[4], 'colour5': colours[5], 'colour6': colours[6], 'colour7': colours[7], \
-            'colour8': colours[8], 'colour9': colours[9], 'colour10': colours[10], 'colour11': colours[11], 'range0': ranges[0], \
-            'range1': ranges[1], 'range2': ranges[2], 'range3': ranges[3], 'range4': ranges[4], 'range5': ranges[5], 'range6': ranges[6], \
-            'range7': ranges[7], 'range8': ranges[8], 'range9': ranges[9], 'range10': ranges[10], 'range11': ranges[11], \
-            'colour_select': colour_select})
+            'slice_index': slice_index, 'vmin': value_min, 'vmax': value_max, 'log_min': log_min, 'log_max': log_max, \
+            'colour0': colours[0], 'colour1': colours[1], 'colour2': colours[2], 'colour3': colours[3], 'colour4': colours[4], \
+            'colour5': colours[5], 'colour6': colours[6], 'colour7': colours[7], 'colour8': colours[8], 'colour9': colours[9], \
+            'colour10': colours[10], 'colour11': colours[11], 'range0': ranges[0], 'range1': ranges[1], 'range2': ranges[2], \
+            'range3': ranges[3], 'range4': ranges[4], 'range5': ranges[5], 'range6': ranges[6], 'range7': ranges[7], \
+            'range8': ranges[8], 'range9': ranges[9], 'range10': ranges[10], 'range11': ranges[11], 'colour_select': colour_select})
 
         display(ui, output)
 
-    def get_mollweide_data(self, dump, radius, quantity, constants):
+    def get_mollweide_data(self, dump, radius, quantity):
+        constants = {
+            'atomicnoH': 1.,
+            'atomicnocld': self._rprofset.get('atomicnocld', fname=0),
+            'fkcld': self._rprofset.get('fkcld', fname=0),
+            'airmu': self._rprofset.get('airmu', fname=0),
+            'cldmu': self._rprofset.get('cldmu', fname=0)
+        }
         npoints = self.sphericalHarmonics_lmax(radius)[-1]
         ux = self.get(1, dump)
         uy = self.get(2, dump)
@@ -12016,7 +12078,6 @@ class MomsDataSet:
         plot_val = []
 
         if quantity == 0:
-            ur_r *= 1e3 # convert to km/s
             plot_val = ur_r
         elif quantity == 1:
             u_t = self.get(4, dump)
@@ -12045,67 +12106,42 @@ class MomsDataSet:
             'plot_val': plot_val
         }
 
-    def mollweide_plot(self, dump, radius, quantity, log, vmin, vmax, colour_select, colours, ranges, quant_log_update, constants, size, ifig, ipympl_hack=True):
-        data = self.get_mollweide_data(dump, radius, quantity, constants)
-        if quant_log_update == True and log == True:
-            if data['plot_val'].min() < 0:
-                vmin = -np.log(-data['plot_val'].min())
-            else:
-                vmin = np.log(data['plot_val'].min())
-            if data['plot_val'].max() < 0:
-                -np.log(-data['plot_val'].max())
-            else:
-                np.log(data['plot_val'].max())
-        elif quant_log_update == True:
-            vmin = data['plot_val'].min()
-            vmax = data['plot_val'].max()
-
-        if log == True and data['plot_val'].min() < 0:
-            plot_val = data['plot_val']
-            logrange = [vmin, vmax]
-            log_mid = vmin + ((vmax - vmin)/2.)
-            finv = lambda x: -x -log_mid
-            plot_bool = plot_val > 0
-            for i in range(len(plot_val)-1):
-                if plot_bool[i]:
-                    plot_val[i] = finv(-np.log10(plot_val[i]))
-                else:
-                    plot_val[i] = -finv(-np.log10(-plot_val[i]))
-                if plot_val[i] > vmax:
-                    plot_val[i] = vmax
-                elif plot_val[i] < vmin:
-                    plot_val[i] = vmin
-            data['plot_val'] = plot_val
-        elif log == True:
-            np.log10(data['plot_val'])
-
-        pl.close(ifig)
-        pl.rcParams.update({'font.size': 5})
-        fig = pl.figure(ifig, dpi=300)
-        if ipympl_hack: self.ipympl_hack_noadjust(fig, size)
-        
-        mollweide_plot = fig.add_axes([0.1, 0.2, 0.88, 0.88], projection='mollweide')
+    def mollweide_plot(self, quantity, log, vmin, vmax, colour_select, colours, ranges, ifig):
+        plot_val = self.mollweide_data['plot_val']
+        mollweide_plot = self.mollweide_fig.add_axes([0.1, 0.2, 0.88, 0.88], projection='mollweide')
         mollweide_plot.grid("True")
-        cax = fig.add_axes([0.12, 0.2, 0.84, 0.02])
+        cax = self.mollweide_fig.add_axes([0.12, 0.2, 0.84, 0.02])
         cmap = self.build_cmap(colours, ranges, colour_select, vmin, vmax)
 
-        if (quantity == 2 or quantity == 3 or quantity == 5) and vmin >= 0:
-            mollweide_plot.scatter(data['uphi_r'], data['utheta_r'], s=(72./fig.dpi)**2, marker=',', c=data['plot_val'], cmap=cmap, norm=colors.LogNorm(*[vmin, vmax]))
+        if log == True:
+            log_min = np.abs(np.log10(vmin))
+            plot_bool = plot_val > 0
+            for index, val in enumerate(plot_val):
+                if plot_bool[index] == True:
+                    if vmin <= val and val <= vmax:
+                        plot_val[index] = np.log10(val) + log_min
+                    else:
+                        plot_val[index] = 0
+                else:
+                    if val != 0:
+                        if -vmax <= val and val <= -vmin:
+                            plot_val[index] = -np.log10(-val) - log_min
+                        else:
+                            plot_val[index] = 0
+            mollweide_plot.scatter(self.mollweide_data['uphi_r'], self.mollweide_data['utheta_r'], s=(72./self.mollweide_fig.dpi)**2, marker=',', c=plot_val, cmap=cmap, vmin=plot_val.min(), vmax=plot_val.max())
         else:
-            mollweide_plot.scatter(data['uphi_r'], data['utheta_r'], s=(72./fig.dpi)**2, marker=',', c=data['plot_val'], cmap=cmap, vmin=vmin, vmax=vmax)
+            mollweide_plot.scatter(self.mollweide_data['uphi_r'], self.mollweide_data['utheta_r'], s=(72./self.mollweide_fig.dpi)**2, marker=',', c=plot_val, cmap=cmap, vmin=vmin, vmax=vmax)
+        cbar1 = self.mollweide_fig.colorbar(mollweide_plot.collections[0], cax=cax, orientation='horizontal')
+        pl.show(ifig)
 
-        cbar1 = fig.colorbar(mollweide_plot.collections[0], cax=cax, orientation='horizontal')
-
-        return data['plot_val']
-
-    def mollweide_gui(self, constants, rad_def=-1, rad_range=[0,-1], size=10, ifig=124):
+    def mollweide_gui(self, rad_def=-1, rad_range=[0,-1], size=10, ifig=124):
+        self.mollweide_data_update = False
         dump_min, dump_max = self.get_dump_list()[0], self.get_dump_list()[-1]
         dump_mean = int(2*(-dump_min + dump_max)/3.)
-        self.quant_log_update = True
 
         # left-most widgets in graph settings
         dump = widgets.IntSlider(value=dump_mean, min=dump_min, max=dump_max, step=1, description="Dump", disabled=False, continuous_update=False, orientation="horizontal", layout=widgets.Layout(width='350px'))
-        
+
         #Fix max radius bug:
         radii = self._rprofset.get('R',fname=dump.value)
         rad_max = max(radii)
@@ -12113,20 +12149,29 @@ class MomsDataSet:
         #Set default to the median radius:
         rad_med = np.median(radii)
         rad_def = rad_med if rad_def < 0 else rad_def
-        
+
         radius = widgets.FloatSlider(value=rad_def, min=rad_range[0], max=rad_range[1], step=0.1, description="Radius", disabled=False, continuous_update=False, layout=widgets.Layout(width='350px'))
         quantity = widgets.Dropdown(options=[('u_r', 0), ('u_t', 1), ('fv', 2), ('X_H', 3), ('rho', 4), ('|w|', 5)], value=0, description="Quantity", layout=widgets.Layout(width='200px'))
         log = widgets.Checkbox(value=True, description="Log Values", disabled=False, indent=True)
         quant_log = widgets.HBox([quantity, log], layout=widgets.Layout(margin='0px 0px 0px 10px'))
+        plot_button = widgets.Button(description="Render Plot", disabled=False, layout=widgets.Layout(margin="10px 0px 0px 20px"))
 
-        left_widgets = widgets.VBox([dump, radius, quant_log], layout=widgets.Layout(width='30%'))
+        left_widgets = widgets.VBox([dump, radius, quant_log, plot_button], layout=widgets.Layout(width='30%'))
 
         # center widgets in graph settings
         value_label = widgets.Label(value="Value Range to Display:")
         value_min = widgets.BoundedFloatText(value=-85., min=-1000., max=84.9999999, step=1e-7, readout_format=".7f", description="Min Value", layout=widgets.Layout(width='335px'))
         value_max = widgets.BoundedFloatText(value=85, min=-84.9999999, max=1000., step=1e-7, readout_format=".7f", description="Max Value", layout=widgets.Layout(width='335px'))
 
-        center_widgets = widgets.VBox([value_label, value_min, value_max], layout=widgets.Layout(width='30%'))
+        log_label = widgets.Label(value="Log Value Range to Display (Applied symmetrically):")
+        log_min = widgets.BoundedFloatText(value=1e-3, min=1e-7, max=9.99999e-2, step=1e-7, readout_format=".7f", description="Log Min", layout=widgets.Layout(width='335px'))
+        log_max = widgets.BoundedFloatText(value=1e-1, min=1.0001e-3, max=2e4, step=1e-7, readout_format=".7f", description="Log Max", layout=widgets.Layout(width='335px'))
+
+        value_range = widgets.VBox([value_label, value_min, value_max], layout=widgets.Layout(width='100%'))
+        value_range.layout.display = 'none' # hide these controls intially as log == True on init
+        log_range = widgets.VBox([log_label, log_min, log_max], layout=widgets.Layout(width='100%'))
+
+        center_widgets = widgets.VBox([value_range, log_range], layout=widgets.Layout(width='30%'));
 
         # right-most widgets in graph settings
         save_load_label = widgets.Label(value="Save/Load Configuration (.pickle):")
@@ -12147,26 +12192,58 @@ class MomsDataSet:
         gui.set_title(0, "Graph Settings")
         gui.set_title(1, "Colour Picker")
 
-        def plot(dump, radius, quantity, log, vmin, vmax, colour_select, colour0, colour1, colour2, colour3, colour4, colour5, colour6, colour7, colour8, colour9, colour10, \
-            colour11, range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11):
-            plot_val = self.mollweide_plot(dump, radius, quantity, log, vmin, vmax, colour_select, [colour0, colour1, colour2, colour3, \
-                colour4, colour5, colour6, colour7, colour8, colour9, colour10, colour11], [range0, range1, range2, range3, range4, range5, range6, \
-                range7, range8, range9, range10, range11], self.quant_log_update, constants, size, ifig)
-            if self.quant_log_update:
-                self.quant_log_update = False
-                value_min.value = plot_val.min()
-                value_max.value = plot_val.max()
+        # Setup observe and onclick events
+        def on_click_plot_button(b):
+            plot_button.disabled = True
+            self.mollweide_data = self.get_mollweide_data(dump.value, radius.value, quantity.value)
+            if self.mollweide_data_update == True:
+                if log.value == False:
+                    value_min.value = self.mollweide_data["plot_val"].min()
+                    value_max.value = self.mollweide_data["plot_val"].max()
+                self.mollweide_data_update = False
+            colour_values = [colours[0].value, colours[1].value, colours[2].value, colours[3].value, colours[4].value, colours[5].value, colours[6].value, \
+                colours[7].value, colours[8].value, colours[9].value, colours[10].value, colours[11].value]
+            range_values = [ranges[0].value, ranges[1].value, ranges[2].value, ranges[3].value, ranges[4].value, ranges[5].value, ranges[6].value, \
+                ranges[7].value, ranges[8].value, ranges[9].value, ranges[10].value, ranges[11].value]
+            self.mollweide_fig.clear()
+            if log.value == True:
+                self.mollweide_plot(quantity.value, log.value, log_min.value, log_max.value, colour_select.value, colour_values, range_values, ifig)
+            else:
+                self.mollweide_plot(quantity.value, log.value, value_min.value, value_max.value, colour_select.value, colour_values, range_values, ifig)
+            plot_button.disabled = False
+        plot_button.on_click(on_click_plot_button)
+
+        def on_dqr_change(change):
+            if (change['new'] != change['old']):
+                self.mollweide_data_update = True
+        dump.observe(on_dqr_change)
+        quantity.observe(on_dqr_change)
+        radius.observe(on_dqr_change)
+
+        def on_log_change(change):
+            if change['name'] == 'value' and (change['new'] != change['old']):
+                self.mollweide_data_update = True
+                if change['new'] == True:
+                    log_range.layout.display = 'block'
+                    value_range.layout.display = 'none'
+                else:
+                    value_range.layout.display = 'block'
+                    log_range.layout.display = 'none'
+        log.observe(on_log_change)
 
         def min_max_link(change):
             if change['owner'].description == "Min Value":
                 value_max.min = value_min.value + 1e-7
+            elif change['owner'].description == "Log Min":
+                log_max.min = log_min.value + 1e-7
             elif change['owner'].description == "Max Value":
                 value_min.max = value_max.value - 1e-7
-        value_min.observe(min_max_link), value_max.observe(min_max_link)
-
-        def on_quant_log_change(change):
-            self.quant_log_update = True
-        quantity.observe(on_quant_log_change), log.observe(on_quant_log_change)
+            elif change['owner'].description == "Log Max":
+                log_min.max = log_max.value - 1e-7
+        value_min.observe(min_max_link)
+        value_max.observe(min_max_link)
+        log_min.observe(min_max_link)
+        log_max.observe(min_max_link)
 
         def on_click_save(b):
             pickle_info = {
@@ -12176,6 +12253,8 @@ class MomsDataSet:
                 'log': log.value,
                 'value_min': value_min.value,
                 'value_max': value_max.value,
+                'log_min': log_min.value,
+                'log_max': log_max.value,
                 'colour_select': colour_select.value,
                 'colours': [],
                 'ranges': []
@@ -12206,6 +12285,8 @@ class MomsDataSet:
                     colour_select.value = pickle_info['colour_select']
                     value_min.value = pickle_info['value_min']
                     value_max.value = pickle_info['value_max']
+                    log_min.value = pickle_info['log_min'],
+                    log_max.value = pickle_info['log_max'],
                     saved_colours = pickle_info['colours']
                     saved_ranges = pickle_info['ranges']
                     for i in range(0, 12):
@@ -12216,14 +12297,23 @@ class MomsDataSet:
                     print('Failed to load file')
         load_button.on_click(on_click_load)
 
-        # Output for all widgets
-        output = widgets.interactive_output(plot, {'dump': dump, 'radius': radius, 'quantity': quantity, 'log': log, 'vmin': value_min, 'vmax': value_max, \
-            'colour_select': colour_select, 'colour0': colours[0], 'colour1': colours[1], 'colour2': colours[2], 'colour3': colours[3], 'colour4': colours[4], \
-            'colour5': colours[5], 'colour6': colours[6], 'colour7': colours[7], 'colour8': colours[8], 'colour9': colours[9], 'colour10': colours[10], \
-            'colour11': colours[11], 'range0': ranges[0], 'range1': ranges[1], 'range2': ranges[2], 'range3': ranges[3], 'range4': ranges[4], 'range5': ranges[5], \
-            'range6': ranges[6], 'range7': ranges[7], 'range8': ranges[8], 'range9': ranges[9], 'range10': ranges[10], 'range11': ranges[11]})
+        display(gui)
 
-        display(gui, output)
+        #setup needed initial plot info
+        pl.rcParams.update({'font.size': 5})
+        self.mollweide_fig = pl.figure(ifig, dpi=300)
+        self.mollweide_fig.canvas.layout.height = str(0.9*size) + 'in' # This is a hack to prevent ipympl
+        self.mollweide_fig.canvas.layout.width  = str(1.1*size) + 'in' # to adjust horizontal figure size
+        self.mollweide_fig.clear()
+
+        #setup intial data run and plot
+        self.mollweide_data = self.get_mollweide_data(dump.value, radius.value, quantity.value)
+        colour_values = [colours[0].value, colours[1].value, colours[2].value, colours[3].value, colours[4].value, colours[5].value, colours[6].value, \
+            colours[7].value, colours[8].value, colours[9].value, colours[10].value, colours[11].value]
+        range_values = [ranges[0].value, ranges[1].value, ranges[2].value, ranges[3].value, ranges[4].value, ranges[5].value, ranges[6].value, \
+            ranges[7].value, ranges[8].value, ranges[9].value, ranges[10].value, ranges[11].value]
+        self.mollweide_plot(quantity.value, log.value, log_min.value, log_max.value, colour_select.value, colour_values, range_values, ifig)
+
 
 # now the 2X classes will override a couple of methods in the instantiation processes
 class MomsData2X(MomsData):
