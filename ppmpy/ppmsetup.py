@@ -5,7 +5,7 @@ construction of a new setup for the PPMstar code.
 
 FH, 20140907
 
-OC, 20180414 , 20190211
+OC, 20180414 , 20190211, 20200921
 '''
 from nugridpy import mesa as ms
 import nugridpy.constants
@@ -257,16 +257,24 @@ def rhoTfromSP(T,rho,S,P,a,R,mu):
         eps = max(np.array([G1,G2]+[drho,dT]))       
     return rho, T
 
-def rhs4(x,r,T,rho,S,P,a_code,R_code,mu):
+#I have removed the unnessary call of rhoTfromSP from the below function. We already have rho, T at this point.
+def rhs4(x,r,T,rho,P):
     '''RHS of ODE dP/dr and dm/dr using rho, T fron NR.'''
     m,P = x
-    rho,T = rhoTfromSP(T,rho,S,P,a_code,R_code,mu)
     f1 = 4.*np.pi*r**2*rho
-    if r == 0:    # for integration from zero
-        f2 = 0
-    else:
-        f2 = -G_code*m*rho/r**2
+    f2 = -G_code*m*rho/r**2
     return [f1,f2]
+
+#def rhs4(x,r,T,rho,S,P,a_code,R_code,mu):
+#    '''RHS of ODE dP/dr and dm/dr using rho, T fron NR.'''
+#    m,P = x
+#    rho,T = rhoTfromSP(T,rho,S,P,a_code,R_code,mu)
+#    f1 = 4.*np.pi*r**2*rho
+#    if r == 0:    # for integration from zero
+#        f2 = 0
+#    else:
+#        f2 = -G_code*m*rho/r**2
+#    return [f1,f2]
 
 
 def get_prof_data(data_dir,model):
