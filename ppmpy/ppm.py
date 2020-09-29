@@ -11753,13 +11753,14 @@ class MomsDataSet:
 
         return np.sqrt(np.power(ux,2.0)+np.power(uy,2.0)+np.power(uz,2.0))
 
-    def build_cmap(self, colours, ranges, num_colours, vmin, vmax):
-        diff = vmax - vmin
+    def build_cmap(self, colours, ranges, num_colours):
         reduced_colours = list(colours[0:num_colours])
         reduced_ranges = list(ranges[0:num_colours])
+        
         cmap_rgba = [matplotlib.colors.to_rgba(colour) for colour in reduced_colours]
         cmap = list(zip(reduced_ranges, cmap_rgba))
         sorted_cmap = sorted(cmap, key = lambda tup: tup[0])
+        
         colormap = matplotlib.colors.LinearSegmentedColormap.from_list('custom_cmap', sorted_cmap)
         pl.register_cmap('custom_cmap', colormap)
 
@@ -11852,7 +11853,7 @@ class MomsDataSet:
             [range0, range1, range2, range3, range4, range5, range6, range7, range8, range9, range10, range11], colour_select, colourPicker
 
     def slice_plot(self, dump, quantity, direction, vmin, vmax, log, slice_index, colours, ranges, num_colours, size, ifig, interpolation):
-        cmap = self.build_cmap(colours, ranges, num_colours, vmin, vmax)
+        cmap = self.build_cmap(colours, ranges, num_colours)
         values = self.get(quantity, dump)
         x, y, z = self.get_cgrid()
         indexed_quantities = self.get_indexed_quantities()
@@ -11876,20 +11877,21 @@ class MomsDataSet:
             vmax = np.amax(trimmed_vals)
 
         if log == True:
-            log_min = np.abs(np.log10(vmin))
+            log_min = np.log10(vmin)
+            isFractionalMin = vmin < 1
             for i in range(len(trimmed_vals[:][0])-1):
                 row = trimmed_vals[i][:]
                 rowBool = row > 0
                 for index, val in enumerate(row):
                     if rowBool[index] == True:
                         if vmin <= val and val <= vmax:
-                            row[index] = np.log10(val) + log_min
+                            row[index] = -1*(np.log10(val) + log_min) if isFractionalMin else (np.log10(val) + log_min)
                         else:
                             row[index] = 0
                     else:
                         if val != 0:
                             if -vmax <= val and val <= -vmin:
-                                row[index] = -np.log10(-val) - log_min
+                                row[index] = -1*(-np.log10(-val) - log_min) if isFractionalMin else (-np.log10(-val) - log_min)
                             else:
                                 row[index] = 0
                 trimmed_vals[i][:] = row
@@ -12111,21 +12113,22 @@ class MomsDataSet:
         mollweide_plot = self.mollweide_fig.add_axes([0.1, 0.2, 0.88, 0.88], projection='mollweide')
         mollweide_plot.grid("True")
         cax = self.mollweide_fig.add_axes([0.12, 0.2, 0.84, 0.02])
-        cmap = self.build_cmap(colours, ranges, colour_select, vmin, vmax)
+        cmap = self.build_cmap(colours, ranges, colour_select)
 
         if log == True:
-            log_min = np.abs(np.log10(vmin))
+            log_min = np.log10(vmin)
+            isFractionalMin = vmin < 1
             plot_bool = plot_val > 0
             for index, val in enumerate(plot_val):
                 if plot_bool[index] == True:
                     if vmin <= val and val <= vmax:
-                        plot_val[index] = np.log10(val) + log_min
+                        plot_val[index] = -1*(np.log10(val) + log_min) if isFractionalMin else (np.log10(val) + log_min)
                     else:
                         plot_val[index] = 0
                 else:
                     if val != 0:
                         if -vmax <= val and val <= -vmin:
-                            plot_val[index] = -np.log10(-val) - log_min
+                            plot_val[index] = -1*(-np.log10(-val) - log_min) if isFractionalMin else (-np.log10(-val) - log_min)
                         else:
                             plot_val[index] = 0
             mollweide_plot.scatter(self.mollweide_data['uphi_r'], self.mollweide_data['utheta_r'], s=(72./self.mollweide_fig.dpi)**2, marker=',', c=plot_val, cmap=cmap, vmin=plot_val.min(), vmax=plot_val.max())
