@@ -11878,27 +11878,26 @@ class MomsDataSet:
 
         if log == True:
             log_min = np.log10(vmin)
-            isFractionalMin = vmin < 1
             for i in range(len(trimmed_vals[:][0])-1):
                 row = trimmed_vals[i][:]
                 rowBool = row > 0
                 for index, val in enumerate(row):
                     if rowBool[index] == True:
                         if vmin <= val and val <= vmax:
-                            row[index] = -1*(np.log10(val) + log_min) if isFractionalMin else (np.log10(val) + log_min)
+                            row[index] = np.log10(val) - log_min if log_min < 0 else np.log10(val) + log_min
                         else:
                             row[index] = 0
                     else:
                         if val != 0:
                             if -vmax <= val and val <= -vmin:
-                                row[index] = -1*(-np.log10(-val) - log_min) if isFractionalMin else (-np.log10(-val) - log_min)
+                                row[index] = -1*np.log10(-val) + log_min if log_min < 0 else -1*np.log10(-val) - log_min
                             else:
                                 row[index] = 0
                 trimmed_vals[i][:] = row
             pl.imshow(trimmed_vals, extent=extent, vmin=np.amin(trimmed_vals), vmax=np.amax(trimmed_vals), cmap=cmap, interpolation=interpolation)
         else:
             pl.imshow(trimmed_vals, extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
-
+        
         pl.colorbar()
         return [vmin, vmax]
 
@@ -12117,18 +12116,17 @@ class MomsDataSet:
 
         if log == True:
             log_min = np.log10(vmin)
-            isFractionalMin = vmin < 1
             plot_bool = plot_val > 0
             for index, val in enumerate(plot_val):
                 if plot_bool[index] == True:
                     if vmin <= val and val <= vmax:
-                        plot_val[index] = -1*(np.log10(val) + log_min) if isFractionalMin else (np.log10(val) + log_min)
+                        plot_val[index] = np.log10(val) - log_min if log_min < 0 else np.log10(val) + log_min
                     else:
                         plot_val[index] = 0
                 else:
                     if val != 0:
                         if -vmax <= val and val <= -vmin:
-                            plot_val[index] = -1*(-np.log10(-val) - log_min) if isFractionalMin else (-np.log10(-val) - log_min)
+                            plot_val[index] = -1*np.log10(-val) + log_min if log_min < 0 else -1*np.log10(-val) - log_min
                         else:
                             plot_val[index] = 0
             mollweide_plot.scatter(self.mollweide_data['uphi_r'], self.mollweide_data['utheta_r'], s=(72./self.mollweide_fig.dpi)**2, marker=',', c=plot_val, cmap=cmap, vmin=plot_val.min(), vmax=plot_val.max())
