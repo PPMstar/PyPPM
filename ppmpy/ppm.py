@@ -11756,11 +11756,11 @@ class MomsDataSet:
     def build_cmap(self, colours, ranges, num_colours):
         reduced_colours = list(colours[0:num_colours])
         reduced_ranges = list(ranges[0:num_colours])
-        
+
         cmap_rgba = [matplotlib.colors.to_rgba(colour) for colour in reduced_colours]
         cmap = list(zip(reduced_ranges, cmap_rgba))
         sorted_cmap = sorted(cmap, key = lambda tup: tup[0])
-        
+
         colormap = matplotlib.colors.LinearSegmentedColormap.from_list('custom_cmap', sorted_cmap)
         pl.register_cmap('custom_cmap', colormap)
 
@@ -11885,19 +11885,23 @@ class MomsDataSet:
                     if rowBool[index] == True:
                         if vmin <= val and val <= vmax:
                             row[index] = np.log10(val) - log_min if log_min < 0 else np.log10(val) + log_min
+                        elif val > vmax:
+                            row[index] = np.log10(vmax) - log_min if log_min < 0 else np.log10(vmax) + log_min
                         else:
                             row[index] = 0
                     else:
                         if val != 0:
                             if -vmax <= val and val <= -vmin:
                                 row[index] = -1*np.log10(-val) + log_min if log_min < 0 else -1*np.log10(-val) - log_min
+                            elif val < -vmax:
+                                row[index] = -1*np.log10(vmax) + log_min if log_min < 0 else -1*np.log10(vmax) - log_min
                             else:
                                 row[index] = 0
                 trimmed_vals[i][:] = row
             pl.imshow(trimmed_vals, extent=extent, vmin=np.amin(trimmed_vals), vmax=np.amax(trimmed_vals), cmap=cmap, interpolation=interpolation)
         else:
             pl.imshow(trimmed_vals, extent=extent, vmin=vmin, vmax=vmax, cmap=cmap, interpolation=interpolation)
-        
+
         pl.colorbar()
         return [vmin, vmax]
 
@@ -12121,12 +12125,16 @@ class MomsDataSet:
                 if plot_bool[index] == True:
                     if vmin <= val and val <= vmax:
                         plot_val[index] = np.log10(val) - log_min if log_min < 0 else np.log10(val) + log_min
+                    elif val > vmax:
+                        plot_val[index] = np.log10(vmax) - log_min if log_min < 0 else np.log10(vmax) + log_min
                     else:
                         plot_val[index] = 0
                 else:
                     if val != 0:
                         if -vmax <= val and val <= -vmin:
                             plot_val[index] = -1*np.log10(-val) + log_min if log_min < 0 else -1*np.log10(-val) - log_min
+                        elif val < -vmax:
+                            plot_val[index] = -1*np.log10(vmax) + log_min if log_min < 0 else -1*np.log10(vmax) - log_min
                         else:
                             plot_val[index] = 0
             mollweide_plot.scatter(self.mollweide_data['uphi_r'], self.mollweide_data['utheta_r'], s=(72./self.mollweide_fig.dpi)**2, marker=',', c=plot_val, cmap=cmap, vmin=plot_val.min(), vmax=plot_val.max())
