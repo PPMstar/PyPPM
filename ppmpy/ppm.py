@@ -1368,21 +1368,21 @@ class PPMtools:
                         r0 = r00
             elif criterion == 'value':
                 # 0th-order estimate.
-                idx0 = idx_r_max + np.argmin(np.abs(v[idx_r_max:idx_r_min] - var_value[i]))
+                idx0 = idx_r_max + np.argmin(np.abs(v[idx_r_max:idx_r_min] - var_value))
                 r0 = r[idx0]
 
-                if np.abs(v[idx0] - var_value[i]) > eps:
+                if np.abs(v[idx0] - var_value) > eps:
                     # 1st-order refinement.
                     if idx0 < idx_r_min and idx0 > idx_r_max:
-                        if (v[idx0-1] < var_value[i] and v[idx0] > var_value[i]) or \
-                           (v[idx0-1] > var_value[i] and v[idx0] < var_value[i]):
+                        if (v[idx0-1] < var_value and v[idx0] > var_value) or \
+                           (v[idx0-1] > var_value and v[idx0] < var_value):
                             slope = v[idx0] - v[idx0-1]
-                            t = (var_value[i] - v[idx0-1])/slope
+                            t = (var_value - v[idx0-1])/slope
                             r0 = (1. - t)*r[idx0-1] + t*r[idx0]
-                        elif (v[idx0] < var_value[i] and v[idx0+1] > var_value[i]) or \
-                            (v[idx0] > var_value[i] and v[idx0+1] < var_value[i]):
+                        elif (v[idx0] < var_value and v[idx0+1] > var_value) or \
+                            (v[idx0] > var_value and v[idx0+1] < var_value):
                             slope = v[idx0+1] - v[idx0]
-                            t = (var_value[i] - v[idx0])/slope
+                            t = (var_value - v[idx0])/slope
                             r0 = (1. - t)*r[idx0] + t*r[idx0+1]
                         else:
                             r0 = r_max
@@ -9348,7 +9348,6 @@ class RprofSet(PPMtools):
         len_dump = len(dump)
         # Get dump and assign it to a variable
         rp = self.get_dump(self.get_dump_list()[0])
-        print(rp.get_hr_variables())
         # Define resolution and throw errors if they don't match;
         # throw error if ything is not defined
         ything_computable = False
