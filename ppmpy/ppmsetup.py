@@ -257,12 +257,15 @@ def rhoTfromSP(T,rho,S,P,a,R,mu):
         eps = max(np.array([G1,G2]+[drho,dT]))       
     return rho, T
 
-#I have removed the unnessary call of rhoTfromSP from the below function. We already have rho, T at this point.
-def rhs4(x,r,T,rho,P):
+def rhs4(x,r,T,rho,S,P,a_code,R_code,mu):
     '''RHS of ODE dP/dr and dm/dr using rho, T fron NR.'''
     m,P = x
+    rho,T = rhoTfromSP(T,rho,S,P,a_code,R_code,mu)
     f1 = 4.*np.pi*r**2*rho
-    f2 = -G_code*m*rho/r**2
+    if r == 0:    # for integration from zero                                                                                                                         
+        f2 = 0
+    else:
+        f2 = -G_code*m*rho/r**2
     return [f1,f2]
 
 #def rhs4(x,r,T,rho,S,P,a_code,R_code,mu):
