@@ -72,15 +72,13 @@ plots the data.
 
 """
 
-from __future__ import (division,
-                        print_function)
+from __future__ import (division,print_function)
 
 from builtins import zip
 from builtins import input
 from builtins import str
 from builtins import range
 from builtins import object
-from past.utils import old_div
 
 from numpy import *
 import numpy as np
@@ -9756,6 +9754,12 @@ class Rprof:
             0 on success.
         NoneType
             Something failed.
+        
+        Variables
+        ---------
+        los: dictionary
+            contains the eight line-of-sight vectors
+            Rprof.los[1] returns array of first vector, dict keys are integers
         '''
 
         try:
@@ -9773,6 +9777,7 @@ class Rprof:
         self.__lr_data = {} # low-resolution data columns
         self.__hr_vars = [] # high-resolution data columns
         self.__hr_data = {} # high-resolution data columns
+        self.los       = {}     # line-of-sight vectors 
 
         l = 0 # line index
 
@@ -9790,6 +9795,7 @@ class Rprof:
 
         eof = False
         footer_reached = False
+        los_reached = False 
         while l < len(lines):
             # Find the next table.
             while True:
@@ -9808,18 +9814,24 @@ class Rprof:
                         # get to an array of parameters, which we want to read.
                         l += 16
                         break
+                    if sline[0] == 'Line':
+                        los_reached = True 
+                        los_nr = int(sline[3])
+                        l += 1
+                        sline = lines[l].split()
+                        self.los[los_nr] = array(sline,dtype=float)                        
 
                 l += 1
                 if l == len(lines):
                    eof = True
                    break
 
-            if footer_reached or eof:
+            if footer_reached or eof or los_reached:
                 break
 
             # Go to the table's body.
             while True:
-                stripped_line = lines[l].strip()
+                stripped_line = lines[l].strip()  # remove trailing and leading white space
                 if len(stripped_line) > 0 and stripped_line[0].isdigit():
                     break
                 l += 1
@@ -9842,7 +9854,7 @@ class Rprof:
                 if is_hr and col_names[i] not in self.__hr_vars:
                     self.__hr_vars.append(col_names[i])
                     self.__hr_data[col_names[i]] = np.zeros(n)
-                elif col_names[i] not in self.__lr_vars:
+                elif not is_hr and col_names[i] not in self.__lr_vars:
                     self.__lr_vars.append(col_names[i])
                     self.__lr_data[col_names[i]] = np.zeros(n)
 
