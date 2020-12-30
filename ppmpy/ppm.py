@@ -967,7 +967,6 @@ class PPMtools:
         '''
         cycles1_list = any2list(cycles1)
         cycles2_list = any2list(cycles2)
-
         # Get average profiles and the average time corresponding to cycles1.
         res1 = self.average_profiles(cycles1_list, [var, 'Hp', 'r4rho2'], \
                lagrangian=True, data_rlim=data_rlim)
@@ -1623,7 +1622,10 @@ class PPMtools:
             min_val = np.min([np.min(mtot), np.min(mb), np.min(mtot_fit)])
             max_val = np.max([np.max(mtot), np.max(mb), np.max(mtot_fit)])
             max_val *= 1.1 # allow for some margin at the top of the plot
-            oom = int(np.floor(np.log10(max_val)))
+            try:   # if there is not FVcld entrained max_val will be NaN
+                oom = int(np.floor(np.log10(max_val)))
+            except OverflowError:
+                oom = 0
 
             pl.close(ifig0+1); fig2=pl.figure(ifig0+1)
             mdot_str = '{:e}'.format(mdot)
