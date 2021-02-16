@@ -1321,13 +1321,15 @@ class PPMtools:
         if return_var_scale_height:
             Hv = np.zeros(len(cycle_list))
 
+        # 'Y' is the default radial coordinate. 'R' is only used in rprof
+        # output from runs in spherical geometry (of the stratification, not of
+        # the grid).
+        rvar = 'Y'
+        if self.__isRprofSet and self.get_geometry() == 'spherical':
+            rvar = 'R'
         # The grid is assumed to be static, so we get the radial
         # scale only once at cycle_list[0].
-        if self.__isyprofile:
-            r = self.get('Y', cycle_list[0], resolution='l')
-
-        if self.__isRprofSet:
-            r = self.get('R', cycle_list[0], resolution='l')
+        r = self.get(rvar, cycle_list[0], resolution='l')
 
         idx_r_min = np.argmin(np.abs(r - r_min))
         idx_r_max = np.argmin(np.abs(r - r_max))
@@ -9194,6 +9196,13 @@ class RprofSet(PPMtools):
         '''
 
         return str(self.__run_id)
+
+    def get_geometry(self):
+        '''
+        Returns the geometry identifier.
+        '''
+
+        return str(self.__geometry)
 
     def get_history(self):
         '''
