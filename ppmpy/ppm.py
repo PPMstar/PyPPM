@@ -9051,7 +9051,7 @@ class RprofSet(PPMtools):
     of PPMstar 2.0.
     '''
 
-    def __init__(self, dir_name, verbose=3, cache_rprofs=True):
+    def __init__(self, dir_name, verbose=3, cache_rprofs=True, geometry='spherical'):
         '''
         Init method.
 
@@ -9061,6 +9061,14 @@ class RprofSet(PPMtools):
             Name of the directory to be searched for .rprof files.
         verbose: integer
             Verbosity level as defined in class Messenger.
+        cache_rprofs: boolean
+            If true all .rprof files loaded from disk will be put into a
+            RAM-based cache.
+        geometry: 'spherical' or 'cartesian'
+            Geometry of the simulation's 3D computational grid. This flag
+            changes the definition of high- and low-resolution data as well as
+            the behaviour of some methods (such as boundary search, mass
+            integrals).
         '''
 
         PPMtools.__init__(self,verbose=verbose)
@@ -9089,6 +9097,14 @@ class RprofSet(PPMtools):
             wrng = ('History not available. You will not be able to access '
                    'rprof data by simulation time.')
             self.__messenger.warning(wrng)
+
+        if geometry in ('spherical', 'cartesian'):
+            self.__geometry = geometry
+        else:
+            wrng = ("Unknown geometry ('{:s}'). Using 'spherical' instead. "
+                    "Unexpected results may occur.".format(geometry))
+            self.__messenger.warning(wrng)
+            self.__geometry = 'spherical'
 
         self.__is_valid = True
 
@@ -9224,10 +9240,10 @@ class RprofSet(PPMtools):
             if dump in self.__rprof_cache:
                 rp = self.__rprof_cache[dump]
             else:
-                rp = Rprof(file_path)
+                rp = Rprof(file_path, geometry=self.__geometry)
                 self.__rprof_cache[dump] = rp
         else:
-            rp = Rprof(file_path)
+            rp = Rprof(file_path, geometry=self.__geometry)
 
         return rp
 
@@ -9722,7 +9738,7 @@ class Rprof:
     PPMstar 2.0.
     '''
 
-    def __init__(self, file_path, verbose=3):
+    def __init__(self, file_path, verbose=3, geometry='spherical'):
         '''
         Init method.
 
@@ -9732,10 +9748,25 @@ class Rprof:
             Path to the .rprof file.
         verbose: integer
             Verbosity level as defined in class Messenger.
+        geometry: 'spherical' or 'cartesian'
+            Geometry of the simulation's 3D computational grid. This flag
+            changes the definition of high- and low-resolution data as well as
+            the behaviour of some methods (such as boundary search, mass
+            integrals).
         '''
 
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
+
+        print('Rprof: ', geometry)
+        if geometry in ('spherical', 'cartesian'):
+            self.__geometry = geometry
+        else:
+            wrng = ("Unknown geometry ('{:s}'). Using 'spherical' instead. "
+                    "Unexpected results may occur.".format(geometry))
+            self.__messenger.warning(wrng)
+            self.__geometry = 'spherical'
+
         if self.__read_rprof_file(file_path) != 0:
             return
 
@@ -9842,11 +9873,23 @@ class Rprof:
             # The first number is always the number of radial zones.
             n = int(sline[0])
 
-            # n should equal Nx/2 for standard-resolution columns
-            # and Nx for high-resolution ones.
+            # Is this a table of high-resolution variables?
             is_hr = False
-            if n > self.__header_data['Nx']/2:
-                is_hr = True
+            print(self.__geometry)
+            if self.__geometry == 'spherical':
+                # Nx is the number of computational cells along every dimension
+                # of the cubical PPMstar grid. The number of radial bins is
+                # Nx/2 for standard-resolution columns and Nx for
+                # high-resolution ones (computed from PPB sub-cell data).
+                if n > self.__header_data['Nx']/2:
+                    is_hr = True
+            else:
+                # Nx is the number of computational cells along the vertical
+                # dimension of the computational grid. The number of vertical
+                # bins is Nx for standard-resolution columns and 2*Nx for
+                # high-resolution ones (computed from PPB sub-cell data).
+                if n > self.__header_data['Nx']:
+                    is_hr = True
 
             # Register the columns, skipping the 1st one (IR) and any
             # that are already registered (some columns appear in
