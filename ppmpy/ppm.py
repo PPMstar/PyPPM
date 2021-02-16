@@ -747,10 +747,13 @@ class PPMtools:
             Xcld = fv*rho_cld/rho
 
         if self.__isRprofSet:
-            fv = self.get('FV', fname, num_type=num_type, resolution='l')
-            airmu = self.get('airmu', fname, num_type=num_type)
-            cldmu = self.get('cldmu', fname, num_type=num_type)
-            Xcld = fv/((1. - fv)*(airmu/cldmu) + fv)
+            if 'FV' in self.get_dump(self.get_dump_list()[0]).get_lr_variables():
+                fv = self.get('FV', fname, num_type=num_type, resolution='l')
+                airmu = self.get('airmu', fname, num_type=num_type)
+                cldmu = self.get('cldmu', fname, num_type=num_type)
+                Xcld = fv/((1. - fv)*(airmu/cldmu) + fv)
+            else:
+                Xcld = self.get('X1', fname, num_type=num_type, resolution='l')
 
         return Xcld
 
@@ -1477,20 +1480,32 @@ class PPMtools:
         rt = rb + offset*np.abs(Hv)
         print('Done.')
 
+        geometry = self.get_geometry()
+
+        # 'Y' is the default radial coordinate. 'R' is only used in rprof
+        # output from runs in spherical geometry (of the stratification, not of
+        # the grid).
+        rvar = 'Y'
+        if self.__isRprofSet and geometry == 'spherical':
+            rvar = 'R'
         # The grid is assumed to be static, so we get the radial
         # scale only once at cycles[0].
-        if self.__isyprofile:
-            r = self.get('Y', cycles[0], resolution='l')
-
-        if self.__isRprofSet:
-            r = self.get('R', cycles[0], resolution='l')
+        r = self.get(rvar, cycles[0], resolution='l')
 
         r_cell_top = 0.5*(np.roll(r, +1) + r)
         r_cell_top[0] = r_cell_top[1] + (r_cell_top[1] - r_cell_top[2])
-        r3_cell_top = r_cell_top**3
-        dr3 = r3_cell_top - np.roll(r3_cell_top, -1)
-        dr3[-1] = dr3[-2] + (dr3[-2] - dr3[-3])
-        dV = (4./3.)*np.pi*dr3
+
+        if geometry == 'spherical':
+            r3_cell_top = r_cell_top**3
+            dr3 = r3_cell_top - np.roll(r3_cell_top, -1)
+            dr3[-1] = dr3[-2] + (dr3[-2] - dr3[-3])
+            dV = (4./3.)*np.pi*dr3
+        else:
+            dr = r_cell_top - np.roll(r_cell_top, -1)
+            dr[-1] = dr[-2] + (dr[-2] - dr[-3])
+            # We do not know the horizontal dimensions of the Cartesian domain,
+            # so we assume the horizontal area is unity.
+            dV = dr
 
         t = np.zeros(len(cycles))
         burn_rate = np.zeros(len(cycles))
@@ -1511,8 +1526,11 @@ class PPMtools:
                 rho = self.get('Rho', cyc, resolution='l')
 
             if self.__isRprofSet:
-                rho = self.get('Rho0', cyc, resolution='l') + \
-                      self.get('Rho1', cyc, resolution='l')
+                if 'Rho1' in self.get_dump(self.get_dump_list()[0]).get_lr_variables():
+                    rho = self.get('Rho0', cyc, resolution='l') + \
+                          self.get('Rho1', cyc, resolution='l')
+                else:
+                    rho = self.get('RHO', cyc, resolution='l')
 
             if burn_func is not None:
                 rhodot = burn_func(cyc, **burn_args)
@@ -1558,10 +1576,17 @@ class PPMtools:
             f_jph = 0.5*(f_j + f_jpo)
 
             s = (f_jph - f_jmh)/(r_jph - r_jmh)
-            V_j = (4./3.)*np.pi*(r_jmh**3 - r_jph**3)
-            f0 = f_j - np.pi*(r_jmh**4 - r_jph**4)/V_j*s
-            mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jph**3)*f0 + \
-                      np.pi*(rt[i]**4 - r_jph**4)*s
+            if geometry == 'spherical':
+                V_j = (4./3.)*np.pi*(r_jmh**3 - r_jph**3)
+                f0 = f_j - np.pi*(r_jmh**4 - r_jph**4)/V_j*s
+                mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jph**3)*f0 + \
+                          np.pi*(rt[i]**4 - r_jph**4)*s
+            else:
+                # We again assume that the horizontal area is unity in
+                # Cartesian geometry.
+                V_j = r_jmh - r_jph
+                f0 = f_j - 0.5*s*(r_jmh**2 - r_jph**2)/V_j
+                mir[i] += (rt[i] - r_jph)*f0 + 0.5*s*(rt[i]**2 - r_jph**2)
 
             if burn_func is not None:
                 # We have to use the minus sign, because rhodot < 0.
@@ -1576,10 +1601,17 @@ class PPMtools:
         print('{:d}/{:d} cycles processed.'.format(i+1, len(cycles)))
         print('Done.')
 
-        mir *= 1e27/nuconst.m_sun
         # mb = mass burnt
         mb = integrate.cumtrapz(burn_rate, x=t, initial=0.)
-        mb *= 1e27/nuconst.m_sun
+
+        dimensional = False
+        if geometry == 'spherical':
+            dimensional = True
+
+        if dimensional:
+            mir *= 1e27/nuconst.m_sun
+            mb *= 1e27/nuconst.m_sun
+
         mtot = mir + mb
 
         fit_idx0 = 0
@@ -1605,21 +1637,38 @@ class PPMtools:
         if show_plots:
             cb = utils.colourblind
             pl.close(ifig0); fig1=pl.figure(ifig0)
-            pl.plot(t/60., rt, color=cb(5), ls='-', label=r'r$_\mathrm{top}$')
-            pl.plot(t/60., rb, color=cb(8), ls='--', label=r'r$_\mathrm{b}$')
-            pl.plot(t[fit_range]/60., rt_fit, color=cb(4), ls='-')
-            pl.plot(t[fit_range]/60., rb_fit, color=cb(4), ls='-')
-            pl.xlabel('t / min')
-            pl.ylabel('r / Mm')
+            tunit = 1.
+            if dimensional:
+                tunit = 60.
+            if geometry == 'spherical':
+                pl.plot(t/tunit, rt, color=cb(5), ls='-', label=r'r$_\mathrm{top}$')
+                pl.plot(t/tunit, rb, color=cb(8), ls='--', label=r'r$_\mathrm{b}$')
+            else:
+                pl.plot(t/tunit, rt, color=cb(5), ls='-', label=r'y$_\mathrm{top}$')
+                pl.plot(t/tunit, rb, color=cb(8), ls='--', label=r'y$_\mathrm{b}$')
+            pl.plot(t[fit_range]/tunit, rt_fit, color=cb(4), ls='-')
+            pl.plot(t[fit_range]/tunit, rb_fit, color=cb(4), ls='-')
+            if dimensional:
+                pl.xlabel('t / min')
+                pl.ylabel('r / Mm')
+            else:
+                pl.xlabel('t')
+                pl.ylabel('y')
             xfmt = ScalarFormatter(useMathText=True)
             pl.gca().xaxis.set_major_formatter(xfmt)
             pl.legend(loc = 0)
             fig1.tight_layout()
 
-            print('rb is the radius of the convective boundary.')
-            print('drb/dt = {:.2e} km/s\n'.format(1e3*rb_fc[0]))
-            print('rt is the upper limit for mass integration.')
-            print('drt/dt = {:.2e} km/s'.format(1e3*rt_fc[0]))
+            if dimensional:
+                print('rb is the radius of the convective boundary.')
+                print('drb/dt = {:.2e} km/s\n'.format(1e3*rb_fc[0]))
+                print('rt is the upper limit for mass integration.')
+                print('drt/dt = {:.2e} km/s'.format(1e3*rt_fc[0]))
+            else:
+                print('yb is the vertical coordinate of the convective boundary.')
+                print('dyb/dt = {:.2e}\n'.format(rb_fc[0]))
+                print('yt is the upper limit for mass integration.')
+                print('dyt/dt = {:.2e}'.format(rt_fc[0]))
 
             min_val = np.min([np.min(mtot), np.min(mb), np.min(mtot_fit)])
             max_val = np.max([np.max(mtot), np.max(mb), np.max(mtot_fit)])
@@ -1634,28 +1683,41 @@ class PPMtools:
             parts = mdot_str.split('e')
             mantissa = float(parts[0])
             exponent = int(parts[1])
-            lbl = (r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} '
-                   r'\times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$').\
-                   format(mantissa, exponent)
-            pl.plot(t[fit_range]/60., mtot_fit/10**oom, color=cb(4), \
+            if dimensional:
+                lbl = (r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} '
+                       r'\times 10^{{{:d}}}$ M$_\odot$ s$^{{-1}}$').\
+                       format(mantissa, exponent)
+            else:
+                lbl = (r'$\dot{{\mathrm{{M}}}}_\mathrm{{e}} = {:.2f} '
+                       r'\times 10^{{{:d}}}$').format(mantissa, exponent)
+            pl.plot(t[fit_range]/tunit, mtot_fit/10**oom, color=cb(4), \
                     ls='-', label=lbl, zorder=100)
 
             lbl = ''
             if burn_func is not None:
-                pl.plot(t/60., mir/10**oom, ':', color=cb(3), label='present')
-                pl.plot(t/60., mb/10**oom, '--', color=cb(6), label='burnt')
+                pl.plot(t/tunit, mir/10**oom, ':', color=cb(3), label='present')
+                pl.plot(t/tunit, mb/10**oom, '--', color=cb(6), label='burnt')
                 lbl = 'total'
-            pl.plot(t/60., mtot/10**oom, color=cb(5), label=lbl)
+            pl.plot(t/tunit, mtot/10**oom, color=cb(5), label=lbl)
 
 
             pl.ylim((min_val/10**oom, max_val/10**oom))
-            pl.xlabel('t / min')
-            sub = 'e'
-            ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
-            if oom == 0.:
-                ylbl = r'M$_{:s}$ / M$_\odot$'.format(sub)
 
-            pl.ylabel(ylbl)
+            if dimensional:
+                pl.xlabel('t / min')
+                sub = 'e'
+                ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$ M$_\odot$'.format(sub, oom)
+                if oom == 0.:
+                    ylbl = r'M$_{:s}$ / M$_\odot$'.format(sub)
+                pl.ylabel(ylbl)
+            else:
+                pl.xlabel('t')
+                sub = 'e'
+                ylbl = r'M$_{:s}$ / 10$^{{{:d}}}$'.format(sub, oom)
+                if oom == 0.:
+                    ylbl = r'M$_{:s}$'.format(sub)
+                pl.ylabel(ylbl)
+
             yfmt = FormatStrFormatter('%.1f')
             fig2.gca().yaxis.set_major_formatter(yfmt)
             fig2.tight_layout()
@@ -1665,7 +1727,10 @@ class PPMtools:
 
             print('Resolution: {:d}^3'.format(2*len(r)))
             print('mtot_fc = ', mtot_fc)
-            print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
+            if dimensional:
+                print('Entrainment rate: {:.3e} M_Sun/s'.format(mdot))
+            else:
+                print('Entrainment rate: {:.3e}'.format(mdot))
 
         if return_time_series:
             return t, mir, mb
