@@ -9758,7 +9758,6 @@ class Rprof:
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
 
-        print('Rprof: ', geometry)
         if geometry in ('spherical', 'cartesian'):
             self.__geometry = geometry
         else:
@@ -9875,7 +9874,6 @@ class Rprof:
 
             # Is this a table of high-resolution variables?
             is_hr = False
-            print(self.__geometry)
             if self.__geometry == 'spherical':
                 # Nx is the number of computational cells along every dimension
                 # of the cubical PPMstar grid. The number of radial bins is
