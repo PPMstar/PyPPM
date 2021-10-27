@@ -1,3 +1,9 @@
+
+
+[![DOI](https://zenodo.org/badge/71838986.svg)](https://zenodo.org/badge/latestdoi/71838986)
+
+
+
 # PPMPy
 
 `ppmpy` is the python module to analyse PPMstar stellar hydrodynamics simulation output.
