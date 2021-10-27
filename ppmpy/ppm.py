@@ -1526,7 +1526,7 @@ class PPMtools:
                 rho = self.get('Rho', cyc, resolution='l')
 
             if self.__isRprofSet:
-                if 'Rho1' in self.get_dump(self.get_dump_list()[0]).get_lr_variables():
+                if 'Rho1' in self.get_dump(self.get_dump_list()[0]).get_all_variables():
                     rho = self.get('Rho0', cyc, resolution='l') + \
                           self.get('Rho1', cyc, resolution='l')
                 else:
