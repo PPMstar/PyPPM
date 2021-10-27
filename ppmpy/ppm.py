@@ -5706,7 +5706,7 @@ class yprofile(DataPlot, PPMtools):
         r_max = r[idx_min]
 
         r = r[idx_min:(idx_max + 1)]
-        r_int = np.linspace(r_min, r_max, num = 20.*(idx_max - idx_min + 1))
+        r_int = np.linspace(r_min, r_max, num = 20*(idx_max - idx_min + 1))
         dr_int = cdiff(r_int)
 
         time = np.zeros(len(cycles))
@@ -5752,7 +5752,7 @@ class yprofile(DataPlot, PPMtools):
 
         m_ir = np.zeros(len(cycles))
         r = self.get('Y', fname = cycles[0], resolution='l')
-        r_int = np.linspace(np.min(r), np.max(r), num = 20.*len(r))
+        r_int = np.linspace(np.min(r), np.max(r), num = 20*len(r))
         dr_int = cdiff(r_int)
         for i in range(len(cycles)):
             if integrate_both_fluids:
@@ -9564,7 +9564,7 @@ class RprofSet(PPMtools):
         r_max = r[idx_min]
 
         r = r[idx_min:(idx_max + 1)]
-        r_int = np.linspace(r_min, r_max, num = 20.*(idx_max - idx_min + 1))
+        r_int = np.linspace(r_min, r_max, num = 20*(idx_max - idx_min + 1))
         dr_int = cdiff(r_int)
 
         time = np.zeros(len(cycles))
@@ -9610,7 +9610,7 @@ class RprofSet(PPMtools):
 
         m_ir = np.zeros(len(cycles))
         r = self.get('R', fname = cycles[0], resolution='h')
-        r_int = np.linspace(np.min(r), np.max(r), num = 20.*len(r))
+        r_int = np.linspace(np.min(r), np.max(r), num = 20*len(r))
         dr_int = cdiff(r_int)
         for i in range(len(cycles)):
             rho0 = self.get('Rho0', fname = cycles[i], resolution='h')
