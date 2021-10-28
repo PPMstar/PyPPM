@@ -110,6 +110,11 @@ import ipywidgets as widgets
 from datetime import date
 import pickle
 import collections
+# FH: turn of fint logging as described here:
+# https://github.com/matplotlib/matplotlib/issues/14523
+# this became necessary when moving to jupyterhub3
+import logging
+logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
 # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
 G_code = nuconst.grav_const*1000.
