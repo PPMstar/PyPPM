@@ -8,13 +8,15 @@
 # (c) 2016 - 2018 Robert Andrassy, Jericho O'Connell, Falk Herwig
 # (c) 2018 - 2019 David Stephens, Falk Herwig
 
-
+# updates Nov 29 2021 (FH):
+# * new plot time_evol_r_Hp_vars to make time-evolution plots
+# * 
 # TBD:
 # * add getting computable quantities from `compute` method directly to get method, and simplify `rp_plot` accordingly
 # * check that compute_m adds the core mass correctly by pulling the appropriate boundary conditions and calculating the
 #   mass at the inner boundary correctly
 
-# updates Nov 26 (FH):
+# updates Nov 26 some previous year (FH):
 #     * rp_plot can now plot computable quantities
 #     * rprofgui now can plot computable quantities
 #     * there is a new plot called plot_vrad_prof that makes a plot of all velocity
@@ -109,38 +111,312 @@ from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
 from datetime import date
 import pickle
-import collections
-# FH: turn of fint logging as described here:
+# import collections
+# FH: turn of  logging as described here:
 # https://github.com/matplotlib/matplotlib/issues/14523
 # this became necessary when moving to jupyterhub3
 import logging
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
 
 # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
-G_code = nuconst.grav_const*1000.
+G_code    = nuconst.grav_const*1000.   # code unit of gravitaional 
+code_mass = 5.025e-07                  # code unit of mass in solar masses
 
 # from rprofile import rprofile_reader
 
-def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
+def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
+                        ylab="$ U_\mathrm{t} / \mathrm{[km/s]}$",  xlims=(None,None),\
+                        ylims=(None,None), legends=0, NDump_range = None, NDump_range_vals = (500,1000),\
+                        mrange_interp = (12.,14.,0.0001), sparse = 10,\
+                        t_transient_hr = 500, figsizes = (8,5), ifig=1394, warning=True):
     '''
-    for given user and run create YProfile dir in run dir and link all
-    YProfile data from dump directories
+    This function extracts time-evolution of a RProf column data quantity 
+    at pressure-scale height fraction above/below N2-peak.
 
-    this is for use on BlueWaters
+    varss :: list 
+         list of column items from RProf files for which time evolution is 
+         shown
+
+    f_hps :: list of floats
+      list of fractions of Hp at boundary above (positive) or below
+      (negative) which quantities in var are extracted vars :: list of
+      strings list of RProf column items to extract
+
+    key :: string
+      name of this plot that will appear in the file name for the
+      data pickle and output plot, pick a name for this plot
+
+    fname :: string
+      plot type name, add to key to construct file name for plot
+
+    logy :: boolean
+      True y axis log10
+
+    ylab :: string
+      label for y axis
+
+    xlims, ylims ::  tuple 
+      are what you think they are
+
+    legends :: string 
+      are what you think they are
+
+    NDump_range 
+      None : plot all dumps in data[case]['NDump'] for case 
+      'time' : in hours, interpret NDump_start,NDump_end as start and end time in hours
+      'range' : interpret NDump_start,NDump_end as beginning and end dump for plot
+
+    NDump_range_vals :: tuple
+      interpret as NDump_start,NDump_end according to value of NDump_range
+
+    mrange_interp :: tuple
+      m_low, m_up, delta_m specifies range for high-res interpolation to find N2-peak, N2-peak must be in this mass range
+
+    sparse :: int
+      take every sparses dump to save time for quick look  
+
+    t_transient_hr :: float
+      for populating var_means_dict (e.g. for convergence plots) ignore this many hrs and take mean of rest
+
+    figsizes :: tuple
+      figsize of figure
+
+    ifig :: int
+      figure number
+
+    warning ::boolean
+      default True : report warnings about mass integration assumption in compute_m
+
+    Examples:
+    ---------
+
+      vars = ['lum1','lum2','lum3']
+      vars  = ['Ur','|Ut|']   
+
     '''
-    import subprocess
-    login_names = {'Paul': 'pwoodwar',\
-                   'Stou': 'sandalsk',\
-                   'Falk': 'fherwig'  }
-    run_dir = '/scratch/sciteam/v_evol'+login_names[user]+'/'+run
-    data_dir = run_dir+'/YProfiles'
-    mkdir_command = 'mkdir '+data_dir
-    subprocess.call([mkdir_command],shell=True)
-    remove_broken_links = 'find -L '+data_dir+' -type l -delete'
-    subprocess.call([remove_broken_links],shell=True)
-    link_command = 'ln -fs '+run_dir+'/????/YProfile-01/* '+data_dir
-    subprocess.call([link_command],shell=True)
-    return data_dir
+    var_means_dict = {} 
+    for case in runs:
+        var_means_dict[case] = {}
+    pl.close(ifig); fig=pl.figure(ifig,figsize=(figsizes[0],figsizes[1]))
+    m_hr = arange(*mrange_interp)
+    s = 0
+    num_type = 'NDump' 
+    for k,f_hp in enumerate(f_hps):
+        var_means = []
+        for i,case in enumerate(runs):
+            print(f"Case: {case:s} f_hp = {f_hp:4.2}")
+            NDump = data[case]['NDump']
+            timemins = data[case]['time(mins)']
+            # take average of variable between two radii and plot as function of time
+            R = data[case]['rp'].get('R', NDump[0])
+            var_datas = {}
+            for var in varss: 
+                var_datas[var] = []
+            times = []
+            if NDump_range is None: 
+                NDump_end = NDump[-1]
+                NDump_start = NDump[0]
+            elif NDump_range == "time":
+                NDump_start,NDump_end = [where_near(tt*60,timemins) for tt in [NDump_start,NDump_end]]
+            elif NDump_range == "range":
+                NDump_start,NDump_end = NDump_range_vals
+            else:
+                break
+            for dump in NDump[NDump_start:NDump_end:sparse]:
+                try:
+                    m = data[case]['rp'].compute_m(dump,num_type=num_type,warning=warning)*code_mass
+                except TypeError:
+                    continue
+                Hp = data[case]['rp'].compute_Hp(dump,num_type=num_type)        
+                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,radeos=False,warning=warning)
+                tck = scipy.interpolate.splrep(m[::-1],N2[::-1], s=s)
+                N2_hr = scipy.interpolate.splev(m_hr, tck, der=0)
+                m_N2peak = m_hr[where(max(N2_hr)==N2_hr)[0][0]]
+                f_R_from_m = scipy.interpolate.interp1d(m,R,kind='linear')
+                R_N2peak = f_R_from_m(m_N2peak)   
+                Hp_N2_peak_R = where_near(R_N2peak,R,Hp)
+                dmdr = gradient(m,R)
+                dmdr_N2_peak = where_near(R_N2peak,R,dmdr)
+                Hp_N2_peak_m = dmdr_N2_peak*Hp_N2_peak_R   # H_p at N2_peak in Msun
+                mcoord = m_N2peak + f_hp*Hp_N2_peak_m
+                times.append(data[case]['rp'].get('t',fname=dump)/60.)
+                for var in varss:
+                    if var == 'Ur':
+                        thing = data[case]['rp'].compute_Ur(dump)
+                    elif var == 'FVair':
+                        thing = 1.-data[case]['rp'].get('FV',dump,num_type=num_type,resolution='l')
+                    else:
+                        thing = data[case]['rp'].get(var, dump)
+                    if var in ['|Ut|','Ur']:
+                        thing *= 1000 # unit of velocity Mm/s -> km/s
+                    f_thing_int = scipy.interpolate.interp1d(m,thing,kind='linear',fill_value="extrapolate")
+                    var_datas[var].append(f_thing_int(mcoord))
+            for var in varss: 
+                var_datas[var] = array(var_datas[var])
+            times = array(times)
+            for j,var in enumerate(varss): 
+                ything =  var_datas[var]
+                if logy: ything = log10(var_datas[var])
+                label = ""
+                if len(runs) > 1: label += case
+                if len(varss) > 1: label += ' '+var
+                if len(f_hps) > 1: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
+                pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
+                     label=label, lw=0.75)
+            var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
+        var_means_dict[case][f_hp] = var_means
+
+    pl.ylabel(ylab);pl.xlabel('$t / \mathrm{[h]}$')
+    pl.legend(loc=legends); pl.xlim(*xlims);pl.ylim(*ylims)
+    pl.tight_layout()
+    pl.savefig(key+fname+'.pdf')
+    return var_means_dict
+
+def initialize_cases(data, dir, cases, nominal_heat=1, eos='g'):
+    '''Initialize Rprof data for several runs in one directory
+    
+    This function populates a data structure data with often used
+    history and header data. The dictionary data must be initialized
+    as a dictionary before the call. This function can be called
+    several times to add runs to the data structure or update data for
+    cases, for exmample when the run has continued.
+
+    This function also finds restarts in which the dump number in the
+    history file will jump back and overwrite dump files, but not the
+    entries in the history files. This looks like this: 58, 59,60, 61,
+    62, 60, 61, 62, 63 ... The second seqeunce of 61, 62 is the
+    correct one. This method will find these overwriten restart dump
+    numbers and remove them from the history arrays in the data
+    structure. The history array items are defined in the list
+    data_hist_arrs below.
+
+    A typical calling scenario looks like this:
+
+        data = {}; nominal_heat = 0.00003355; eos = 'g'
+        dir_cases = '/Users/fherwig/Globus/'    # some data on FH ~/Globus
+        cases = ['M239']
+        data = ppm.initialize_cases(data, dir_cases, cases, nominal_heat=nominal_heat, eos=eos)
+
+    Parameters:
+    -----------
+
+    data :: dictionary
+        data dictionary to contain data of multiple runs
+
+    dir :: string
+        path to selection of data
+
+    cases :: list
+        list of run directory names that contain a prfs dir with radial profiles
+    
+    nominal_heat :: real
+        scalar with nominal heat taken from the PPM flags file so that
+        X_Lfactors is factor wrt nominal heat
+
+    eos :: character
+        g   ideal gas only
+        r   ideal gas plus radiation pressure
+
+    Returns:
+    --------
+    data :: dictionary
+        data dictionary with cases in cases list updated or added
+
+    '''
+
+    data_hist_arrs = ['NDump','time(mins)', 'time(secs)']
+
+    for case in cases:
+        data[case] = {}
+        data[case]['path'] = dir+case+'/prfs'
+        data[case]['rp'] = RprofSet(data[case]['path'])
+        data[case]['rph'] = data[case]['rp'].get_history()
+        data[case]['NDump'] = data[case]['rph'].get('NDump')
+        data[case]['time(mins)'] = data[case]['rph'].get('time(mins)')
+        data[case]['time(secs)'] = data[case]['rph'].get('time(secs)')
+        data[case]['rp_one'] = data[case]['rp'].get_dump(
+            data[case]['NDump'][0])
+        data[case]['X_Lfactors'] = data[case]['rp_one'].get(
+            'totallum')/nominal_heat
+        data[case]['grids'] = data[case]['rp_one'].get('Nx')
+        data[case]['e00os'] = eos
+
+        # make history arrays monotonic
+        NDump_mono = np.copy(data[case]['NDump'])
+        while sum(diff(NDump_mono) <= 0) > 0:
+            for thing in data_hist_arrs:
+                data[case][thing] = delete(data[case][thing][:-1],(diff(NDump_mono) <= 0))
+            NDump_mono = np.copy(data[case]['NDump'])
+    return data
+
+def cases_table(data, latex = False, cases = None):
+    '''
+    Print table of runs
+    
+    Optionally table is Latex formatted.
+    
+    Call example:
+        cases_table(data,latex=False)
+
+    Parameters:
+    -----------
+    data :: dictionary
+        contains data from initialize_cases
+
+    latex :: boolean
+        print latex formatted table if true
+
+    cases :: list
+        defaults to all cases in data, else provide subset of cases
+    '''
+    
+    if cases is None:
+        cases = list(data.keys())
+        
+    if latex:
+        print("        ID   & grid  & $t_\mathrm{end}/\hour$ & $\log L/L_\mathrm{nominal}$ \\\  ")
+        for case in cases:
+            last_dump=data[case]['NDump'][-1]
+            print("        {:4s} &  {:4d} & {:5.0f} & {:3.1f} \\\ ".format(case,data[case]['rp'].get('Nx',last_dump),data[case]['time(mins)'][-1]/60.,log10(data[case]['X_Lfactors'])))
+    else:
+        print("{:40s} {:8s} {:5s} {:8s} {:8s}".format('case','X heat','grids','max dump','max t_hr'))
+        for i,case in enumerate(cases):
+            print("{:40s} {:7.1f} {:5d} {:8d} {:8.1f}".format(case,data[case]['X_Lfactors'], \
+                      data[case]['grids'],data[case]['NDump'][-1],data[case]['time(mins)'][-1]/60.))
+        
+
+def where_near(t,tt_arr,num_arr=None):
+    '''Finds n in num that corresponds closest to t in tt_sec
+    
+    Parameters:
+    -----------
+    
+    t :: scalar, float
+      time in seconds we seek the dump number for
+    
+    tt_arr : array, float
+      time in seconds for each dump
+      
+    num_arr :: array, int or float
+      dump number array
+      The default is that num_arr is the grid number, and then 
+      the input, for example, (R, Rgrid) will return the neares grid 
+      number of R in the Rgrid array.
+    
+    Returns:
+    --------
+    
+    num_t :: int/float depending on type of NDump
+      interpolated value in num_arr corresponding to t in tt_arr
+    
+    '''
+    if num_arr is None:
+        num_arr = arange(0,len(tt_arr),1)
+    f_int = scipy.interpolate.interp1d(tt_arr,num_arr,kind='linear',fill_value="extrapolate")
+    num_t = float(f_int(t))
+    if type(num_arr[0]) in [int64,int]: 
+        num_t = int(round(num_t,0))
+    return num_t
 
 def index_nearest_value(a,afind):
     '''Return index of value in a which is closest to afind
@@ -566,19 +842,19 @@ class PPMtools:
         pgas = ptot - prad
         return pgas/ptot
 
-    def compute_g(self, fname, num_type='ndump'):
+    def compute_g(self, fname, num_type='ndump',warning=True):
         if self.__isyprofile:
             r = self.get('Y', fname, num_type=num_type, resolution='l')
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
 
-        m = self.compute_m(fname, num_type=num_type)
+        m = self.compute_m(fname, num_type=num_type,warning=warning)
 
         g = G_code*m/r**2
         return g
 
-    def compute_N2(self, fname, num_type='ndump', radeos=True):
+    def compute_N2(self, fname, num_type='ndump', radeos=True,warning=True):
         if self.__isyprofile:
             if radeos:
                 print('radeos option not implemented for YProfile input.')
@@ -588,7 +864,7 @@ class PPMtools:
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
 
-        g = self.compute_g(fname, num_type=num_type)
+        g = self.compute_g(fname, num_type=num_type,warning=warning)
         Hp = self.compute_Hp(fname, num_type=num_type)
         nabla_rho = self.compute_nabla_rho(fname, num_type=num_type)
         nabla_rho_ad = self.compute_nabla_rho_ad(fname, num_type=num_type,
@@ -597,9 +873,9 @@ class PPMtools:
 
         return N2
 
-    def compute_m(self, fname, num_type='ndump'):
+    def compute_m(self, fname, num_type='ndump', warning=True):
         if self.__isyprofile:
-            r = self.get('Y', fname, num_type=num_type, resolution='l')
+            r = self.get00('Y', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
 
         if self.__isRprofSet:
@@ -612,12 +888,13 @@ class PPMtools:
 
         # We store everything from the surface to the core.
         m = m[-1] - m
-        self.__messenger.warning('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'+\
-              'This will not work for shell setups and wrong gravity will be returned.')
+        if warning:
+            self.__messenger.warning('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'+\
+                  'This will not work for shell setups and wrong gravity will be returned.')
         return m
 
-    def compute_mt(self, fname, num_type='ndump'):
-        m = self.compute_m(fname, num_type=num_type)
+    def compute_mt(self, fname, num_type='ndump',warning=True):
+        m = self.compute_m(fname, num_type=num_type,warning=warning)
         mt = m[0] - m
 
         return mt
@@ -3160,7 +3437,7 @@ class yprofile(DataPlot, PPMtools):
         #pl.rcParams.update(params)
         if type(fname) is not list:
             fname = [fname]
-        if num_type is 'time':
+        if num_type == 'time':
             fname = [f * 60 for f in fname]
 
         pl.figure(ifig)
@@ -3176,7 +3453,7 @@ class yprofile(DataPlot, PPMtools):
             Y=self.get('Y',fname=dump,resolution='L')
             cb = utils.colourblind
 
-            if yaxis_thing is 'v':
+            if yaxis_thing == 'v':
                 Ek = self.get('Ek',fname=dump,numtype=num_type,resolution='l')
                 v = np.sqrt(2.*array(Ek,dtype=float))
                 y = v*1000
@@ -3184,7 +3461,7 @@ class yprofile(DataPlot, PPMtools):
                     ylab = '$\log <u>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
                 else:
                     ylab = '$<u>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
-            elif yaxis_thing is 'vY':
+            elif yaxis_thing == 'vY':
                 EkY  = self.get('EkY',fname=dump,numtype=num_type,resolution='l')
                 vY = np.sqrt(array(EkY,dtype=float))  # no factor 2 for v_Y and v_XZ
                 y = vY*1000
@@ -3192,7 +3469,7 @@ class yprofile(DataPlot, PPMtools):
                     ylab = '$\log <u_r>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
                 else:
                     ylab = '$<u_r>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
-            elif yaxis_thing is 'vXZ':
+            elif yaxis_thing == 'vXZ':
                 EkXZ = self.get('EkXZ',fname=dump,numtype=num_type,resolution='l')
                 vXZ = np.sqrt(array(EkXZ,dtype=float))  # no factor 2 for v_Y and v_XZ
                 y = vXZ*1000
@@ -3201,7 +3478,7 @@ class yprofile(DataPlot, PPMtools):
                 else:
                     ylab = '$<u_{\\theta,\phi}>_\mathrm{rms}$ $([u]=\mathrm{km/s})$'
 
-            elif yaxis_thing is 'FV':
+            elif yaxis_thing == 'FV':
                 y = self.get('FV H+He',fname=dump,numtype=num_type,resolution='l')
                 if logy:
                     ylab = '$\log_{10}$ fractional volume'
@@ -3212,10 +3489,10 @@ class yprofile(DataPlot, PPMtools):
                 y = self.get(yaxis_thing,fname=dump,numtype=num_type,resolution='L', **kwargs)
                 ylab = yaxis_thing
                 if logy: ylab = 'log '+ylab
-            if num_type is 'ndump':
+            if num_type == 'ndump':
                 lab = label_case+', '+str(dump)
                 leg_tit = num_type
-            elif num_type is 'time':
+            elif num_type == 'time':
                 idx = np.abs(self.get('t')-dump).argmin()
                 time = self.get('t')[idx]
                 time_min = time/60.
@@ -8421,7 +8698,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
     if not silent:
         print(m1, m2)
 
-    if xthing1 is 'm':
+    if xthing1 == 'm':
         xthing = m
         xthing_ppm = m_ppm
     else:
@@ -8455,7 +8732,7 @@ def energy_comparison(yprof,mesa_model, xthing = 'm',ifig = 2, silent = True,\
         markevery=.3)
 
     #pl.ylabel('$\epsilon\,/\,\mathrm{erg\,g}^{-1}\,\mathrm{s}^{-1}\,;\,L\,/\,L_\odot$')
-    if xthing1 is 'm':
+    if xthing1 == 'm':
         pl.ylabel('$\log_{10}(\epsilon\,/\,\mathrm{erg\,g}^{-1}\,\mathrm{s}^{-1}\,;\,L\,/\,L_\odot)$')
         pl.xlabel('$\mathrm{Mass\,/\,M}_\odot$')
     else:
@@ -12921,3 +13198,24 @@ def close_plot(celln, ifig, ptrack):
     except KeyError:
         # plot is not added, make sure we dont close
         return (0,ifig)
+
+def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
+    '''
+    for given user and run create YProfile dir in run dir and link all
+    YProfile data from dump directories
+
+    this is for use on BlueWaters
+    '''
+    import subprocess
+    login_names = {'Paul': 'pwoodwar',\
+                   'Stou': 'sandalsk',\
+                   'Falk': 'fherwig'  }
+    run_dir = '/scratch/sciteam/v_evol'+login_names[user]+'/'+run
+    data_dir = run_dir+'/YProfiles'
+    mkdir_command = 'mkdir '+data_dir
+    subprocess.call([mkdir_command],shell=True)
+    remove_broken_links = 'find -L '+data_dir+' -type l -delete'
+    subprocess.call([remove_broken_links],shell=True)
+    link_command = 'ln -fs '+run_dir+'/????/YProfile-01/* '+data_dir
+    subprocess.call([link_command],shell=True)
+    return data_dir
