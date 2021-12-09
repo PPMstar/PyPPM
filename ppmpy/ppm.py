@@ -111,20 +111,12 @@ from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
 from datetime import date
 import pickle
-from random import shuffle
-from itertools import cycle
 # import collections
 # FH: turn of  logging as described here:
 # https://github.com/matplotlib/matplotlib/issues/14523
 # this became necessary when moving to jupyterhub3
 import logging
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
-
-# provides a cycle of different line styles and markers for plotting in a colour blind friendly manner
-lll= 2*['-', '--', ':', '-.']
-markers = ['X','h','<','>','s','^','d','X','p']
-shuffle(lll)
-CB_color_cycle = ['#4daf4a', '#a65628', '#984ea3','#ff7f00', '#f781bf', '#377eb8','#999999', '#e41a1c', '#dede00']
 
 # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
 G_code    = nuconst.grav_const*1000.   # code unit of gravitaional 
