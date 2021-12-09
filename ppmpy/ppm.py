@@ -11979,6 +11979,53 @@ class MomsDataSet:
             pl.show()
         
 # ============================================================================   
+    def sk_plot(self, fname, ifig=1):
+        '''
+        Makes the SK plot.
+        
+        Parameters
+        ----------
+        fname: 
+            The dump you would like to see.
+        ifig:
+            The figure number defaulted to 1.
+        
+        '''
+        # setting up the needed radii to see the convective boundary and learning the run id
+        radii = np.linspace(1400, 1600)
+        run_name = self._run_id
+           
+    
+        # Loading the data needed to create the plot
+        ux = self.get(1, fname=fname)
+        uy = self.get(2, fname=fname)
+        uz = self.get(3, fname=fname)
+        ur, utheta, uphi = self.get_spherical_components(ux, uy, uz)
+        
+        def __processRad(rad):
+            #Get utheta_r and uphi_r values and the skew/ kurtosis
+            print("Processing Radius: {}".format(rad), end='\r')
+            npoints = self.sphericalHarmonics_lmax(rad)[-1]
+            ur_r = self.get_spherical_interpolation(ur, rad, npoints=npoints, plot_mollweide=True)[0]
+            ur_r *= 1e3
+            kurt = stats.kurtosis(ur_r)
+            skew = stats.skew(ur_r)
+            SK = kurt * skew
+            return [SK]
+        
+        # loading the data
+        plot_val = [__processRad(i) for i in radii]
+        plot_val = np.array(plot_val)
+    
+        pl.close(ifig);pl.figure(ifig, figsize=(12.5,6))
+        pl.plot(radii, plot_val, 'tab:blue')
+        pl.xlim(1400,1600);pl.title('{} - S$\cdot$K - Dump {}'.format(run_name, fname));pl.xlabel('Radii (Mm)');pl.ylabel('S$\cdot$K')
+        
+        pl.tight_layout()
+        pl.show()
+
+
+
 
     def get_spherical_interpolation(self, varloc, radius, fname=None, npoints=5000, method='trilinear', logvar=False,
                                     plot_mollweide=False, get_igrid=False):
