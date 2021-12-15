@@ -11979,7 +11979,7 @@ class MomsDataSet:
             pl.show()
         
 # ============================================================================   
-    def sk_plot(self, fname, ifig=1):
+    def sk_plot(self, fname, xlim = [1400,1600], ifig=1):
         '''
         Makes the SK plot.
         
@@ -11992,7 +11992,7 @@ class MomsDataSet:
         
         '''
         # setting up the needed radii to see the convective boundary and learning the run id
-        radii = np.linspace(1400, 1600)
+        radii = np.linspace(1200, 1900)
         run_name = self._run_id
            
     
@@ -12019,7 +12019,7 @@ class MomsDataSet:
     
         pl.close(ifig);pl.figure(ifig, figsize=(12.5,6))
         pl.plot(radii, plot_val, 'tab:blue')
-        pl.xlim(1400,1600);pl.title('{} - S$\cdot$K - Dump {}'.format(run_name, fname));pl.xlabel('Radii (Mm)');pl.ylabel('S$\cdot$K')
+        pl.xlim(xlim);pl.title('{} - S$\cdot$K - Dump {}'.format(run_name, fname));pl.xlabel('Radii (Mm)');pl.ylabel('S$\cdot$K')
         
         pl.tight_layout()
         pl.show()
