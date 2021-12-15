@@ -11851,7 +11851,7 @@ class MomsDataSet:
             rays_data[ray_id] = raydir
         return [rays_data]
         
-    def ray_analysis(self, varloc, fname, xlim = [0,2685] ,num_rays = 96, logy = False, singleplot = False, ifig = 1): 
+    def ray_analysis(self, varloc, fname, xlim = [0,2685] ,num_rays = 96, logy = False, dataonly = False, singleplot = False, ifig = 1): 
         '''
         Takes one of 3 variables and creates a radial ray analysis plot in comparison to the spherical average.
         
@@ -11867,6 +11867,8 @@ class MomsDataSet:
             The number of rays you would like analyzed. A factor of 4 if you would like to see the 4 panel plot. 
         logy:
             Would you like the log of the y value (useful for FV mostly)
+        dataonly:
+            If True, returns the values found for radii, all rays, and the average ray in that order [radii, rays, avg]
         singleplot:
             If you would like only one plot, otherwise defaults to 4 subplots
         ifig:
@@ -11896,88 +11898,93 @@ class MomsDataSet:
         linecycle = cycle(lll) 
         colour_cycle = cycle(CB_color_cycle)
         
-        if singleplot == True:
-            pl.close(ifig); pl.figure(ifig, figsize=(12.5,6))
-            for i in iter_list:
-                pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
-            pl.plot(radii,needed_data[0] ,'-r',markevery=25, label = 'Spherically Averaged')
-            pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
+        if dataonly==False:
+            if singleplot == True:
+                pl.close(ifig); pl.figure(ifig, figsize=(12.5,6))
+                for i in iter_list:
+                    pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
+                pl.plot(radii,needed_data[0] ,'-r',markevery=25, label = 'Spherically Averaged')
+                pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
             
-            if varloc=='|ut|':
-                pl.ylabel('|Ut| : km/s')
-            elif varloc== '|w|':
-                pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
-            else:
-                pl.ylabel('FV')
+                if varloc=='|ut|':
+                    pl.ylabel('|Ut| : km/s')
+                elif varloc== '|w|':
+                    pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
+                else:
+                    pl.ylabel('FV')
     
-            if logy==True:
-                pl.yscale('log')
+                if logy==True:
+                    pl.yscale('log')
     
-            pl.tight_layout()
-            pl.show()
+                pl.tight_layout()
+                pl.show()
 
-        elif singleplot == False:  
+            elif singleplot == False:  
             
-            pl.close(ifig); pl.figure(ifig, figsize=(12.5,6))
-            pl.subplot(2,2,1)
-            for i in iter_list[0:ind1]:
-                pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
-            pl.plot(radii,needed_data[0] ,'-',markevery=25, label = 'Spherically Averaged')
-            pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
+                pl.close(ifig); pl.figure(ifig, figsize=(12.5,6))
+                pl.subplot(2,2,1)
+                for i in iter_list[0:ind1]:
+                    pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
+                pl.plot(radii,needed_data[0] ,'-',markevery=25, label = 'Spherically Averaged')
+                pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
             
     
-            if varloc=='|ut|':
-                pl.ylabel('|Ut| : km/s')
-            elif varloc== '|w|':
-                pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
-            else:
-                pl.ylabel('FV')
+                if varloc=='|ut|':
+                    pl.ylabel('|Ut| : km/s')
+                elif varloc== '|w|':
+                    pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
+                else:
+                    pl.ylabel('FV')
     
-            if logy==True:
-                pl.yscale('log')
+                if logy==True:
+                    pl.yscale('log')
                 
             
-            pl.subplot(2,2,2)
-            for i in iter_list[ind2:ind3]: 
-                pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
-            pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
-            pl.title('{} : {} - Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
+                pl.subplot(2,2,2)
+                for i in iter_list[ind2:ind3]: 
+                    pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
+                pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
+                pl.title('{} : {} - Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
             
     
-            if logy==True:
-                pl.yscale('log')
+                if logy==True:
+                    pl.yscale('log')
 
                 
-            pl.subplot(2,2,3)
-            for i in iter_list[ind4:ind5]: 
-                pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
-            pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
-            pl.xlabel('Radius (Mm)');pl.xlim(xlim);pl.legend()
+                pl.subplot(2,2,3)
+                for i in iter_list[ind4:ind5]: 
+                    pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
+                pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
+                pl.xlabel('Radius (Mm)');pl.xlim(xlim);pl.legend()
             
     
-            if varloc=='|ut|':
-                pl.ylabel('|Ut| : km/s')
-            elif varloc== '|w|':
-                pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
-            else:
-                pl.ylabel('FV')
+                if varloc=='|ut|':
+                    pl.ylabel('|Ut| : km/s')
+                elif varloc== '|w|':
+                    pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
+                else:
+                    pl.ylabel('FV')
     
-            if logy==True:
-                pl.yscale('log')
+                if logy==True:
+                    pl.yscale('log')
                 
-            pl.subplot(2,2,4)
-            for i in iter_list[ind6:ind7]: 
-                pl.plot(radii, data_rays[0][i],next(linecycle), c = next(colour_cycle), linewidth=0.5)
-            pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
-            pl.xlabel('Radius (Mm)');pl.xlim(xlim);pl.legend()
+                pl.subplot(2,2,4)
+                for i in iter_list[ind6:ind7]: 
+                    pl.plot(radii, data_rays[0][i],next(linecycle), c = next(colour_cycle), linewidth=0.5)
+                pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
+                pl.xlabel('Radius (Mm)');pl.xlim(xlim);pl.legend()
             
     
-            if logy==True:
-                pl.yscale('log')
+                if logy==True:
+                    pl.yscale('log')
                 
-            pl.tight_layout()
-            pl.show()
-        
+                pl.tight_layout()
+                pl.show()
+        else:
+            rays = data_rays[0]
+            avg = needed_data[0]
+            return radii, rays, avg
+            
 # ============================================================================   
     def sk_plot(self, fname, xlim = [1400,1600], ifig=1):
         '''
@@ -11992,7 +11999,10 @@ class MomsDataSet:
         
         '''
         # setting up the needed radii to see the convective boundary and learning the run id
-        radii = np.linspace(1200, 1900, 175)
+        res = int(self._rprofset.get('Nx',fname)) # the run resolution
+        ratio = 2685/(res/4) # the ratio of Mm to points
+        data_points = 900/ratio # the representative number of data points for 900Mm of data based on the total number available in 2685Mm
+        radii = np.linspace(1000, 1900,int(data_points))
         run_name = self._run_id
            
     
