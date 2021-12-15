@@ -11903,7 +11903,7 @@ class MomsDataSet:
             pl.plot(radii,needed_data[0] ,'-r',markevery=25, label = 'Spherically Averaged')
             pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
             
-            if varloc=='Ut':
+            if varloc=='|uy|':
                 pl.ylabel('|Ut| : km/s')
             elif varloc== '|w|':
                 pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
@@ -11926,7 +11926,7 @@ class MomsDataSet:
             pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
             
     
-            if varloc=='Ut':
+            if varloc=='|ut|':
                 pl.ylabel('|Ut| : km/s')
             elif varloc== '|w|':
                 pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
@@ -11955,7 +11955,7 @@ class MomsDataSet:
             pl.xlabel('Radius (Mm)');pl.xlim(xlim);pl.legend()
             
     
-            if varloc=='Ut':
+            if varloc=='|ut|':
                 pl.ylabel('|Ut| : km/s')
             elif varloc== '|w|':
                 pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
