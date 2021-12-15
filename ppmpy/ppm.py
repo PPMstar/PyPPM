@@ -111,12 +111,22 @@ from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
 from datetime import date
 import pickle
+from random import shuffle
+from itertools import cycle
+from scipy import stats
+from multiprocessing import Pool
 # import collections
 # FH: turn of  logging as described here:
 # https://github.com/matplotlib/matplotlib/issues/14523
 # this became necessary when moving to jupyterhub3
 import logging
 logging.getLogger('matplotlib').setLevel(logging.ERROR)
+
+# provides a cycle of different line styles and markers for plotting in a colour blind friendly manner
+lll= 2*['-', '--', ':', '-.']
+markers = ['X','h','<','>','s','^','d','X','p']
+shuffle(lll)
+CB_color_cycle = ['#4daf4a', '#a65628', '#984ea3','#ff7f00', '#f781bf', '#377eb8','#999999', '#e41a1c', '#dede00']
 
 # The unit of G in the code is 10^{-3} g cm^3 s^{-2}.
 G_code    = nuconst.grav_const*1000.   # code unit of gravitaional 
@@ -6515,7 +6525,7 @@ class yprofile(DataPlot, PPMtools):
             @savefig space_time.png width=6in
             In [136]: F4 = ppm.yprofile('F4')
                .....: import matplotlib.pyplot as plt
-               .....: fig2 = plt.figure(19)
+               .....: fig2 = pl.figure(19)
                .....: F4.spacetime_diagram('Ek',5,fig2)
 
         '''
@@ -8199,8 +8209,8 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
         theta2 = theta2[0:n_rows, :]
         value = value[0:n_rows]
 
-    #ifig = 1; plt.close(ifig); fig = plt.figure(ifig, figsize = (9, 4))
-    #ifig = 1; plt.close(ifig); fig = plt.figure(ifig, figsize = (3.39, 2.4))
+    #ifig = 1; pl.close(ifig); fig = pl.figure(ifig, figsize = (9, 4))
+    #ifig = 1; pl.close(ifig); fig = pl.figure(ifig, figsize = (3.39, 2.4))
     pl.clf()
     gs = gridspec.GridSpec(2, 1, height_ratios = [12, 1])
     ax0 = pl.subplot(gs[0])
@@ -8239,7 +8249,7 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
                   }
     cmap = LinearSegmentedColormap('my_cmap', cmap_points, gamma = gamma)
     #cmap_name = 'gist_earth_r'
-    #cmap = plt.get_cmap(cmap_name)
+    #cmap = pl.get_cmap(cmap_name)
     for i in range(phi2.shape[0]):
         t = (value[i] - cmap_min)/(cmap_max - cmap_min)
         if t < 0: t = 0.
@@ -8262,10 +8272,10 @@ def bucket_map(rprofile, quantity, limits = None, ticks = None, file_name = None
     cb = ColorbarBase(ax1, cmap = cmap, norm = norm, ticks = ticks, \
                       format = ticker.FuncFormatter(fmt), orientation='horizontal')
     cb.set_label(r'$\Delta$r$_\mathrm{ub}$ / Mm')
-    #ropplt.tight_layout(h_pad = 2.)
+    #roppl.tight_layout(h_pad = 2.)
     pl.show()
     if file_name is not None:
-        #plt.savefig(file_name + '_' + cmap_name + '.pdf', bbox_inches = 'tight', facecolor = 'w', dpi = 332.7)
+        #pl.savefig(file_name + '_' + cmap_name + '.pdf', bbox_inches = 'tight', facecolor = 'w', dpi = 332.7)
         pl.savefig(file_name, bbox_inches = 'tight', facecolor = 'w', dpi = 332.7)
 
 def plot_Mollweide(rp_set, dump_min, dump_max, r1, r2, output_dir = None, Filename = None, ifig = 2):
@@ -9050,8 +9060,8 @@ def plot_entr_v_ut(cases,c0, Ncycles,r1,r2, comp,metric,label,ifig = 3,
              label = 'MA07')
     pl.xlabel(r'log$_{10}$(v$_\perp$ / km s$^{-1}$)')
     pl.ylabel(r'log$_{10} ( \dot{\mathrm{M}}_\mathrm{e}$ / M$_\odot$ s$^{-1}$])')
-    #plt.xlim((0.9, 2.3))
-    #plt.ylim((-9., -3.))
+    #pl.xlim((0.9, 2.3))
+    #pl.ylim((-9., -3.))
     pl.legend(loc = 4)
     pl.tight_layout()
 
@@ -11771,6 +11781,251 @@ class MomsDataSet:
 
         else:
             return None
+
+# ============================================================================ 
+        
+    def __data_setup(self, varloc, dump, num_rays):
+        '''
+        Grabs and organizes the data needed to run ray_analysis.
+        '''
+        
+        run_res = self._rprofset.get('Nx',dump) #grabbing the run resolution
+        run_res = int(run_res)
+        
+        
+        data_points = int(run_res/4)
+        
+        radii = np.linspace(0,2685, data_points)
+    
+        ux = self.get('ux',fname=dump)
+        uy = self.get('uy',fname=dump)
+        uz = self.get('uz',fname=dump)
+
+        npoints = self.sphericalHarmonics_lmax(2685)[-1]
+        gridlines = 0.1
+        
+        #loading the data
+        u_r,u_theta,u_phi = self.get_spherical_components(ux, uy, uz)
+        ur_r, theta_r, phi_r = self.get_spherical_interpolation(u_r, 2685, npoints=npoints, plot_mollweide=True)
+        num_direcs = int(len(theta_r))
+    
+        ind = np.random.randint(0, num_direcs, num_rays) #the directions you are looking outwards in
+        
+
+        if varloc=='|ut|':
+            data = np.sqrt(np.power(u_theta,2.0) + np.power(u_phi,2.0))
+        else:
+            data = self.get(varloc,fname=dump)
+            
+        avg_ray = [np.mean(self.get_spherical_interpolation(data, i, npoints=npoints, plot_mollweide=True)[0]) for i in radii]
+        avg_ray = np.array(avg_ray)
+        
+        all_rays = [self.get_spherical_interpolation(data, i, npoints=npoints, plot_mollweide=True)[0] for i in radii ]
+        all_rays = np.array(all_rays)
+        
+        # correcting for the proper units
+        if varloc=='|ut|':
+            avg_ray = avg_ray * 1e3
+            all_rays = all_rays * 1e3
+        elif varloc=='|w|':
+            avg_ray = avg_ray * 1e6
+            all_rays = all_rays * 1e6
+        
+        return [avg_ray, all_rays, data_points, ind, radii]            
+        
+    def __data_sort(self, data, data_points, ind,num_rays):
+        '''
+        Sorts the data from __data_setup into dictionaries for ease of use in ray_analysis
+        '''
+        iter_list = [int(i) for i in range(num_rays)]
+        i=0
+        rays=[]
+        while i<data_points: #i is the number of points in our radii array
+            rays.append(data[i][ind]) # gives us the data from our specific directions
+            i+=1
+        rays = np.array(rays)
+        
+        rays_data = dict()
+        for ray_id in iter_list:
+            raydir = np.array([rays[i][ray_id] for i,_ in enumerate(rays)])
+            rays_data[ray_id] = raydir
+        return [rays_data]
+        
+    def ray_analysis(self, varloc, fname, xlim = [0,2685] ,num_rays = 96, logy = False, singleplot = False, ifig = 1): 
+        '''
+        Takes one of 3 variables and creates a radial ray analysis plot in comparison to the spherical average.
+        
+        Parameters
+        ----------
+        varloc: str
+            One of 3: '|ut|' , '|w|' or 'fv'
+        fname: int
+            The dump number
+        xlim: list
+            The xlim that you would like to see for your plot
+        num_rays: even integer
+            The number of rays you would like analyzed. A factor of 4 if you would like to see the 4 panel plot. 
+        logy:
+            Would you like the log of the y value (useful for FV mostly)
+        singleplot:
+            If you would like only one plot, otherwise defaults to 4 subplots
+        ifig:
+            The figure number defaulted to 1
+        '''
+        
+        if num_rays%4 != 0 and singleplot == False:
+            return 'Error: Please make the number of rays you would like analyzed a factor of 4, or change singleplot = True.'
+        
+        # needed variables for plotting
+        iter_list = [int(i) for i in range(num_rays)]
+        needed_data = self.__data_setup(varloc, fname, num_rays)
+        data_rays = self.__data_sort(needed_data[1], needed_data[2], needed_data[3], num_rays)
+        radii = needed_data[4]
+        run_name = self._run_id
+        
+        # indexes for the iteration of the number of rays...
+        ind1 = int(num_rays/4 -1)
+        ind2 = int(num_rays/4)
+        ind3 = int(ind2*2 - 1)
+        ind4 = int(ind3 + 1)
+        ind5 = int(ind2 * 3 - 1)
+        ind6 = int(ind5 + 1)
+        ind7 = int(num_rays - 1)
+        
+        # this allows for proper linestyle and colour cycling of the plots
+        linecycle = cycle(lll) 
+        colour_cycle = cycle(CB_color_cycle)
+        
+        if singleplot == True:
+            pl.close(ifig); pl.figure(ifig, figsize=(12.5,6))
+            for i in iter_list:
+                pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
+            pl.plot(radii,needed_data[0] ,'-r',markevery=25, label = 'Spherically Averaged')
+            pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
+            
+            if varloc=='|ut|':
+                pl.ylabel('|Ut| : km/s')
+            elif varloc== '|w|':
+                pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
+            else:
+                pl.ylabel('FV')
+    
+            if logy==True:
+                pl.yscale('log')
+    
+            pl.tight_layout()
+            pl.show()
+
+        elif singleplot == False:  
+            
+            pl.close(ifig); pl.figure(ifig, figsize=(12.5,6))
+            pl.subplot(2,2,1)
+            for i in iter_list[0:ind1]:
+                pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
+            pl.plot(radii,needed_data[0] ,'-',markevery=25, label = 'Spherically Averaged')
+            pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
+            
+    
+            if varloc=='|ut|':
+                pl.ylabel('|Ut| : km/s')
+            elif varloc== '|w|':
+                pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
+            else:
+                pl.ylabel('FV')
+    
+            if logy==True:
+                pl.yscale('log')
+                
+            
+            pl.subplot(2,2,2)
+            for i in iter_list[ind2:ind3]: 
+                pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
+            pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
+            pl.title('{} : {} - Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
+            
+    
+            if logy==True:
+                pl.yscale('log')
+
+                
+            pl.subplot(2,2,3)
+            for i in iter_list[ind4:ind5]: 
+                pl.plot(radii, data_rays[0][i], next(linecycle), c = next(colour_cycle), linewidth=0.5)
+            pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
+            pl.xlabel('Radius (Mm)');pl.xlim(xlim);pl.legend()
+            
+    
+            if varloc=='|ut|':
+                pl.ylabel('|Ut| : km/s')
+            elif varloc== '|w|':
+                pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
+            else:
+                pl.ylabel('FV')
+    
+            if logy==True:
+                pl.yscale('log')
+                
+            pl.subplot(2,2,4)
+            for i in iter_list[ind6:ind7]: 
+                pl.plot(radii, data_rays[0][i],next(linecycle), c = next(colour_cycle), linewidth=0.5)
+            pl.plot(radii,needed_data[0],'-',markevery=25, label = 'Spherically Averaged')
+            pl.xlabel('Radius (Mm)');pl.xlim(xlim);pl.legend()
+            
+    
+            if logy==True:
+                pl.yscale('log')
+                
+            pl.tight_layout()
+            pl.show()
+        
+# ============================================================================   
+    def sk_plot(self, fname, ifig=1):
+        '''
+        Makes the SK plot.
+        
+        Parameters
+        ----------
+        fname: 
+            The dump you would like to see.
+        ifig:
+            The figure number defaulted to 1.
+        
+        '''
+        # setting up the needed radii to see the convective boundary and learning the run id
+        radii = np.linspace(1400, 1600)
+        run_name = self._run_id
+           
+    
+        # Loading the data needed to create the plot
+        ux = self.get(1, fname=fname)
+        uy = self.get(2, fname=fname)
+        uz = self.get(3, fname=fname)
+        ur, utheta, uphi = self.get_spherical_components(ux, uy, uz)
+        
+        def __processRad(rad):
+            #Get utheta_r and uphi_r values and the skew/ kurtosis
+            print("Processing Radius: {}".format(rad), end='\r')
+            npoints = self.sphericalHarmonics_lmax(rad)[-1]
+            ur_r = self.get_spherical_interpolation(ur, rad, npoints=npoints, plot_mollweide=True)[0]
+            ur_r *= 1e3
+            kurt = stats.kurtosis(ur_r)
+            skew = stats.skew(ur_r)
+            SK = kurt * skew
+            return [SK]
+        
+        # loading the data
+        plot_val = [__processRad(i) for i in radii]
+        plot_val = np.array(plot_val)
+    
+        pl.close(ifig);pl.figure(ifig, figsize=(12.5,6))
+        pl.plot(radii, plot_val, 'tab:blue')
+        pl.xlim(1400,1600);pl.title('{} - S$\cdot$K - Dump {}'.format(run_name, fname));pl.xlabel('Radii (Mm)');pl.ylabel('S$\cdot$K')
+        
+        pl.tight_layout()
+        pl.show()
+
+
+
 
     def get_spherical_interpolation(self, varloc, radius, fname=None, npoints=5000, method='trilinear', logvar=False,
                                     plot_mollweide=False, get_igrid=False):
