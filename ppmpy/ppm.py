@@ -11992,7 +11992,7 @@ class MomsDataSet:
         
         '''
         # setting up the needed radii to see the convective boundary and learning the run id
-        radii = np.linspace(1200, 1900)
+        radii = np.linspace(1200, 1900, 175)
         run_name = self._run_id
            
     
