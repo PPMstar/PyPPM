@@ -11903,7 +11903,7 @@ class MomsDataSet:
             pl.plot(radii,needed_data[0] ,'-r',markevery=25, label = 'Spherically Averaged')
             pl.title('{} - {} : Dump {}'.format(run_name,varloc,fname));pl.xlim(xlim);pl.legend()
             
-            if varloc=='|uy|':
+            if varloc=='|ut|':
                 pl.ylabel('|Ut| : km/s')
             elif varloc== '|w|':
                 pl.ylabel('$ | \omega | / \mathrm{\mu Hz}$')
