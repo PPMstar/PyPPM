@@ -7,12 +7,14 @@
 # (c) 2014 - 2015 Sam Jones, Falk Herwig, Robert Andrassy
 # (c) 2016 - 2018 Robert Andrassy, Jericho O'Connell, Falk Herwig
 # (c) 2018 - 2019 David Stephens, Falk Herwig
+# (c) 2020 - 2021 Falk Herwig
 
-# updates Nov 29 2021 (FH):
+# 01/05/22 - if RProf var is availabe don't use computable quantity (e.g. T9)
+# # updates Nov 29 2021 (FH):
 # * new plot time_evol_r_Hp_vars to make time-evolution plots
-# * 
+# * get method pulls automatically computable quantities if availeble
+
 # TBD:
-# * add getting computable quantities from `compute` method directly to get method, and simplify `rp_plot` accordingly
 # * check that compute_m adds the core mass correctly by pulling the appropriate boundary conditions and calculating the
 #   mass at the inner boundary correctly
 
@@ -111,6 +113,7 @@ from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
 from datetime import date
 import pickle
+from astropy import units
 # import collections
 # FH: turn of  logging as described here:
 # https://github.com/matplotlib/matplotlib/issues/14523
@@ -128,7 +131,7 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                         ylab="$ U_\mathrm{t} / \mathrm{[km/s]}$",  xlims=(None,None),\
                         ylims=(None,None), legends=0, NDump_range = None, NDump_range_vals = (500,1000),\
                         mrange_interp = (12.,14.,0.0001), sparse = 10,\
-                        t_transient_hr = 500, figsizes = (8,5), ifig=1394, warning=True):
+                        t_transient_hr = 500, figsizes = (8,5), ifig=1394):
     '''
     This function extracts time-evolution of a RProf column data quantity 
     at pressure-scale height fraction above/below N2-peak.
@@ -184,8 +187,6 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
     ifig :: int
       figure number
 
-    warning ::boolean
-      default True : report warnings about mass integration assumption in compute_m
 
     Examples:
     ---------
@@ -217,18 +218,18 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 NDump_end = NDump[-1]
                 NDump_start = NDump[0]
             elif NDump_range == "time":
-                NDump_start,NDump_end = [where_near(tt*60,timemins) for tt in [NDump_start,NDump_end]]
+                NDump_start,NDump_end = [where_near(tt*60,timemins) for tt in [ *NDump_range_vals]]
             elif NDump_range == "range":
                 NDump_start,NDump_end = NDump_range_vals
             else:
                 break
             for dump in NDump[NDump_start:NDump_end:sparse]:
                 try:
-                    m = data[case]['rp'].compute_m(dump,num_type=num_type,warning=warning)*code_mass
+                    m = data[case]['rp'].compute_m(dump,num_type=num_type)*code_mass
                 except TypeError:
                     continue
                 Hp = data[case]['rp'].compute_Hp(dump,num_type=num_type)        
-                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,radeos=False,warning=warning)
+                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,radeos=False)
                 tck = scipy.interpolate.splrep(m[::-1],N2[::-1], s=s)
                 N2_hr = scipy.interpolate.splev(m_hr, tck, der=0)
                 m_N2peak = m_hr[where(max(N2_hr)==N2_hr)[0][0]]
@@ -640,8 +641,10 @@ class PPMtools:
 
     def compute(self, quantity, fname, num_type='ndump', extra_args={}):
         if quantity in self.__computable_quantities:
+            print("Quantity: ",quantity)
+            self.quantity = quantity
             m = self.__compute_methods[quantity]
-            return m(fname, num_type=num_type, **extra_args)
+            return m(fname, num_type=num_type)
         else:
             self.__messenger.error("Unknown quantity '{:s}'.".format(quantity))
             print('The following quantities can be computed:')
@@ -842,19 +845,19 @@ class PPMtools:
         pgas = ptot - prad
         return pgas/ptot
 
-    def compute_g(self, fname, num_type='ndump',warning=True):
+    def compute_g(self, fname, num_type='ndump'):
         if self.__isyprofile:
             r = self.get('Y', fname, num_type=num_type, resolution='l')
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
 
-        m = self.compute_m(fname, num_type=num_type,warning=warning)
+        m = self.compute_m(fname, num_type=num_type)
 
         g = G_code*m/r**2
         return g
 
-    def compute_N2(self, fname, num_type='ndump', radeos=True,warning=True):
+    def compute_N2(self, fname, num_type='ndump', radeos=True):
         if self.__isyprofile:
             if radeos:
                 print('radeos option not implemented for YProfile input.')
@@ -864,16 +867,22 @@ class PPMtools:
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
 
-        g = self.compute_g(fname, num_type=num_type,warning=warning)
+        g = self.compute_g(fname, num_type=num_type)
         Hp = self.compute_Hp(fname, num_type=num_type)
         nabla_rho = self.compute_nabla_rho(fname, num_type=num_type)
         nabla_rho_ad = self.compute_nabla_rho_ad(fname, num_type=num_type,
                        radeos=radeos)
         N2 = (g/Hp)*(nabla_rho - nabla_rho_ad)
+        if self.astrounit['on']:
+        # This N^2 is an angular frequency. We are plotting in asteroseismology the linear or ordinary frequency, which is f = N/2pi
+        # We also wish to plot f^2 in units of muHz^2; the conversion factor including both effects is 25330295910.584446 (see notebook 
+        # http://206-12-89-164.cloud.computecanada.ca/csa/hcore-m25-letter/-/blob/master/paper_gas/scratch_pad.ipynb)
+            N2 = N2*25330295910.6  # make unit of N muHz^2 and linear frequency
+            self.astrounit[self.quantity] = units.uHz**2
 
         return N2
 
-    def compute_m(self, fname, num_type='ndump', warning=True):
+    def compute_m(self, fname, num_type='ndump'):
         if self.__isyprofile:
             r = self.get00('Y', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
@@ -888,13 +897,11 @@ class PPMtools:
 
         # We store everything from the surface to the core.
         m = m[-1] - m
-        if warning:
-            self.__messenger.warning('WARNING: PPMtools.compute_m() integrates mass from r = 0.\n'+\
-                  'This will not work for shell setups and wrong gravity will be returned.')
+        self.__messenger.warning('WARNING: PPMtools.compute_m() integrates mass from r = 0. This will not work for shell setups and wrong gravity will be returned.')
         return m
 
-    def compute_mt(self, fname, num_type='ndump',warning=True):
-        m = self.compute_m(fname, num_type=num_type,warning=warning)
+    def compute_mt(self, fname, num_type='ndump'):
+        m = self.compute_m(fname, num_type=num_type)
         mt = m[0] - m
 
         return mt
@@ -1076,7 +1083,7 @@ class PPMtools:
         num_type : str
             Type of fname, see yprofile.get() and RProf.get().
         func : function
-            func(fname, num_type=num_type, **extra_args) can be any user-
+            func(fname, num_type=num_type) can be any user-
             defined function that returns a radial profile. Any number of
             parameters can be passed to this function via `extra_args`.
             `var` should be a single string if func is not None.
@@ -1143,7 +1150,7 @@ class PPMtools:
 
             for i, fnm in enumerate(fname_list):
                 if func is not None:
-                    data = func(fnm, num_type=num_type, **extra_args)
+                    data = func(fnm, num_type=num_type)
                 elif v in gettable_variables:
                     data = self.get(v, fnm, num_type=num_type, resolution='l')
                 elif v in computable_quantities:
@@ -1190,7 +1197,7 @@ class PPMtools:
             Name of the variable whose radial profiles are to be used in
             the analysis.
         src_func : function
-            src_func(fname, num_type=num_type, **extra_args) should return
+            src_func(fname, num_type=num_type) should return
             the radial profile of the rate of change of `var` for the point
             in time specified by `fname` and `num_type`. This function will
             be called with any number of extra arguments specified in the
@@ -3101,6 +3108,7 @@ class yprofile(DataPlot, PPMtools):
         enuc_c12o16 = fkcld * fkair * Y1 * Y2 * vc12o16 * rho * CN * Q
 
         return enuc_c12o16
+
     def findFile(self, FName, numType='FILE', silent=False):
         """
         Function that finds the associated file for FName when Fname
@@ -9400,7 +9408,7 @@ class RprofSet(PPMtools):
     of PPMstar 2.0.
     '''
 
-    def __init__(self, dir_name, verbose=3, cache_rprofs=True, geometry='spherical'):
+    def __init__(self, dir_name, verbose=3, cache_rprofs=True, geometry='spherical', astrounit=False):
         '''
         Init method.
 
@@ -9456,6 +9464,9 @@ class RprofSet(PPMtools):
             self.__geometry = 'spherical'
 
         self.__is_valid = True
+        self.astrounit = {}
+        self.astrounit['on'] = astrounit
+
 
     def __find_dumps(self, dir_name):
         '''
@@ -9544,6 +9555,13 @@ class RprofSet(PPMtools):
 
         return str(self.__run_id)
 
+    def get_dumps(self):
+        '''
+        Returns list of valid dumps for which an RProf file is actually availabe
+        '''
+
+        return self.__dumps
+        
     def get_geometry(self):
         '''
         Returns the geometry identifier.
@@ -9606,7 +9624,7 @@ class RprofSet(PPMtools):
     def get(self, var, fname, num_type='NDump', resolution='l'):
         '''
         Returns variable var at a specific point in the simulation's time
-        evolution.
+        evolution. If var is computable quantity pull that.
 
         Parameters
         ----------
@@ -9623,45 +9641,57 @@ class RprofSet(PPMtools):
             'l' (low) or 'h' (high). A few variables are available at
             double resolution ('h'), the rest correspond to the resolution
             of the computational grid ('l').
-
+        warning :: boolean
+            toogle warning, e.g. when pulling mass computable
 
         Returns
         -------
         numpy.ndarray
             Variable var as given by Rprof.get() if the Rprof corresponding
-            to fname exists.
+            to fname exists or computable quantity.
         NoneType
             If the Rprof corresponding to fname does not exist.
         '''
 
-        if num_type.lower() == 'ndump':
-            rp = self.get_dump(fname)
-        elif num_type.lower() == 't':
-            if self.__history is None:
-                err = 'History not available. Cannot search by t.'
-                self.__messenger.error(err)
+        dumpone = self.get_dumps()[0]
+        lr_variables = self.get_dump(dumpone).get_lr_variables()
+        # some variables (for example T9) are computable but are also available
+        # as RProf variable (usually in newer runs); in this case make sure that the
+        # get methods returns as default the RProf value
+        if var in self.get_computable_quantities() and var not in lr_variables:
+            if resolution == 'h':
+                wrng = ("Resolution high requested with computable quanitity. Computable quantities are always low res. Ignoring resolution argument")
+                self.__messenger.warning(wrng)
+            return self.compute(var,fname,num_type=num_type)
+        else:
+            if num_type.lower() == 'ndump':
+                rp = self.get_dump(fname)
+            elif num_type.lower() == 't':
+                if self.__history is None:
+                    err = 'History not available. Cannot search by t.'
+                    self.__messenger.error(err)
+                    return None
+
+                t = self.__history.get('time(secs)')
+                ndump = self.__history.get('NDump')
+
+                closest_idx = np.argmin(np.abs(t - fname))
+                closest_dump = ndump[closest_idx]
+                closest_t = t[closest_idx]
+                msg = ('Dump {:d} at t = {:.2f} min is the closest to '
+                    't = {:.2f} min.').format(closest_dump, \
+                    closest_t/60., fname/60.)
+                self.__messenger.message(msg)
+                rp = self.get_dump(closest_dump)
+            else:
+                self.__messenger.error("'{:s}' is not a valid value of "
+                                    "num_type.".format(num_type))
                 return None
 
-            t = self.__history.get('time(secs)')
-            ndump = self.__history.get('NDump')
-
-            closest_idx = np.argmin(np.abs(t - fname))
-            closest_dump = ndump[closest_idx]
-            closest_t = t[closest_idx]
-            msg = ('Dump {:d} at t = {:.2f} min is the closest to '
-                   't = {:.2f} min.').format(closest_dump, \
-                  closest_t/60., fname/60.)
-            self.__messenger.message(msg)
-            rp = self.get_dump(closest_dump)
-        else:
-            self.__messenger.error("'{:s}' is not a valid value of "
-                                   "num_type.".format(num_type))
-            return None
-
-        if rp is not None:
-            return rp.get(var, resolution=resolution)
-        else:
-            return None
+            if rp is not None:
+                return rp.get(var, resolution=resolution)
+            else:
+                return None
 
     def rprofgui(self,ifig=11):
         def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig):
@@ -9684,12 +9714,14 @@ class RprofSet(PPMtools):
         '''
         Plot one thing or list for a line profile
 
+        We are only doing low resolution plots. If you want high-res pull data with get method. ything and xthing can be computable things.
+        
+
         Parameters
         ----------
 
-        ything : string
-            name of y quantity to plot, print(rp.get_hr_variables())
-            print(rp.get_lr_variables()) prints available options
+        xthing, ything : string
+            name of x and y quantity to plot rp.get_lr_variables() and rp.get_computable_quantities() prints available options
 
         dump : integer or list of integers
             dump number or list of dump numbers
@@ -9698,9 +9730,6 @@ class RprofSet(PPMtools):
             If 'ndump' fname is expected to be a dump number (integer).
             If 't' fname is expected to be a time value in seconds; run
             history file (.hstry) must be available to search by time value.
-
-        xthing : string
-          name of x quantity to plot, default is 'R'
 
         runlabel : str
            label of this rp_set/case to appear in legend, defaults
@@ -9717,64 +9746,46 @@ class RprofSet(PPMtools):
 
         idn : integer
            set to some value >0 to generate new series of line selection integers
+        
+        astrounits
         '''
         if runlabel is None: runlabel = self.__run_id
+
         # Ensure that dump is list type
         if type(dump) is not list:
             dump = [dump]
         len_dump = len(dump)
+
         # Get dump and assign it to a variable
         rp = self.get_dump(self.get_dump_list()[0])
 
-        # Define resolution and throw errors if they don't match;
-        # throw error if ything is not defined
-        ything_computable = False
-        if ything in rp.get_hr_variables():
-            if xthing not in rp.get_hr_variables():
-                print('ERROR: If ything is high resolution xthing must be too.')
-                return
-            res = 'h'
-        elif ything in rp.get_lr_variables():
-            if xthing not in rp.get_lr_variables():
-                print('ERROR: If ything is low resolution xthing must be too.')
-                return
-            res = 'l'
-        elif ything in self.get_computable_quantities():
-            if xthing not in rp.get_lr_variables():
-                # it seems all computable things are low res
-                print('ERROR: If ything is computable xthing must be low res.')
-                return
-            ything_computable = True
-            res = 'l'
-        else:
-            print("ERROR: Don't know ything")
-            return
+        # ensure low-res rprof
+        res = 'l'
 
-        # Define x- and y-values to be plotted, determine if logy is
-        # necessary, generate plot
         if newfig:
             pl.close(ifig)
             pl.figure(ifig)
         for i,thisdump in enumerate(dump):
             xquantity = self.get(xthing,thisdump,num_type=num_type,resolution=res)
-            if ything_computable:
-                yquantity = self.compute(ything,thisdump,num_type=num_type)
-            else:
-                yquantity = self.get(ything,thisdump,num_type=num_type,resolution=res)
+            yquantity = self.get(ything,thisdump,num_type=num_type,resolution=res)
             if logy: yquantity = np.log10(yquantity)
             if num_type == 't':
                 time_thing = " t/[min]="; d_num = thisdump/60.
             else:
                 time_thing = " dump ="; d_num = thisdump
             pl.plot(xquantity,yquantity,label=runlabel+time_thing+str(d_num),\
-                 color=utils.linestylecb(i+len_dump*idn)[2],\
+                    color=utils.linestylecb(i+len_dump*idn)[2],\
                     linestyle=utils.linestylecb(i+len_dump*idn)[0],\
-                 marker=utils.linestylecb(i+len_dump*idn)[1],\
+                    marker=utils.linestylecb(i+len_dump*idn)[1],\
                     markevery=utils.linestyle(i+len_dump*idn,a=25,b=7)[1])
 
         # Plot detailing
         pl.legend()
-        pl.xlabel(xthing)
+        if self.astrounit['on']:
+            xxlabel = xthing+' '+self.astrounit[self.quantity]
+        else:
+            xxlabel =xthing
+        pl.xlabel(xxlabel)
 
         if logy == False:
             pl.ylabel(ything)
@@ -9786,45 +9797,6 @@ class RprofSet(PPMtools):
 
         if yylim is not None:
             pl.ylim(yylim)
-
-    def plot_FV(self, fname, num_type='NDump', resolution='l', idec=3, xxlim=None, \
-                yylim=None,legend='', ylog=True):
-        print("Warning: plot_FV is deprecated. Use rp_plot instead.")
-        return
-        np.warnings.filterwarnings('ignore')
-        R = self.get('R', fname=fname, num_type=num_type, resolution='l')
-        FV = self.get('FV', fname=fname, num_type=num_type, resolution='l')
-        t = self.get('t', fname=fname, num_type=num_type)
-        yy = FV
-        if ylog: yy = np.log10(FV)
-        pl.plot(R, yy, utils.linestylecb(idec)[0], \
-                color=utils.linestylecb(idec)[2], \
-                label=legend+', {:.1f} min'.format(t/60.))
-        pl.xlim(xxlim)
-        pl.ylim(yylim)
-        pl.xlabel('r / Mm')
-        pl.ylabel('FV')
-        pl.legend(loc=2)
-        pl.tight_layout()
-
-    def plot_A(self, fname, num_type='NDump', resolution='l', idec=3,xxlim=None, \
-               yylim=None, legend=''):
-        print("Warning: plot_FV is deprecated. Use rp_plot instead.")
-        print("(Method not yet deleted, but marked for deleation.)")
-        return
-
-        R = self.get('R', fname=fname, num_type=num_type, resolution='l')
-        A = self.get('A', fname=fname, num_type=num_type, resolution='l')
-        t = self.get('t', fname=fname, num_type=num_type)
-        pl.plot(R, A,  utils.linestylecb(idec)[0], \
-                color=utils.linestylecb(idec)[2], \
-                label=legend+', {:.1f} min'.format(t/60.))
-        pl.xlim(xxlim)
-        pl.ylim(yylim)
-        pl.xlabel('r / Mm')
-        pl.ylabel('A')
-        pl.legend(loc=2)
-        pl.tight_layout()
 
     def plot_vrad_prof(self,fname,num_type='NDump', vel_comps=['|U|','|Ut|','|Ur|'],\
                        plot_title=None,ifig=102,save_fig=True,logy=True,close_fig=True,\
@@ -10127,6 +10099,8 @@ class Rprof:
             return
 
         self.__is_valid = True
+
+        
 
     def __read_rprof_file(self, file_path):
         '''
@@ -10594,8 +10568,13 @@ class MomsDataSet:
 
         # set objects ngridpoints and original run ngridpoints
         # these are deep copies to ensure no reference back on momsdata
-        self.moms_ngridpoints = copy.deepcopy(self._many_momsdata[str(init_dump_read)].ngridpoints)
-        self.run_ngridpoints = copy.deepcopy(self._many_momsdata[str(init_dump_read)].run_ngridpoints)
+        try:
+            self.moms_ngridpoints = copy.deepcopy(self._many_momsdata[str(init_dump_read)].ngridpoints)
+            self.run_ngridpoints = copy.deepcopy(self._many_momsdata[str(init_dump_read)].run_ngridpoints)
+        except KeyError:
+            err = "Probably no uncompressed data found for this dump in moms/myavsbq"
+            self._messenger.error(err)
+            return False
 
         # do we have an rprofset?
         self._rprofset = rprofset
@@ -13219,3 +13198,4 @@ def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
     link_command = 'ln -fs '+run_dir+'/????/YProfile-01/* '+data_dir
     subprocess.call([link_command],shell=True)
     return data_dir
+# %%
