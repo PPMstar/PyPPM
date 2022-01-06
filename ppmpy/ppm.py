@@ -339,7 +339,7 @@ def initialize_cases(data, dir, cases, nominal_heat=1, eos='g'):
         data[case]['X_Lfactors'] = data[case]['rp_one'].get(
             'totallum')/nominal_heat
         data[case]['grids'] = data[case]['rp_one'].get('Nx')
-        data[case]['e00os'] = eos
+        data[case]['eos'] = eos
 
         # make history arrays monotonic
         NDump_mono = np.copy(data[case]['NDump'])
