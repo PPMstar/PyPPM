@@ -26,7 +26,6 @@
 #       in publication ready format, and print a pdf if requested.
 #       compute_g to compute_m as it applies to all cases where compute_m is used
 
-
 """
 ppmpy.ppm
 
@@ -126,10 +125,9 @@ G_code    = nuconst.grav_const*1000.   # code unit of gravitaional
 code_mass = 5.025e-07                  # code unit of mass in solar masses
 
 # from rprofile import rprofile_reader
-
 def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
-                        ylab="$ U_\mathrm{t} / \mathrm{[km/s]}$",  xlims=(None,None),\
-                        ylims=(None,None), legends=0, NDump_range = None, NDump_range_vals = (500,1000),\
+                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=0, vel_km = True,\
+                        NDump_range = None, NDump_range_vals = (500,1000),\
                         mrange_interp = (12.,14.,0.0001), sparse = 10,\
                         t_transient_hr = 500, figsizes = (8,5), ifig=1394):
     '''
@@ -156,13 +154,16 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
       True y axis log10
 
     ylab :: string
-      label for y axis
+      label for y axis, defaults to first variable in varss if none
 
     xlims, ylims ::  tuple 
       are what you think they are
 
-    legends :: string 
-      are what you think they are
+    legends :: int 
+      where are legends located
+
+    vel_km :: boolean
+      True: velocity unit km
 
     NDump_range 
       None : plot all dumps in data[case]['NDump'] for case 
@@ -192,7 +193,7 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
     ---------
 
       vars = ['lum1','lum2','lum3']
-      vars  = ['Ur','|Ut|']   
+      vars  = ['|Ur|','|Ut|']   
 
     '''
     var_means_dict = {} 
@@ -228,8 +229,8 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                     m = data[case]['rp'].compute_m(dump,num_type=num_type)*code_mass
                 except TypeError:
                     continue
-                Hp = data[case]['rp'].compute_Hp(dump,num_type=num_type)        
-                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,radeos=False)
+                Hp = data[case]['rp'].compute_Hp(dump,num_type=num_type) 
+                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,radeos=data[case]['radeos'])
                 tck = scipy.interpolate.splrep(m[::-1],N2[::-1], s=s)
                 N2_hr = scipy.interpolate.splev(m_hr, tck, der=0)
                 m_N2peak = m_hr[where(max(N2_hr)==N2_hr)[0][0]]
@@ -242,13 +243,8 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 mcoord = m_N2peak + f_hp*Hp_N2_peak_m
                 times.append(data[case]['rp'].get('t',fname=dump)/60.)
                 for var in varss:
-                    if var == 'Ur':
-                        thing = data[case]['rp'].compute_Ur(dump)
-                    elif var == 'FVair':
-                        thing = 1.-data[case]['rp'].get('FV',dump,num_type=num_type,resolution='l')
-                    else:
-                        thing = data[case]['rp'].get(var, dump)
-                    if var in ['|Ut|','Ur']:
+                    thing = data[case]['rp'].get(var, dump)
+                    if var in ['|Ut|','|Ur|','|U|'] and vel_km:
                         thing *= 1000 # unit of velocity Mm/s -> km/s
                     f_thing_int = scipy.interpolate.interp1d(m,thing,kind='linear',fill_value="extrapolate")
                     var_datas[var].append(f_thing_int(mcoord))
@@ -266,14 +262,14 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                      label=label, lw=0.75)
             var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
         var_means_dict[case][f_hp] = var_means
-
+    if ylab == None: 
+        ylab = varss[0]
     pl.ylabel(ylab);pl.xlabel('$t / \mathrm{[h]}$')
     pl.legend(loc=legends); pl.xlim(*xlims);pl.ylim(*ylims)
     pl.tight_layout()
     pl.savefig(key+fname+'.pdf')
     return var_means_dict
-
-def initialize_cases(data, dir, cases, nominal_heat=1, eos='g'):
+def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
     '''Initialize Rprof data for several runs in one directory
     
     This function populates a data structure data with often used
@@ -317,30 +313,55 @@ def initialize_cases(data, dir, cases, nominal_heat=1, eos='g'):
     eos :: character
         g   ideal gas only
         r   ideal gas plus radiation pressure
+    
+    verbose :: int
+        verbosity as defined in Messenger class
 
     Returns:
     --------
     data :: dictionary
-        data dictionary with cases in cases list updated or added
+        data dictionary with cases in cases list updated or added; the dictionary items are
+        'path'          path of the run
+        'rp'            an RprofSet instance
+        'rph'           RprofSet.get_history()
+        'NDump'         Dump list from history file
+        'time(mins)'    time in mins
+        'time(secs)'    time in secs
+        'rp_one'        RprofSet.get_dump(onedump)
+        'X_Lfactors'    RprofSet.get('totallum')/nominal_heat
+        'grids'         grid dimension RprofSet.get('Nx') 
+        'eos'           'g' for gas EOS, 'r' for rad plus gas pressure
+        'radeos'        True if 'r' otherwise False, used in some routines, such as calculating N2
 
+    Example:
+    --------
+    Print out all available low-res variables:
+    >> data[case]['rp_one'].get_lr_variables()
     '''
-
+    mes = Messenger(verbose=verbose)
     data_hist_arrs = ['NDump','time(mins)', 'time(secs)']
 
     for case in cases:
         data[case] = {}
         data[case]['path'] = dir+case+'/prfs'
-        data[case]['rp'] = RprofSet(data[case]['path'])
+        data[case]['rp'] = RprofSet(data[case]['path'],verbose=verbose)
         data[case]['rph'] = data[case]['rp'].get_history()
         data[case]['NDump'] = data[case]['rph'].get('NDump')
         data[case]['time(mins)'] = data[case]['rph'].get('time(mins)')
         data[case]['time(secs)'] = data[case]['rph'].get('time(secs)')
-        data[case]['rp_one'] = data[case]['rp'].get_dump(
-            data[case]['NDump'][0])
+        onedump = data[case]['rp'].get_dumps()[0]
+        data[case]['rp_one'] = data[case]['rp'].get_dump(onedump)
         data[case]['X_Lfactors'] = data[case]['rp_one'].get(
             'totallum')/nominal_heat
         data[case]['grids'] = data[case]['rp_one'].get('Nx')
         data[case]['eos'] = eos
+        if data[case]['eos'] == 'r':
+            data[case]['radeos'] = True
+        else:
+            data[case]['radeos'] = False
+            if data[case]['eos'] != 'g': 
+                mes.warning('New EOS, not ideal gas, some routines such as compute_N2 '+\
+                    'will think eos is gas.')
 
         # make history arrays monotonic
         NDump_mono = np.copy(data[case]['NDump'])
@@ -622,6 +643,7 @@ class PPMtools:
                                   'T9corr':self.compute_T9corr, \
                                   '|Ur|':self.compute_Ur, \
                                   'Xcld':self.compute_Xcld, \
+                                  'FVair':self.compute_FVair, \
                                   'Xdot_C12pg':self.compute_Xdot_C12pg}
         self.__computable_quantities = self.__compute_methods.keys()
 
@@ -1022,6 +1044,20 @@ class PPMtools:
                                    "not exist.".format(kind))
 
         return T9corr
+
+    def compute_FVair(self, fname, num_type='ndump'):
+        '''If FVair is not in RProfs compute by 1-FV
+        '''
+        if self.__isyprofile:
+            self.__messenger.warning('WARNING: compute_FVair not supported for yprofiles')
+            return None
+
+        if self.__isRprofSet:
+            if 'FV' in self.get_dump(self.get_dump_list()[0]).get_lr_variables():
+                fv = self.get('FV', fname, num_type=num_type, resolution='l')
+                fvair = 1. - fv 
+
+        return fvair
 
     def compute_Xcld(self, fname, num_type='ndump'):
         # Different variables are available depending on data souce, so Xcld
@@ -9156,7 +9192,6 @@ def plot_diffusion_profiles(run,mesa_path,mesa_log,rtop,Dsolve_range,tauconv,r0,
     pl.legend(loc='center left',numpoints=1).draw_frame(False)
     pl.ylabel('$\log(D\,/\,{\\rm cm}^2\,{\\rm s}^{-1})$')
     pl.xlabel('r / Mm')
-
 
 
 class Messenger:
