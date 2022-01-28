@@ -867,19 +867,19 @@ class PPMtools:
         pgas = ptot - prad
         return pgas/ptot
 
-    def compute_g(self, fname, num_type='ndump', minner=0, rinner=0):
+    def compute_g(self, fname, num_type='ndump', minner=0):
         if self.__isyprofile:
             r = self.get('Y', fname, num_type=num_type, resolution='l')
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
 
-        m = self.compute_m(fname, num_type=num_type, minner=minner, rinner=rinner)
+        m = self.compute_m(fname, num_type=num_type, minner=minner)
 
         g = G_code*m/r**2
         return g
 
-    def compute_N2(self, fname, num_type='ndump', radeos=True, minner=0, rinner=0):
+    def compute_N2(self, fname, num_type='ndump', radeos=True, minner=0):
         if self.__isyprofile:
             if radeos:
                 print('radeos option not implemented for YProfile input.')
@@ -889,7 +889,7 @@ class PPMtools:
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
 
-        g = self.compute_g(fname, num_type=num_type, minner=minner, rinner=rinner)
+        g = self.compute_g(fname, num_type=num_type, minner=minner)
         Hp = self.compute_Hp(fname, num_type=num_type)
         nabla_rho = self.compute_nabla_rho(fname, num_type=num_type)
         nabla_rho_ad = self.compute_nabla_rho_ad(fname, num_type=num_type,
@@ -904,24 +904,25 @@ class PPMtools:
 
         return N2
 
-    def compute_m(self, fname, num_type='ndump', minner=0, rinner=0):
+    def compute_m(self, fname, num_type='ndump', minner=0):
         if self.__isyprofile:
             r = self.get00('Y', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            rinner = 0
+            minner = 0
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
-            
+            rinner = self.get('radin0', fname, num_type=num_type, resolution='l')
+        
         if minner==0 and rinner==0: # core setup
             dm = -4.*np.pi*r**2*cdiff(r)*rho
             m = np.cumsum(dm)
             # We store everything from the surface to the core.
             m = m[-1] - m 
         elif minner>0 and rinner>0: # shell setup
-            # minner = m0 in setup file
-            # rinner = smallest radius in setup file
             rho_int = rho[::-1]
             r_int = r[::-1]
             rho_int[r_int<rinner] = 0
@@ -929,7 +930,7 @@ class PPMtools:
             m = np.cumsum(dm) + minner
             m = m[::-1]
         else:
-            raise IOError("minner and rinner have to be both 0 or both >0")
+            raise IOError("Shell setup detected, please specify minner; see m0 in setup file")
         return m
 
     def compute_mt(self, fname, num_type='ndump'):
