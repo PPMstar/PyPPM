@@ -113,6 +113,8 @@ import ipywidgets as widgets
 from datetime import date
 import pickle
 from astropy import units
+import pyshtools.expand 
+import pyshtools.spectralanalysis
 # import collections
 # FH: turn of  logging as described here:
 # https://github.com/matplotlib/matplotlib/issues/14523
@@ -12148,6 +12150,47 @@ class MomsDataSet:
 
         return lmax, N, npoints
 
+    def get_power_spectrum(self, varloc, radius, fname=None):
+        '''
+        Calculates the power spectrum of variable 'varloc' at radius 'radius'.
+        The power spectrum is expressed as power per spherical harmonic mode 'ell'.
+
+        Parameters
+        ----------
+        varloc: str, int
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want the power spectrum of
+        radius: float
+            The radius of the sphere at which you want the power spectrum of 'varloc'
+        fname: None, int
+            None: default option, will grab current dump
+            int: Dump number
+
+        Returns
+        -------
+        ell: np.ndarray
+            Spherical harmonics modes ell
+        power_ell: np.ndarray
+            Power per model ell
+        '''
+
+        # get the desired variable
+        var = self.get(varloc,fname=fname)
+        
+        # what is lmax at this radius?
+        lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
+        
+        # Calculate spherical harmonics up to lmax
+        var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+        
+        # get coefficients and power, drop l=0
+        coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
+        power_ell = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')[1:]
+        ell = np.arange(1, lmax_r+1)
+
+        return ell, power_ell
+
+    
     def norm(self, ux, uy, uz, fname=None):
         '''
         Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
