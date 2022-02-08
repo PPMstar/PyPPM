@@ -12154,6 +12154,8 @@ class MomsDataSet:
         '''
         Calculates the power spectrum of variable 'varloc' at radius 'radius'.
         The power spectrum is expressed as power per spherical harmonic mode 'ell'.
+        
+        Note that power spectrums of velocities will be in m^2/s^2/ell
 
         Parameters
         ----------
