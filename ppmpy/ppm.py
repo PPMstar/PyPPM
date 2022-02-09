@@ -12207,14 +12207,17 @@ class MomsDataSet:
 
         window =  scipy.signal.windows.hann(shape(shcoeffs_by_radius_by_dump)[1], sym=False)
 
+        radiusinput = radius
+        massinput = mass
+
         for (dump_i, dump_number) in enumerate(tqdm(extract_dumps)):
             try:
-                if radius != None:
-                    radius = radius
-                elif mass != None:
+                if radiusinput != None:
+                    radius = radiusinput
+                elif massinput != None:
                     r = self._rprofset.get('R', fname=dump_number)
                     m = self._rprofset.compute_m(dump_number) * 5.025e-07 # Convert from code units to solar masses
-                    radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(mass)
+                    radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
                 # For each radius/mass, compute the power spectral density up to lmax_crop
                 # get ur
                 lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
