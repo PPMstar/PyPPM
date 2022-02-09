@@ -99,6 +99,7 @@ import re
 import nugridpy.constants as nuconst
 import scipy.interpolate
 import scipy.stats
+import scipy.signal
 from scipy import optimize
 from scipy import integrate as integrate
 import copy
@@ -113,6 +114,9 @@ import ipywidgets as widgets
 from datetime import date
 import pickle
 from astropy import units
+from tqdm import tqdm
+import pyshtools
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 # import collections
 # FH: turn of  logging as described here:
 # https://github.com/matplotlib/matplotlib/issues/14523
@@ -12147,6 +12151,266 @@ class MomsDataSet:
         npoints = int(8 * (lmax + 1)**2)
 
         return lmax, N, npoints
+
+    def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
+                        makefigure=True, returnvalues=True, vmin=-5, vmax=2):
+        """
+        Plots/returns a k-omega diagram for a given radius/mass
+        Adapted from William Thompson's k-omega.py script
+
+        Parameters
+        ----------
+        dump_start: integer
+            First dump to use for the k-omega diagram calculation
+        dump_stop: integer
+            Last dump to use
+        varname: string, optional
+            Variable of which the k-omega should be computed
+            Default value is ur, other options are utot and ut_phi
+        lmax_crop: integer, optional
+            Impose a maximum ell value; if none is given then sphericalHarmonics_lmax
+            is used to determine the maximum ell value
+        radius: float, optional
+            Radius at which to calculate the k-omega diagram, in Mm
+            Note that if no radius is specified, then a mass must be specified
+        mass: float, optional
+            Mass M(R) at which to calculate the k-omega diagram, in Msun
+            Note that if no mass is specified, then a radius must be specified
+        makefigure: bool, optional
+            If True, a k-omega diagram is plotted
+        returnvalues: bool, optional
+            If True, the ell, nu, and power arrays are returned
+        vmin, vmax: float, optional
+            Min and max values of the color scale used for the power spectrum colormap
+            The units are log10(m2/s2/ell/microHz).
+
+        Returns
+        -------
+        spatial_freqs: np.ndarray
+            The array containing the ell values
+        temporal_freqs: np.ndarray
+            The array containing the temporal frequencies in microHz
+        spec: np.ndarray
+            The array containing the power spectrum in m2/s2/ell/microHz
+            This array has shape (len(spatial_freqs),len(temporal_freqs))
+        """
+
+        if (radius==None and mass==None) or (radius!=None and mass!=None):
+            raise ValueError('You must select wither a radius or a mass where to calculate the spectrum')
+
+        used_dumps = []
+
+        fname = 'k-omega.bin'
+        extract_dumps = arange(dump_start, dump_stop+1)
+        shcoeffs_by_radius_by_dump = np.memmap(fname, dtype='csingle', mode='w+', shape=(
+            1,len(extract_dumps),2,lmax_crop+1,lmax_crop+1))
+
+        window =  scipy.signal.windows.hann(shape(shcoeffs_by_radius_by_dump)[1], sym=False)
+
+        for (dump_i, dump_number) in enumerate(tqdm(extract_dumps)):
+            try:
+                if radius != None:
+                    radius = radius
+                elif mass != None:
+                    r = self._rprofset.get('R', fname=dump_number)
+                    m = self._rprofset.compute_m(dump_number) * 5.025e-07 # Convert from code units to solar masses
+                    radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(mass)
+                # For each radius/mass, compute the power spectral density up to lmax_crop
+                # get ur
+                lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
+                if lmax_crop is not None:
+                    lmax = lmax_crop
+                if varname=='ur':
+                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                    x = radius*np.sin(theta)*np.cos(phi)
+                    y = radius*np.sin(theta)*np.sin(phi)
+                    z = radius*np.cos(theta)
+                    r_len = radius
+                    x /= r_len
+                    y /= r_len
+                    z /= r_len
+                    #x, y, z are now the x,y,z components of the r hat unit vector for each element on the grid
+                    ur = zeros_like(uz)
+                    ur = x*ux + y*uy + z*uz
+                    quantity_values, theta_grid, phi_grid = ur, theta_grid, phi_grid
+                elif varname=='utot':
+                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                    utot = np.sqrt(ux**2 + uy**2 + uz**2)
+                    quantity_values, theta_grid, phi_grid = utot, theta_grid, phi_grid
+                elif varname=='ut_phi':
+                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                    phi_hat_x = -np.sin(phi)
+                    phi_hat_y = -np.cos(phi)
+                    phi_hat_z = 0.
+                    ut_phi = phi_hat_x*ux + phi_hat_y*uy + phi_hat_z*uz
+                    quantity_values, theta_grid, phi_grid = ut_phi, theta_grid, phi_grid
+                else:
+                    raise ValueError('Invalid varname value; supported values are ur, utot, and ut_phi')
+                if lmax_crop is not None:
+                    coeffs_vec = pyshtools.shtools.SHExpandDHC(quantity_values, sampling=2, 
+                                                               lmax_calc=lmax_crop)*window[dump_i]
+                else:
+                    coeffs_vec = pyshtools.shtools.SHExpandDHC(quantity_values, sampling=2)*window[dump_i]
+                # Pad out the data and store it into the mmap'd array
+                shcoeffs_by_radius_by_dump[0,dump_i,] = np.pad(coeffs_vec, 
+                                                               ((0,0),(0,lmax_crop+1-shape(coeffs_vec)[1]),
+                                                                (0,lmax_crop+1-shape(coeffs_vec)[2])), 
+                                                               'constant', constant_values=0)
+                sys.stdout.flush()
+            except KeyboardInterrupt:
+                print(f"Stopping early at dump {dump_number}")
+                break
+            except Exception as err:
+                print(err)
+                traceback.print_exc()
+                print("Radius arr was", radius_arr)
+                print("Skipping dump", dump_number)
+                print()
+                continue
+            used_dumps.append(dump_number)
+        used_masses = []
+        used_radii = []
+        if mass != None:
+            try:
+                # Take the Fourier transform along the time axis.
+                ft = np.fft.fftn(
+                    shcoeffs_by_radius_by_dump[0],#*window[:,np.newaxis,np.newaxis,np.newaxis],
+                    axes=[0]
+                )
+                #print("took fft, now taking SH spectrum of slices")
+                # Now compute the spherical harmonic power spectral density of those coefficients
+                spectrum = []
+                for j in range(shape(ft)[0]):
+                    psd = pyshtools.spectralanalysis.spectrum(ft[j,], convention='power', unit='per_l')
+                    spectrum.append(psd)
+                    pdf = None
+                # Save to a text file
+                tracked = f"{mass:05.2f}Msun"
+                #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
+                #spectrum = None
+                ft = None
+            except Exception as err:
+                print(" failed", err)
+            used_masses.append(mass)
+        else:
+            try:
+                # Take the Fourier transform along the time axis.
+                ft = np.fft.fftn(
+                    shcoeffs_by_radius_by_dump[0],#*window[:,np.newaxis,np.newaxis,np.newaxis],
+                    axes=[0]
+                )
+                #print("took fft, now taking SH spectrum of slices")
+                # Now compute the spherical harmonic power spectral density of those coefficients
+                spectrum = []
+                for j in range(shape(ft)[0]):
+                    psd = pyshtools.spectralanalysis.spectrum(ft[j,], convention='power', unit='per_l')
+                    spectrum.append(psd)
+                    pdf = None
+                # Save to a text file
+                tracked = f"{radius:05.2f}Mm"
+                #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
+                #spectrum = None
+                ft = None
+            except Exception as err:
+                print(" failed", err)
+            used_radii.append(radius)
+        del shcoeffs_by_radius_by_dump
+        os.remove(fname)
+
+        time_step_s = np.median(np.diff(self._rprofset.get_history().get('time(mins)')[used_dumps])) * 60
+        dump_numbers = used_dumps
+        spectrum = array(spectrum)
+        spectra_unnorm = spectrum
+        #print(spectra_unnorm[0],spectra_unnorm)
+        temporal_freqs = np.fft.fftfreq(spectra_unnorm.shape[0], time_step_s)
+        freq_max = np.max(temporal_freqs)*1e6
+        spatial_freqs = arange(0,spectra_unnorm.shape[1])
+        # dt/N * (Mm^2 -> m^2) * ()
+        dt = time_step_s # 1/np.nanmax(temporal_freqs[temporal_freqs>0])
+        sampling_factor = dt/len(dump_numbers) * 1e12 * 1e-6
+
+        spectrum = spectrum*sampling_factor
+
+        spatial_mask = argsort(spatial_freqs)
+        temporal_mask = argsort(temporal_freqs)
+
+        if makefigure:
+            # Create new figure
+            fig = pl.figure(figsize=(12,8))
+    
+            ax = pl.gca()
+            divider = make_axes_locatable(ax)
+            
+            spec = (spectrum[temporal_mask,spatial_mask[:,np.newaxis]]).T
+    
+            # The main panel: 2d plot
+            im = ax.pcolormesh(
+                spatial_freqs[spatial_mask],#+0.5, careful with tick alignment
+                temporal_freqs[temporal_mask]*1e6,
+                np.log10(spec),
+                cmap='magma',
+                vmin=vmin,
+                vmax=vmax,
+                shading='auto',
+                rasterized=True
+            )
+            ax.set_ylabel("$f$ -- $\\mu Hz$")
+            ax.set_xlabel("Spherical Harmonic Degree")
+            ax.set_ylim(1, lmax);
+            ax.set_xlim(1, freq_max)
+            ax.set_facecolor('black')
+            
+            # Add a colour bar
+            cax = divider.append_axes('right', size='5%', pad=0.0)
+            fig.colorbar(im, cax=cax, orientation='vertical')
+            pl.title(f"$u_r$ power spectral density")
+            pl.ylabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\ell/\\mu Hz}}$")
+            
+            # Histogram on the left margin by summing along the frequency axis
+            ax_spectrum = divider.append_axes("left", 1.2, pad=0.0, sharey=ax)
+            ax_spectrum.plot(
+                np.log10(np.sum(spec, axis=1)),
+                temporal_freqs[temporal_mask]*1e6,
+                'k-',
+            )
+            ax_spectrum.set_ylim(ax.get_xlim())
+            ax_spectrum.set_ylabel("Frequency -- $\\mu Hz$")
+            ax_spectrum.xaxis.tick_top()
+            ax_spectrum.xaxis.set_label_position("top")
+            ax_spectrum.set_xlabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\\mu Hz}}$")
+            
+            # Histogram on the bottom margin by summiung along the wavenumber axis
+            ax_wavenum = divider.append_axes("bottom", 1.2, pad=0.0, sharex=ax)
+            pl.setp(ax.get_xticklabels(), visible=False)
+            x = spatial_freqs[spatial_mask]
+            y = np.log10(np.sum(spec, axis=0))
+            ax_wavenum.plot(x, y, 'k-')
+            
+            ax_wavenum.set_xlim(0,lmax)
+            ax_wavenum.set_xlabel("$\ell$")
+            ax_wavenum.yaxis.tick_right()
+            ax_wavenum.yaxis.set_label_position("right")
+            ax_wavenum.set_ylabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\ell}}$")
+            
+            pl.tight_layout()
+
+            if returnvalues:
+                return spatial_freqs[spatial_mask],temporal_freqs[temporal_mask]*1e6,spec
+            else:
+                return
+
 
     def norm(self, ux, uy, uz, fname=None):
         '''
