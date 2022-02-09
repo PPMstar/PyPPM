@@ -111,6 +111,7 @@ import glob
 from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
 from datetime import date
+from tqdm import tqdm
 import pickle
 from astropy import units
 import pyshtools.expand 
@@ -12150,23 +12151,31 @@ class MomsDataSet:
 
         return lmax, N, npoints
 
-    def get_power_spectrum(self, varloc, radius, fname=None):
+    def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, radius=None, mass=None):
         '''
-        Calculates the power spectrum of variable 'varloc' at radius 'radius'.
+        Calculates the power spectrum of variable 'varloc' at radius 'radius' for
+        dumps arange(dump_start, dump_stop+1, dump_step).
         The power spectrum is expressed as power per spherical harmonic mode 'ell'.
         
-        Note that power spectrums of velocities will be in m^2/s^2/ell
+        Note that power spectrums of velocities will be in 10^-12 m^2/s^2/ell
 
         Parameters
         ----------
         varloc: str, int
             String: for the variable you want if defined on instantiation
             Int: index location of the variable you want the power spectrum of
-        radius: float
-            The radius of the sphere at which you want the power spectrum of 'varloc'
-        fname: None, int
-            None: default option, will grab current dump
-            int: Dump number
+        dump_start: int
+            Dump number of the first dump to consider
+        dump_stop: int
+            Dump number of the last dump to consider
+        dump_step: int
+            Number of dumps between each dump to consider in the dump averaging
+        radius: float, optiinal
+            The radius of the sphere at which you want the power spectrum of 'varloc', in Mm
+            Note that if no radius is specified, then a mass must be specified
+        mass: float, optional
+            Mass M(R) at which to calculate the spectrum, in Msun
+            Note that if no mass is specified, then a radius must be specified
 
         Returns
         -------
@@ -12176,19 +12185,42 @@ class MomsDataSet:
             Power per model ell
         '''
 
-        # get the desired variable
-        var = self.get(varloc,fname=fname)
+        if (radius==None and mass==None) or (radius!=None and mass!=None):
+            raise ValueError('You must select wither a radius or a mass where to calculate the spectrum')
         
-        # what is lmax at this radius?
-        lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
+        dumps = np.arange(dump_start, dump_stop+1, dump_step)
         
-        # Calculate spherical harmonics up to lmax
-        var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+        radiusinput = radius
+        massinput = mass
+
+        for i,dump in enumerate(tqdm(dumps)):
+            # get the desired variable
+            var = self.get(varloc,fname=dump)
+    
+            if radiusinput != None:
+                radius = radiusinput
+            elif massinput != None:
+                r = self._rprofset.get('R', fname=dump)
+                m = self._rprofset.compute_m(dump) * 5.025e-07 # Msun
+                radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
+    
+            # what is lmax at this radius?
+            lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
         
-        # get coefficients and power, drop l=0
-        coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
-        power_ell = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')[1:]
-        ell = np.arange(1, lmax_r+1)
+            # Calculate spherical harmonics up to lmax
+            var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+        
+            # get coefficients and power
+            coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
+            power_ell_dump = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')
+            
+            if i==0:
+                power_ell = power_ell_dump
+            else:
+                power_ell = power_ell + power_ell_dump
+            
+        ell = np.arange(0, lmax_r+1)
+        power_ell = power_ell/len(dumps)
 
         return ell, power_ell
 
