@@ -12204,8 +12204,11 @@ class MomsDataSet:
 
         fname = 'k-omega.bin'
         extract_dumps = arange(dump_start, dump_stop+1)
+        lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
+        if lmax_crop is not None:
+            lmax = lmax_crop
         shcoeffs_by_radius_by_dump = np.memmap(fname, dtype='csingle', mode='w+', shape=(
-            1,len(extract_dumps),2,lmax_crop+1,lmax_crop+1))
+            1,len(extract_dumps),2,lmax+1,lmax+1))
 
         # sqrt(8/3) is to conserve energy despite windowing
         # e.g., http://www.vibrationdata.com/tutorials_alt/Hanning_compensation.pdf
@@ -12276,8 +12279,8 @@ class MomsDataSet:
                     coeffs_vec = pyshtools.shtools.SHExpandDHC(quantity_values, sampling=2)*window[dump_i]
                 # Pad out the data and store it into the mmap'd array
                 shcoeffs_by_radius_by_dump[0,dump_i,] = np.pad(coeffs_vec, 
-                                                               ((0,0),(0,lmax_crop+1-shape(coeffs_vec)[1]),
-                                                                (0,lmax_crop+1-shape(coeffs_vec)[2])), 
+                                                               ((0,0),(0,lmax+1-shape(coeffs_vec)[1]),
+                                                                (0,lmax+1-shape(coeffs_vec)[2])), 
                                                                'constant', constant_values=0)
                 sys.stdout.flush()
             except KeyboardInterrupt:
