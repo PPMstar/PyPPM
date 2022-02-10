@@ -12152,11 +12152,13 @@ class MomsDataSet:
 
         return lmax, N, npoints
 
+
     def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
                         makefigure=True, returnvalues=True, vmin=-5, vmax=2):
         """
         Plots/returns a k-omega diagram for a given radius/mass
         Adapted from William Thompson's k-omega.py script
+        Now conserves total power via a correction for the Hann windowing
 
         Parameters
         ----------
@@ -12166,7 +12168,7 @@ class MomsDataSet:
             Last dump to use
         varname: string, optional
             Variable of which the k-omega should be computed
-            Default value is ur, other options are utot and ut_phi
+            Default value is ur, other options are |ur|, utot, and ut_phi
         lmax_crop: integer, optional
             Impose a maximum ell value; if none is given then sphericalHarmonics_lmax
             is used to determine the maximum ell value
@@ -12205,7 +12207,9 @@ class MomsDataSet:
         shcoeffs_by_radius_by_dump = np.memmap(fname, dtype='csingle', mode='w+', shape=(
             1,len(extract_dumps),2,lmax_crop+1,lmax_crop+1))
 
-        window =  scipy.signal.windows.hann(shape(shcoeffs_by_radius_by_dump)[1], sym=False)
+        # sqrt(8/3) is to conserve energy despite windowing
+        # e.g., http://www.vibrationdata.com/tutorials_alt/Hanning_compensation.pdf
+        window =  scipy.signal.windows.hann(shape(shcoeffs_by_radius_by_dump)[1], sym=False)*sqrt(8/3)
 
         radiusinput = radius
         massinput = mass
@@ -12239,6 +12243,10 @@ class MomsDataSet:
                     #x, y, z are now the x,y,z components of the r hat unit vector for each element on the grid
                     ur = zeros_like(uz)
                     ur = x*ux + y*uy + z*uz
+                    quantity_values, theta_grid, phi_grid = ur, theta_grid, phi_grid
+                elif varname=='|ur|':
+                    ur, theta_grid, phi_grid = self.sphericalHarmonics_format('|ur|', radius, dump_number, 
+                                                                              lmax=lmax, get_theta_phi_grids=True)
                     quantity_values, theta_grid, phi_grid = ur, theta_grid, phi_grid
                 elif varname=='utot':
                     ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
@@ -12342,12 +12350,13 @@ class MomsDataSet:
         spatial_freqs = arange(0,spectra_unnorm.shape[1])
         # dt/N * (Mm^2 -> m^2) * ()
         dt = time_step_s # 1/np.nanmax(temporal_freqs[temporal_freqs>0])
-        sampling_factor = dt/len(dump_numbers) * 1e12 * 1e-6
-
+        sampling_factor = dt/len(dump_numbers) * 1e12 * 1e-6 
         spectrum = spectrum*sampling_factor
 
         spatial_mask = argsort(spatial_freqs)
         temporal_mask = argsort(temporal_freqs)
+
+        spec = (spectrum[temporal_mask,spatial_mask[:,np.newaxis]]).T
 
         if makefigure:
             # Create new figure
@@ -12355,9 +12364,7 @@ class MomsDataSet:
     
             ax = pl.gca()
             divider = make_axes_locatable(ax)
-            
-            spec = (spectrum[temporal_mask,spatial_mask[:,np.newaxis]]).T
-    
+        
             # The main panel: 2d plot
             im = ax.pcolormesh(
                 spatial_freqs[spatial_mask],#+0.5, careful with tick alignment
@@ -12398,7 +12405,9 @@ class MomsDataSet:
             ax_wavenum = divider.append_axes("bottom", 1.2, pad=0.0, sharex=ax)
             pl.setp(ax.get_xticklabels(), visible=False)
             x = spatial_freqs[spatial_mask]
-            y = np.log10(np.sum(spec, axis=0))
+            deltafreq = np.mean(np.diff(temporal_freqs[temporal_mask]*1e6))
+            y = np.log10(np.sum(spec, axis=0)*deltafreq)
+
             ax_wavenum.plot(x, y, 'k-')
             
             ax_wavenum.set_xlim(0,lmax)
@@ -12409,10 +12418,10 @@ class MomsDataSet:
             
             pl.tight_layout()
 
-            if returnvalues:
-                return spatial_freqs[spatial_mask],temporal_freqs[temporal_mask]*1e6,spec
-            else:
-                return
+        if returnvalues:
+            return spatial_freqs[spatial_mask],temporal_freqs[temporal_mask]*1e6,spec
+        else:
+            return
 
 
     def norm(self, ux, uy, uz, fname=None):
