@@ -12154,7 +12154,7 @@ class MomsDataSet:
 
 
     def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
-                        makefigure=True, returnvalues=True, vmin=-5, vmax=2):
+                        makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None):
         """
         Plots/returns a k-omega diagram for a given radius/mass
         Adapted from William Thompson's k-omega.py script
@@ -12185,6 +12185,8 @@ class MomsDataSet:
         vmin, vmax: float, optional
             Min and max values of the color scale used for the power spectrum colormap
             The units are log10(m2/s2/ell/microHz).
+        fmax: float, optional
+            Max frequency to show on k-omega diagram (in microHz)
 
         Returns
         -------
@@ -12350,6 +12352,8 @@ class MomsDataSet:
         #print(spectra_unnorm[0],spectra_unnorm)
         temporal_freqs = np.fft.fftfreq(spectra_unnorm.shape[0], time_step_s)
         freq_max = np.max(temporal_freqs)*1e6
+        if fmax:
+            freq_max = fmax
         spatial_freqs = arange(0,spectra_unnorm.shape[1])
         # dt/N * (Mm^2 -> m^2) * ()
         dt = time_step_s # 1/np.nanmax(temporal_freqs[temporal_freqs>0])
@@ -12388,7 +12392,7 @@ class MomsDataSet:
             # Add a colour bar
             cax = divider.append_axes('right', size='5%', pad=0.0)
             fig.colorbar(im, cax=cax, orientation='vertical')
-            pl.title(f"$u_r$ power spectral density")
+            pl.title(f"power spectral density")
             pl.ylabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\ell/\\mu Hz}}$")
             
             # Histogram on the left margin by summing along the frequency axis
