@@ -12199,10 +12199,20 @@ class MomsDataSet:
             This array has shape (len(spatial_freqs),len(temporal_freqs))
         """
 
+        radiusinput = radius
+        massinput = mass
+
         if (radius==None and mass==None) or (radius!=None and mass!=None):
             raise ValueError('You must select wither a radius or a mass where to calculate the spectrum')
 
         used_dumps = []
+
+        if radiusinput != None:
+            radius = radiusinput
+        elif massinput != None:
+            r = self._rprofset.get('R', fname=dump_start)
+            m = self._rprofset.compute_m(dump_start) * 5.025e-07 # Convert from code units to solar masses
+            radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
 
         fname = 'k-omega.bin'
         extract_dumps = arange(dump_start, dump_stop+1)
@@ -12216,8 +12226,6 @@ class MomsDataSet:
         # e.g., http://www.vibrationdata.com/tutorials_alt/Hanning_compensation.pdf
         window =  scipy.signal.windows.hann(shape(shcoeffs_by_radius_by_dump)[1], sym=False)*sqrt(8/3)
 
-        radiusinput = radius
-        massinput = mass
 
         for (dump_i, dump_number) in enumerate(tqdm(extract_dumps)):
             try:
@@ -12229,9 +12237,9 @@ class MomsDataSet:
                     radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
                 # For each radius/mass, compute the power spectral density up to lmax_crop
                 # get ur
-                lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
-                if lmax_crop is not None:
-                    lmax = lmax_crop
+                #lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
+                #if lmax_crop is not None:
+                #    lmax = lmax_crop
                 if varname=='ur':
                     ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
                                                                               lmax=lmax, get_theta_phi_grids=True)
@@ -12351,6 +12359,7 @@ class MomsDataSet:
         spectra_unnorm = spectrum
         #print(spectra_unnorm[0],spectra_unnorm)
         temporal_freqs = np.fft.fftfreq(spectra_unnorm.shape[0], time_step_s)
+        print(temporal_freqs, time_step_s, spectra_unnorm.shape[0])
         freq_max = np.max(temporal_freqs)*1e6
         if fmax:
             freq_max = fmax
