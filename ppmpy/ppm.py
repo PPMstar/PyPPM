@@ -12359,7 +12359,6 @@ class MomsDataSet:
         spectra_unnorm = spectrum
         #print(spectra_unnorm[0],spectra_unnorm)
         temporal_freqs = np.fft.fftfreq(spectra_unnorm.shape[0], time_step_s)
-        print(temporal_freqs, time_step_s, spectra_unnorm.shape[0])
         freq_max = np.max(temporal_freqs)*1e6
         if fmax:
             freq_max = fmax
