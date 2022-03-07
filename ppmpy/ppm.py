@@ -10204,11 +10204,6 @@ class Rprof:
         NoneType
             Something failed.
         
-        Variables
-        ---------
-        los: dictionary
-            contains the eight line-of-sight vectors
-            Rprof.los[1] returns array of first vector, dict keys are integers
         '''
         try:
             with open(file_path, 'r') as fin:
@@ -10245,9 +10240,13 @@ class Rprof:
         # skip the first block, which is superfluous
         start_lines = []
         for i,line in enumerate(lines):
-            if 'ir' in line:
+            if ('ir' in line) and ('rms' in line) and ('min' in line) and ('max' in line):
                 start_lines.append(i)
         start_lines = start_lines[1:]
+
+        if len(start_lines)!=4:
+            err = ("Failed to identify header rows of "+file_path)
+            self.__messenger.error(err)
 
         # identify length of each block
         length = int(lines[start_lines[0]+1].split()[0])
