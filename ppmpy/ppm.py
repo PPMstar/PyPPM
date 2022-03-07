@@ -12154,8 +12154,11 @@ class MomsDataSet:
 
     def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, radius=None, mass=None):
         '''
-        Calculates the power spectrum of variable 'varloc' at radius 'radius' for
-        dumps arange(dump_start, dump_stop+1, dump_step).
+        Calculates the power spectrum of any moms variable 
+
+        Power spectrum is calculated for variable 'varloc' at radius 'radius' for
+        dumps arange(dump_start, dump_stop+1, dump_step). The spectrum is averaged
+        over the ranfe of dumps given as inputs.
         The power spectrum is expressed as power per spherical harmonic mode 'ell'.
         
         Note that power spectrums of velocities will be in 10^-12 m^2/s^2/ell
@@ -12187,41 +12190,49 @@ class MomsDataSet:
         '''
 
         if (radius==None and mass==None) or (radius!=None and mass!=None):
-            raise ValueError('You must select wither a radius or a mass where to calculate the spectrum')
+            err = 'You must select either a radius or a mass where to calculate the spectrum'
+            self._messenger.error(err)
         
         dumps = np.arange(dump_start, dump_stop+1, dump_step)
         
         radiusinput = radius
         massinput = mass
 
+        idumpsuccess = 0
+
         for i,dump in enumerate(tqdm(dumps)):
-            # get the desired variable
-            var = self.get(varloc,fname=dump)
+            try:
+                # get the desired variable
+                var = self.get(varloc,fname=dump)
     
-            if radiusinput != None:
-                radius = radiusinput
-            elif massinput != None:
-                r = self._rprofset.get('R', fname=dump)
-                m = self._rprofset.compute_m(dump) * 5.025e-07 # Msun
-                radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
+                if radiusinput != None:
+                    radius = radiusinput
+                elif massinput != None:
+                    r = self._rprofset.get('R', fname=dump)
+                    m = self._rprofset.compute_m(dump) * code_mass # Msun
+                    radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
     
-            # what is lmax at this radius?
-            lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
+                # what is lmax at this radius?
+                lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
         
-            # Calculate spherical harmonics up to lmax
-            var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+                # Calculate spherical harmonics up to lmax
+                var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
         
-            # get coefficients and power
-            coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
-            power_ell_dump = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')
+                # get coefficients and power
+                coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
+                power_ell_dump = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')
             
-            if i==0:
-                power_ell = power_ell_dump
-            else:
-                power_ell = power_ell + power_ell_dump
-            
+                if idumpsuccess==0:
+                    power_ell = power_ell_dump
+                else:
+                    power_ell = power_ell + power_ell_dump
+                idumpsuccess += 1
+            except:
+                self._messenger.warning('Skipping dump '+str(dump))
+                continue
+
         ell = np.arange(0, lmax_r+1)
-        power_ell = power_ell/len(dumps)
+        power_ell = power_ell/idumpsuccess
 
         return ell, power_ell
 
