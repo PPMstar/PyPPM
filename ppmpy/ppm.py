@@ -10243,7 +10243,7 @@ class Rprof:
             if ('ir' in line) and ('rms' in line) and ('min' in line) and ('max' in line):
                 start_lines.append(i)
 
-        if len(start_lines)!=4:
+        if len(start_lines)!=5:
             err = ("Failed to identify header rows of "+file_path)
             self.__messenger.error(err)
 
