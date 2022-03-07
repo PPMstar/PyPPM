@@ -925,6 +925,7 @@ class PPMtools:
             # We store everything from the surface to the core.
             m = m[-1] - m 
         elif minner>0 and rinner>0: # shell setup
+            self.__messenger.message('todo: minner should eventually directly from the rprof file')
             rho_int = rho[::-1]
             r_int = r[::-1]
             rho_int[r_int<rinner] = 0
@@ -932,7 +933,7 @@ class PPMtools:
             m = np.cumsum(dm) + minner
             m = m[::-1]
         else:
-            self.__messenger.warning('Shell setup detected, please specify minner; see m0 in setup file')
+            self.__messenger.error('Shell setup detected, please specify minner; see m0 in setup file')
         return m
 
     def compute_mt(self, fname, num_type='ndump'):
