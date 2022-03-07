@@ -909,7 +909,9 @@ class PPMtools:
             r = self.get00('Y', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
             rinner = 0
-            minner = 0
+            if minner!=0:
+                self.__messenger.warning('minner>0 not supported with yprofile, forcing minner=0')
+                minner = 0
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
@@ -930,7 +932,7 @@ class PPMtools:
             m = np.cumsum(dm) + minner
             m = m[::-1]
         else:
-            raise IOError("Shell setup detected, please specify minner; see m0 in setup file")
+            self.__messenger.warning('Shell setup detected, please specify minner; see m0 in setup file')
         return m
 
     def compute_mt(self, fname, num_type='ndump'):
