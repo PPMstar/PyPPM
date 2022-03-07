@@ -10242,7 +10242,6 @@ class Rprof:
         for i,line in enumerate(lines):
             if ('ir' in line) and ('rms' in line) and ('min' in line) and ('max' in line):
                 start_lines.append(i)
-        start_lines = start_lines[1:]
 
         if len(start_lines)!=4:
             err = ("Failed to identify header rows of "+file_path)
