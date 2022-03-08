@@ -9695,6 +9695,10 @@ class RprofSet(PPMtools):
         Returns variable var at a specific point in the simulation's time
         evolution. If var is computable quantity pull that.
 
+        Note: use 'xcmax' to get the radii values when using bqav=True.
+        The first few radial entries may have ridiculous values and can be
+        ignored.
+
         Parameters
         ----------
         var: string
