@@ -10482,6 +10482,9 @@ class MomsData():
         file_list = glob.glob(file_path_generic)
         file_list = sort(file_list)
         nbq_per_dim = int(round(len(file_list)**(1./3.),0))
+        if nbq_per_dim**3 != len(file_list):
+            self.__messenger.error('Missing at least one moms file for '+file_path_generic)
+            return False
 
         for i,file_name in enumerate(file_list):
             # we need to first try out if we can read the data...
