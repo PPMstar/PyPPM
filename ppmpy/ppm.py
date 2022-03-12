@@ -9444,7 +9444,8 @@ class RprofSet(PPMtools):
     of PPMstar 2.0.
     '''
 
-    def __init__(self, dir_name, verbose=3, cache_rprofs=True, geometry='spherical', astrounit=False):
+    def __init__(self, dir_name, verbose=3, cache_rprofs=True, geometry='spherical', astrounit=False, 
+                 bqav=False, var_list=[]):
         '''
         Init method.
 
@@ -9462,11 +9463,25 @@ class RprofSet(PPMtools):
             changes the definition of high- and low-resolution data as well as
             the behaviour of some methods (such as boundary search, mass
             integrals).
+        bqav: boolean
+            Read the content of frombqavs generated during moms decompression
+            instead of the rprofs generated while PPMstar is running
+        var_list: list
+            List of string to identify the variables extracted from the moms data
+            Only relevant if bqav=True
+            If bqav=True and no var_list is defined, then the variables will be named
+            'var0', 'var0max', 'var1', 'var1max', etc.
         '''
 
         PPMtools.__init__(self,verbose=verbose)
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
+
+        self.__bqav = bqav
+        self.__var_list = var_list
+        
+        if len(self.__var_list)>0 and not self.__bqav:
+            print('var_list argument will be ignored')
 
         # __find_dumps() will set the following variables,
         # if successful:
@@ -9483,8 +9498,12 @@ class RprofSet(PPMtools):
         self.__cache_rprofs = cache_rprofs
         self.__rprof_cache = {}
 
-        history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
-                                                         self.__run_id)
+        if self.__bqav:
+            history_file_path = '{:s}../{:s}-0000.hstry'.format(self.__dir_name, \
+                                                             self.__run_id)
+        else:
+            history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
+                                                             self.__run_id)
         self.__history = RprofHistory(history_file_path, verbose=verbose)
         if not self.__history.is_valid():
             wrng = ('History not available. You will not be able to access '
@@ -9527,6 +9546,9 @@ class RprofSet(PPMtools):
 
         # join() will add a trailing slash if not present.
         self.__dir_name = os.path.join(dir_name, '')
+        
+        if self.__bqav:
+            self.__dir_name = self.__dir_name + 'frombqavs/'
 
         rprof_files = glob.glob(self.__dir_name + '*.rprof')
         if len(rprof_files) == 0:
@@ -9539,13 +9561,21 @@ class RprofSet(PPMtools):
 
         # run_id is what is before the last dash, check that it is
         # followed by 4 numeric characters
-        _ind   = rprof_files[0].rindex('-')                # index of last dash
-        self.__run_id = rprof_files[0][0:_ind]
+        if self.__bqav:
+            _ind   = rprof_files[0].rindex('-BQav')                # index of last dash
+            self.__run_id = rprof_files[0][0:_ind]
+            indincr1 = 5
+            indincr2 = 9
+        else:
+            _ind   = rprof_files[0].rindex('-')                # index of last dash
+            self.__run_id = rprof_files[0][0:_ind]
+            indincr1 = 1
+            indincr2 = 5
 
         for i in range(len(rprof_files)):
             _ind   = rprof_files[i].rindex('-')
             if rprof_files[i][0:_ind] == self.__run_id:     # record dump number
-                dump_number = rprof_files[i][_ind+1:_ind+5]
+                dump_number = rprof_files[i][_ind+indincr1:_ind+indincr2]
                 if dump_number.isnumeric():
                     self.__dumps.append(int(dump_number))
                 else:
@@ -9643,17 +9673,21 @@ class RprofSet(PPMtools):
             self.__messenger.error(err)
             return None
 
-        file_path = '{:s}{:s}-{:04d}.rprof'.format(self.__dir_name, \
-                                                   self.__run_id, dump)
+        if self.__bqav:
+            file_path = '{:s}{:s}-BQav{:04d}.rprof'.format(self.__dir_name, \
+                                                       self.__run_id, dump)
+        else:
+            file_path = '{:s}{:s}-{:04d}.rprof'.format(self.__dir_name, \
+                                                       self.__run_id, dump)
 
         if self.__cache_rprofs:
             if dump in self.__rprof_cache:
                 rp = self.__rprof_cache[dump]
             else:
-                rp = Rprof(file_path, geometry=self.__geometry)
+                rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, var_list=self.__var_list)
                 self.__rprof_cache[dump] = rp
         else:
-            rp = Rprof(file_path, geometry=self.__geometry)
+            rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, var_list=self.__var_list)
 
         return rp
 
@@ -9661,6 +9695,10 @@ class RprofSet(PPMtools):
         '''
         Returns variable var at a specific point in the simulation's time
         evolution. If var is computable quantity pull that.
+
+        Note: use 'xcmax' to get the radii values when using bqav=True.
+        The first few radial entries may have ridiculous values and can be
+        ignored.
 
         Parameters
         ----------
@@ -10103,7 +10141,7 @@ class Rprof:
     PPMstar 2.0.
     '''
 
-    def __init__(self, file_path, verbose=3, geometry='spherical'):
+    def __init__(self, file_path, verbose=3, geometry='spherical', bqav=False, var_list=[]):
         '''
         Init method.
 
@@ -10118,10 +10156,24 @@ class Rprof:
             changes the definition of high- and low-resolution data as well as
             the behaviour of some methods (such as boundary search, mass
             integrals).
+        bqav: boolean
+            Read the content of frombqavs generated during moms decompression
+            instead of the rprofs generated while PPMstar is running
+        var_list: list
+            List of string to identify the variables extracted from the moms data
+            Only relevant if bqav=True
+            If bqav=True and no var_list is defined, then the variables will be named
+            'var0', 'var0max', 'var1', 'var1max', etc.
         '''
 
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
+
+        self.__bqav = bqav
+        self.__var_list = var_list
+        
+        if len(self.__var_list)>0 and not self.__bqav:
+            print('var_list argument will be ignored')
 
         if geometry in ('spherical', 'cartesian'):
             self.__geometry = geometry
@@ -10131,12 +10183,113 @@ class Rprof:
             self.__messenger.warning(wrng)
             self.__geometry = 'spherical'
 
-        if self.__read_rprof_file(file_path) != 0:
-            return
+        if self.__bqav:
+            if self.__read_rprofbqav_file(file_path) != 0:
+                return
+        else:
+            if self.__read_rprof_file(file_path) != 0:
+                return
 
         self.__is_valid = True
 
+
+    def __read_rprofbqav_file(self, file_path):
+        '''
+        Reads a single frombqav .rprof file written by PPMstar 2.0.
+
+        Parameters
+        ----------
+        file_path: string
+            Path to the .rprof file.
+
+        Returns
+        -------
+        int
+            0 on success.
+        NoneType
+            Something failed.
         
+        '''
+        try:
+            with open(file_path, 'r') as fin:
+                lines = fin.readlines()
+            self.__file_path = file_path
+        except IOError as e:
+            err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
+            self.__messenger.error(err)
+            return None
+
+        self.__header_vars = []
+        self.__header_data = {}
+        self.__lr_vars = [] 
+        self.__hr_vars = [] 
+
+        if len(self.__var_list)==0:
+            self.__var_list = ['var'+str(i) for i in range(10)]
+
+        if len(self.__var_list)!=10:
+            raise ValueError('var_list must contain 10 elements')
+
+        for var in self.__var_list:
+            self.__lr_vars.append(var)
+            self.__lr_vars.append(var+'min')
+            self.__lr_vars.append(var+'max')
+            self.__lr_vars.append(var+'rms')
+
+        self.__lr_data = dict.fromkeys(self.__lr_vars)
+
+        # remove empty lines
+        lines = [line.strip() for line in lines if line!='\n']
+
+        # identify block start lines
+        # skip the first block, which is superfluous
+        start_lines = []
+        for i,line in enumerate(lines):
+            if ('ir' in line) and ('rms' in line) and ('min' in line) and ('max' in line):
+                start_lines.append(i)
+
+        if len(start_lines)!=5:
+            err = ("Failed to identify header rows of "+file_path)
+            self.__messenger.error(err)
+
+        # identify length of each block
+        length = int(lines[start_lines[0]+1].split()[0])
+
+        # loop over the five blocks (2 whatevers per block)
+        for i,start_line in enumerate(start_lines):
+            target_lines = lines[start_line+1:start_line+length+1]
+            var1 = []
+            var1min = []
+            var1max = []
+            var1rms = []
+            var2 = []
+            var2min = []
+            var2max = []
+            var2rms = []            
+            for line in target_lines:
+                _,v1,v1mi,v1ma,v1rm,v2,v2mi,v2ma,v2rm = [float(x) for x in line.split()]
+                var1.append(v1)
+                var1min.append(v1mi)
+                var1max.append(v1ma)
+                var1rms.append(v1rm)
+                var2.append(v2)
+                var2min.append(v2mi)
+                var2max.append(v2ma)
+                var2rms.append(v2rm)
+            ist = int(i*8)
+            self.__lr_data[self.__lr_vars[ist]] = var1
+            self.__lr_data[self.__lr_vars[ist+1]] = var1min
+            self.__lr_data[self.__lr_vars[ist+2]] = var1max
+            self.__lr_data[self.__lr_vars[ist+3]] = var1rms
+            self.__lr_data[self.__lr_vars[ist+4]] = var2
+            self.__lr_data[self.__lr_vars[ist+5]] = var2min
+            self.__lr_data[self.__lr_vars[ist+6]] = var2max
+            self.__lr_data[self.__lr_vars[ist+7]] = var2rms
+
+        self.__anyr_vars = sorted(self.__lr_vars)
+        self.__all_vars = self.__anyr_vars
+
+        return 0 
 
     def __read_rprof_file(self, file_path):
         '''
@@ -10176,7 +10329,7 @@ class Rprof:
         self.__lr_data = {} # low-resolution data columns
         self.__hr_vars = [] # high-resolution data columns
         self.__hr_data = {} # high-resolution data columns
-        self.los       = {}     # line-of-sight vectors 
+        self.los       = {}     # line-of-sight vectors
 
         l = 0 # line index
 
@@ -13235,3 +13388,5 @@ def prep_Yprofile_data(user="Paul", run="BW-Sakurai-1536-N13"):
     subprocess.call([link_command],shell=True)
     return data_dir
 # %%
+
+
