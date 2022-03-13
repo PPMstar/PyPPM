@@ -10630,30 +10630,60 @@ class MomsData():
             False on failure.
         '''
 
-        # we need to first try out if we can read the data...
-        try:
-            ghostdata = np.fromfile(file_path,dtype='float32',count=-1,sep="")
-
-        except IOError as e:
-            err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
-            self.__messenger.error(err)
+        # first, check if there are more than just .aaa files
+        file_path_generic = file_path.replace('.aaa','*')
+        file_list = glob.glob(file_path_generic)
+        file_list = sort(file_list)
+        nbq_per_dim = int(round(len(file_list)**(1./3.),0))
+        if nbq_per_dim**3 != len(file_list):
+            self.__messenger.error('Missing at least one moms file for '+file_path_generic)
             return False
 
+        for i,file_name in enumerate(file_list):
+            # we need to first try out if we can read the data...
+            try:
+                ghostdata = np.fromfile(file_name,dtype='float32',count=-1,sep="")
+            except IOError as e:
+                err = 'I/O error({0}): {1}'.format(e.errno, e.strerror)
+                self.__messenger.error(err)
+                return False
 
-        # just by knowing how paul layed out the data I can infer these quantities
-        self.run_ngridpoints = int(np.ceil(4. * (np.power(np.shape(ghostdata)[0] / 10.,1/3.) - self.__ghost)))
-        self.ngridpoints = int(np.ceil(self.run_ngridpoints/4.))
+            # just by knowing how paul layed out the data I can infer these quantities
+            self.run_ngridpoints = int(np.ceil(4. * (np.power(np.shape(ghostdata)[0] / 10.,1/3.) - self.__ghost)))
+            self.ngridpoints = int(np.ceil(self.run_ngridpoints/4.))
 
-        # ok, I can reshape without reallocating an array
-        ghostview = ghostdata.view()
-        size = int(np.ceil(self.ngridpoints + self.__ghost))
-        ghostview.shape = (self.__number_of_whatevers, size, size, size)
-
-        # my removed "ghost" values is quite easy! Now in an intuitive format
-        # self.var[z,y,x]
-        self.var = ghostview[0:,(self.__ghost-1):(self.ngridpoints+self.__ghost-1),
-                              (self.__ghost-1):(self.ngridpoints+self.__ghost-1),
-                              (self.__ghost-1):(self.ngridpoints+self.__ghost-1)]
+            # ok, I can reshape without reallocating an array
+            ghostview = ghostdata.view()
+            size = int(np.ceil(self.ngridpoints + self.__ghost))
+            ghostview.shape = (self.__number_of_whatevers, size, size, size)
+            
+            # my removed "ghost" values is quite easy! Now in an intuitive format
+            # self.var[z,y,x]
+            varnew = ghostview[0:,(self.__ghost-1):(self.ngridpoints+self.__ghost-1),
+                                 (self.__ghost-1):(self.ngridpoints+self.__ghost-1),
+                                 (self.__ghost-1):(self.ngridpoints+self.__ghost-1)]
+            shape = np.shape(varnew)
+            size = shape[-1]
+            if nbq_per_dim==1:
+                self.var = varnew
+            else: # stack the .aaa, .aab, etc. files in the correct order
+                if i==0:
+                    final_shape = (self.__number_of_whatevers, size*nbq_per_dim, 
+                                   size*nbq_per_dim, size*nbq_per_dim)
+                    self.var = np.zeros(final_shape)
+                extension = file_name.split('.')[-1]
+                if len(extension)!=3:
+                    self.__messenger.error('Failed to read extension of '+file_name)
+                    return False
+                izmin = (ord(extension[0]) - 97)
+                iymin = (ord(extension[1]) - 97)
+                ixmin = (ord(extension[2]) - 97)
+                ixmin,ixmax = ixmin*size, (ixmin+1)*size
+                iymin,iymax = iymin*size, (iymin+1)*size
+                izmin,izmax = izmin*size, (izmin+1)*size
+                self.var[:,ixmin:ixmax,iymin:iymax,izmin:izmax] = varnew
+                self.run_ngridpoints = self.run_ngridpoints*nbq_per_dim
+                self.ngridpoints = self.ngridpoints*nbq_per_dim
 
         return True
 
@@ -10876,7 +10906,7 @@ class MomsDataSet:
 
         file_path = '{:s}{:04d}/{:s}-BQav{:04d}.aaa'.format(self._dir_name, \
                                                              dump, self._run_id, dump)
-
+        
         # we first check if we can add a new moments data to memory
         # without removing another
         if len(self._many_momsdata) < self._dumps_in_mem:
