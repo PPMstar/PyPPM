@@ -12161,7 +12161,7 @@ class MomsDataSet:
         over the ranfe of dumps given as inputs.
         The power spectrum is expressed as power per spherical harmonic mode 'ell'.
         
-        Note that power spectrums of velocities will be in 10^-12 m^2/s^2/ell
+        Note that power spectrums of velocities will be in 10^12 m^2/s^2/ell
 
         Parameters
         ----------
