@@ -12152,7 +12152,8 @@ class MomsDataSet:
 
         return lmax, N, npoints
 
-    def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, radius=None, mass=None):
+    def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, 
+                            radius=None, mass=None, plot=0):
         '''
         Calculates the power spectrum of any moms variable 
 
@@ -12180,6 +12181,10 @@ class MomsDataSet:
         mass: float, optional
             Mass M(R) at which to calculate the spectrum, in Msun
             Note that if no mass is specified, then a radius must be specified
+        plot :: int
+            If > 0 make plot where value is fig number, tuned to show spectrum of ur 
+            for a radius in a H-core-25 convective core; may or may not look good for 
+            other vars, runs; default is 0
 
         Returns
         -------
@@ -12233,6 +12238,16 @@ class MomsDataSet:
 
         ell = np.arange(0, lmax_r+1)
         power_ell = power_ell/idumpsuccess
+
+        if plot > 0:
+            pl.close(plot);pl.figure(plot)
+            pl.loglog(ell, 1.e12*power_ell)
+            pmax=np.max(1.e12*power_ell)
+            xx = np.linspace(7*max(ell[0],1),0.7*ell[-1],5)
+            pl.loglog(xx,1.5*pmax*xx**(-5/3.),'w-',lw=0.5,)
+            pl.ylim(1e12*power_ell[-1],3*pmax)
+            pl.ylabel('$ power / \mathrm{[m^2/ss^2]}$'); pl.xlabel('$l$')
+            pl.text(0.1*ell[-1],0.1*pmax,'$l^{-5/3}$')
 
         return ell, power_ell
 
