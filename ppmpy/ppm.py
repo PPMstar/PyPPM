@@ -1630,6 +1630,8 @@ class PPMtools:
             'value' : Search for the radius where var == var_value.
         var_value : array, float, same length as cycles
             Value of var to be searched for if criterion == 'value'.
+            If var_value is an array, then var_value is different for each cycle
+            If var_value is a float, then this var_value is used for each cycle
         return_var_scale_height : bool
             Allows the user to have the scale height of var evaluated
             at the boundary radius to be returned as well.
@@ -1645,7 +1647,11 @@ class PPMtools:
             at rb are returned if return_var_scale_height == True.
         '''
         cycle_list = any2list(cycles)
-        var_value = any2list(var_value)
+        try:
+            _ = len(var_value)
+            var_value = any2list(var_value)
+        except:
+            var_value = var_value*np.ones(len(cycle_list))
         rb = np.zeros(len(cycle_list))
         if return_var_scale_height:
             Hv = np.zeros(len(cycle_list))
