@@ -663,7 +663,7 @@ class PPMtools:
 
     def compute(self, quantity, fname, num_type='ndump', extra_args={}):
         if quantity in self.__computable_quantities:
-            print("Quantity: ",quantity)
+            #print("Quantity: ",quantity)
             self.quantity = quantity
             m = self.__compute_methods[quantity]
             return m(fname, num_type=num_type)
