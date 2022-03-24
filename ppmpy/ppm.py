@@ -636,6 +636,7 @@ class PPMtools:
                                   'nabla_rho':self.compute_nabla_rho, \
                                   'nabla_rho_ad':self.compute_nabla_rho_ad, \
                                   'lum_rad':self.compute_lum_rad, \
+                                  'lum_conv':self.compute_lum_conv, \
                                   'prad':self.compute_prad, \
                                   'pgas_by_ptot':self.compute_pgas_by_ptot, \
                                   'g':self.compute_g, \
@@ -883,6 +884,21 @@ class PPMtools:
             
         return nabla_T_rad
 
+    def compute_lum_conv(self, fname, num_type='ndump'):
+        '''
+        Returns the convective luminosity (Fconv*4piR^2)
+        
+        Includes both the kinetic energy term and the enthalpy term
+        In units of the total luminosity of the star
+        '''
+        
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        R = self.get('R', fname, num_type=num_type, resolution='l')
+        Fconv = self.get('RhoUrH', fname, num_type=num_type, resolution='l')
+        Lconv = Fconv*4*np.pi*R**2
+        
+        return Lconv/totallum
+
 
     def compute_lum_rad(self, fname, num_type='ndump'):
         '''
@@ -908,9 +924,9 @@ class PPMtools:
         dTdR = cdiff(T)/(cdiff(R) + 1e-100)
         
         Frad = -(arad*cc/(3*kappa*rho))*4*T**3*dTdR
-        Frad = Frad*4*np.pi*R**2
+        Lrad = Frad*4*np.pi*R**2
         
-        return Frad/totallum
+        return Lrad/totallum
     
 
     def compute_kappa(self, fname, num_type='ndump'):
