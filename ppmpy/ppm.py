@@ -1,4 +1,4 @@
-
+#
 # ppm.py - Tools for accessing and visualising PPMstar data.
 #          Depends on the nugridpy package developed by the
 #          NuGrid collaboration
@@ -635,6 +635,7 @@ class PPMtools:
                                   'kappa':self.compute_kappa, \
                                   'nabla_rho':self.compute_nabla_rho, \
                                   'nabla_rho_ad':self.compute_nabla_rho_ad, \
+                                  'lum_rad':self.compute_lum_rad, \
                                   'prad':self.compute_prad, \
                                   'pgas_by_ptot':self.compute_pgas_by_ptot, \
                                   'g':self.compute_g, \
@@ -881,6 +882,36 @@ class PPMtools:
         nabla_T_rad = 3*kappa*totallum*p / (16*np.pi*arad*cc*Gconst*m*T**4+1e-100)
             
         return nabla_T_rad
+
+
+    def compute_lum_rad(self, fname, num_type='ndump'):
+        '''
+        Returns the radiative luminosity (Frad*4piR^2)
+        
+        In units of the total luminosity of the star
+        '''
+        
+        # do all calculations in cgs units
+        arad = 7.5646e-15
+        cc = 2.99792458e10
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        totallum = totallum*1.e43
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')    
+        R = 1e8*self.get('R', fname, num_type=num_type, resolution='l')
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+        rho = rho*1000
+        kappa = self.compute_kappa(fname)
+        dTdR = cdiff(T)/(cdiff(R) + 1e-100)
+        
+        Frad = -(arad*cc/(3*kappa*rho))*4*T**3*dTdR
+        Frad = Frad*4*np.pi*R**2
+        
+        return Frad/totallum
+    
 
     def compute_kappa(self, fname, num_type='ndump'):
         '''        
