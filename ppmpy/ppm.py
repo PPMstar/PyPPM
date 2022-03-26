@@ -637,6 +637,7 @@ class PPMtools:
                                   'nabla_rho_ad':self.compute_nabla_rho_ad, \
                                   'lum_rad':self.compute_lum_rad, \
                                   'lum_conv':self.compute_lum_conv, \
+                                  'lum_kin':self.compute_lum_kin, \
                                   'prad':self.compute_prad, \
                                   'pgas_by_ptot':self.compute_pgas_by_ptot, \
                                   'g':self.compute_g, \
@@ -898,6 +899,21 @@ class PPMtools:
         Lconv = Fconv*4*np.pi*R**2
         
         return Lconv/totallum
+
+    def compute_lum_kin(self, fname, num_type='ndump'):
+        '''
+        Returns the kinetic energy luminosity (Fkin*4piR^2)
+        
+        Note that this term is included in Lconv
+        In units of the total luminosity of the star
+        '''
+        
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        R = self.get('R', fname, num_type=num_type, resolution='l')
+        Fkin = self.get('RhoUrUsq', fname, num_type=num_type, resolution='l')
+        Lkin = Fkin*4*np.pi*R**2
+        
+        return Lkin/totallum
 
 
     def compute_lum_rad(self, fname, num_type='ndump'):
