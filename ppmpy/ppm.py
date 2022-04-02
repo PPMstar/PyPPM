@@ -390,6 +390,11 @@ def cases_table(data, latex = False, cases = None):
 
     cases :: list
         defaults to all cases in data, else provide subset of cases
+    
+    Returns:
+    --------
+    cases :: list
+        the actually adopted list of cases
     '''
     
     if cases is None:
@@ -405,7 +410,7 @@ def cases_table(data, latex = False, cases = None):
         for i,case in enumerate(cases):
             print("{:40s} {:7.1f} {:5d} {:8d} {:8.1f}".format(case,data[case]['X_Lfactors'], \
                       data[case]['grids'],data[case]['NDump'][-1],data[case]['time(mins)'][-1]/60.))
-        
+    return cases    
 
 def where_near(t,tt_arr,num_arr=None):
     '''Finds n in num that corresponds closest to t in tt_sec
@@ -9773,9 +9778,9 @@ class RprofSet(PPMtools):
             else:
                 return None
 
-    def rprofgui(self,ifig=11):
-        def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig):
-            self.rp_plot([dump1,dump2],ything,logy=log10y,ifig=ifig)
+    def rprofgui(self,ifig=11,title=""):
+        def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig,title=title):
+            self.rp_plot([dump1,dump2],ything,logy=log10y,ifig=ifig,title=title)
             pyl.show()
         rp_hst = self.get_history()
         dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
@@ -9790,7 +9795,7 @@ class RprofSet(PPMtools):
                      ything=things_list,ifig=fixed(ifig))
 
     def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
-                xxlim=None, yylim=None, logy=False,newfig=True,idn=0):
+                xxlim=None, yylim=None, logy=False,newfig=True,idn=0,title=None):
         '''
         Plot one thing or list for a line profile
 
@@ -9827,7 +9832,8 @@ class RprofSet(PPMtools):
         idn : integer
            set to some value >0 to generate new series of line selection integers
         
-        astrounits
+        title :: str
+            figure title
         '''
         if runlabel is None: runlabel = self.__run_id
 
@@ -9877,6 +9883,9 @@ class RprofSet(PPMtools):
 
         if yylim is not None:
             pl.ylim(yylim)
+
+        if title is not None:
+            pl.title(title)
 
     def plot_vrad_prof(self,fname,num_type='NDump', vel_comps=['|U|','|Ut|','|Ur|'],\
                        plot_title=None,ifig=102,save_fig=True,logy=True,close_fig=True,\
@@ -10454,7 +10463,11 @@ class Rprof:
                         if '.' in sline[i+1]:
                             par_value = float(sline[i+1])
                         else:
-                            par_value = int(sline[i+1])
+                            try:
+                                par_value = int(sline[i+1])
+                            except ValueError:
+                                par_value = 0 
+                                self.__messenger.warning('RProf with faulty header vars')
 
                         # Although we are technically in the file's footer, we
                         # call these parameters "header variables".
