@@ -9550,7 +9550,7 @@ class Messenger:
             self.__print_warnings = False
         if self.__verbose < 1:
             self.__print_errors = False
-
+        
     def message(self, message):
         '''
         Reports a message to the user. The message is currently printed to
@@ -9796,10 +9796,11 @@ class RprofSet(PPMtools):
         PPMtools.__init__(self,verbose=verbose)
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
+        self.__verbose = verbose
 
         self.__bqav = bqav
         self.__var_list = var_list
-        
+
         if len(self.__var_list)>0 and not self.__bqav:
             print('var_list argument will be ignored')
 
@@ -10076,10 +10077,12 @@ class RprofSet(PPMtools):
             if dump in self.__rprof_cache:
                 rp = self.__rprof_cache[dump]
             else:
-                rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, var_list=self.__var_list)
+                rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, \
+                    var_list=self.__var_list, verbose=self.__verbose)
                 self.__rprof_cache[dump] = rp
         else:
-            rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, var_list=self.__var_list)
+            rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, \
+                var_list=self.__var_list, verbose=self.__verbose)
 
         return rp
 
