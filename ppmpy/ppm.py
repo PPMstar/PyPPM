@@ -2040,11 +2040,14 @@ class PPMtools:
             at rb are returned if return_var_scale_height == True.
         '''
         cycle_list = any2list(cycles)
-        try:
-            _ = len(var_value)
-            var_value = any2list(var_value)
-        except:
-            var_value = var_value*np.ones(len(cycle_list))
+
+        if criterion=='value':
+            try:
+                _ = len(var_value)
+                var_value = any2list(var_value)
+            except:
+                var_value = var_value*np.ones(len(cycle_list))
+
         rb = np.zeros(len(cycle_list))
         if return_var_scale_height:
             Hv = np.zeros(len(cycle_list))
