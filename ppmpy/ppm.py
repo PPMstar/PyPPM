@@ -177,6 +177,7 @@ def get_units(show=False):
     cunits['length']       = 1000*units.km
     cunits['time']         = 1*units.s
     cunits['density']      = 1*units.kg/units.cm**3
+    cunits['mass']         = 1e27*units.g
     cunits['energy']       = 1e43*units.erg
     cunits['pressure']     = 1e19*units.g/units.cm/units.s**2
     cunits['acceleration'] = 1e8*units.cm/units.s**2
