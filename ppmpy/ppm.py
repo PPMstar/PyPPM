@@ -638,11 +638,14 @@ class PPMtools:
                                   'nabla_T_ad':self.compute_nabla_T_ad, \
                                   'nabla_T_rad':self.compute_nabla_T_rad, \
                                   'kappa':self.compute_kappa, \
+                                  'Krad':self.compute_Krad, \
+                                  'Drad':self.compute_Drad, \
                                   'nabla_rho':self.compute_nabla_rho, \
                                   'nabla_rho_ad':self.compute_nabla_rho_ad, \
                                   'lum_rad':self.compute_lum_rad, \
                                   'lum_conv':self.compute_lum_conv, \
                                   'lum_kin':self.compute_lum_kin, \
+                                  'lum_tot':self.compute_lum_tot, \
                                   'prad':self.compute_prad, \
                                   'pgas_by_ptot':self.compute_pgas_by_ptot, \
                                   'g':self.compute_g, \
@@ -655,6 +658,7 @@ class PPMtools:
                                   'T9corr':self.compute_T9corr, \
                                   '|Ur|':self.compute_Ur, \
                                   'Xcld':self.compute_Xcld, \
+                                  'mu':self.compute_mu, \
                                   'FVair':self.compute_FVair, \
                                   'Xdot_C12pg':self.compute_Xdot_C12pg}
         self.__computable_quantities = self.__compute_methods.keys()
@@ -920,6 +924,18 @@ class PPMtools:
         
         return Lkin/totallum
 
+    def compute_lum_tot(self, fname,  num_type='ndump'):
+        '''
+        Returns the total luminosity Frad+Fconv (where Fconv included the
+        kinetic and enthalpy terms)
+
+        In units of the total luminosity of the star
+        '''
+        Lconv = self.compute_lum_conv(fname)
+        Lrad = self.compute_lum_rad(fname)
+        Ltot = Lconv+Lrad
+
+        return Ltot
 
     def compute_lum_rad(self, fname, num_type='ndump'):
         '''
@@ -929,34 +945,98 @@ class PPMtools:
         '''
         
         # do all calculations in cgs units
-        arad = 7.5646e-15
-        cc = 2.99792458e10
         totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
         totallum = totallum*1.e43
         T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')    
         R = 1e8*self.get('R', fname, num_type=num_type, resolution='l')
+        dTdR = cdiff(T)/(cdiff(R) + 1e-100)
+
+        Krad = self.compute_Krad(fname)
+
+        Frad = -Krad*dTdR
+        Lrad = Frad*4*np.pi*R**2
+        
+        return Lrad/totallum
+
+    def compute_mu(self, fname, num_type='ndump', resolution='l'):
+        '''
+        Returns mu computed for FV
+        '''
+
+        cldmu = self.get('cldmu', fname, num_type=num_type)
+        airmu = self.get('airmu', fname, num_type=num_type)
+        FV = self.get('FV', fname, num_type=num_type, resolution='l')
+        mu = airmu*(1-FV) + cldmu*FV
+
+        return mu
+
+    def compute_Drad(self, fname, num_type='ndump', boost=True, radeos=True):
+        '''
+        Returns the radiative diffusivity in cm2/s
+        
+        Radiative diffusivity boost factor is included when boost=True
+        '''
+        
+        # do all calculations in cgs units
+        Rgas = 8.314462e7
+        mu = self.compute_mu(fname)
+
+        if radeos:
+            beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
+            cp = (Rgas/mu/(2*beta**2))*(32-24*beta-3*beta**2)
+        else:
+            cp = 2.5*Rgas/mu
+
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+        rho = 1000*rho
+
+        Krad = self.compute_Krad(fname)
+        Drad = Krad/rho/cp
+
+        return Drad
+        
+
+    def compute_Krad(self, fname, num_type='ndump', boost=True):
+        '''
+        Returns the radiative conductivity in erg/s/K/cm
+        
+        Radiative diffusivity boost factor is included when boost=True
+        '''
+        # do all calculations in cgs units
+        arad = 7.5646e-15
+        cc = 2.99792458e10
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')    
         if self.__isyprofile:
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
         if self.__isRprofSet:
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
         rho = rho*1000
-        kappa = self.compute_kappa(fname)
-        dTdR = cdiff(T)/(cdiff(R) + 1e-100)
+        kappa = self.compute_kappa(fname, boost=boost)
         
-        Frad = -(arad*cc/(3*kappa*rho))*4*T**3*dTdR
-        Lrad = Frad*4*np.pi*R**2
+        Krad = (arad*cc/(3*kappa*rho))*4*T**3
         
-        return Lrad/totallum
-    
+        return Krad
 
-    def compute_kappa(self, fname, num_type='ndump'):
+
+    def compute_kappa(self, fname, num_type='ndump', boost=True, returnboost=False):
         '''        
         Returns the opacity kappa in cm2/g
+        
+        The opacity is computed by parsing the flags file for the opacity 
+        model parameters.
 
-        The opacity is computed by parsing the flags file for the
-        opacity model parameters.
-        The opacity is divided by the radiative diffusivity boost factor.
+        Parameters
+        ----------
+        boost : bool
+              The opacity is divided by the radiative diffusivity boost factor 
+              when boost=True.
+        returnboost: bool
+              The radiative conductivity boost factor (kkradfac) is also returned
         '''
         try:
             flagsfile = self.get_flags_file()
@@ -1058,12 +1138,16 @@ class PPMtools:
             kappa = kappa_es/(k_corr*kmin)*10**logkappa_fit
             kappa[kappa>ktmax] = ktmax
 
-        # apply radiative diffusivity boost factor to kappa
-        for line in ct:
-            if '#define kkradfac' in line and line[0]!='c': kradfac = float(line.strip().split()[-1])
-        kappa = kappa/kradfac
+        if boost:
+            # apply radiative diffusivity boost factor to kappa
+            for line in ct:
+                if '#define kkradfac' in line and line[0]!='c': kradfac = float(line.strip().split()[-1])
+            kappa = kappa/kradfac
 
-        return kappa
+        if not returnboost:
+            return kappa
+        else:
+            return kappa, kradfac
             
 
     def compute_nabla_rho(self, fname, num_type='ndump'):
@@ -1961,11 +2045,14 @@ class PPMtools:
             at rb are returned if return_var_scale_height == True.
         '''
         cycle_list = any2list(cycles)
-        try:
-            _ = len(var_value)
-            var_value = any2list(var_value)
-        except:
-            var_value = var_value*np.ones(len(cycle_list))
+
+        if criterion=='value':
+            try:
+                _ = len(var_value)
+                var_value = any2list(var_value)
+            except:
+                var_value = var_value*np.ones(len(cycle_list))
+
         rb = np.zeros(len(cycle_list))
         if return_var_scale_height:
             Hv = np.zeros(len(cycle_list))
@@ -9823,13 +9910,12 @@ class RprofSet(PPMtools):
         if self.__bqav:
             history_file_path = '{:s}../{:s}-0000.hstry'.format(self.__dir_name, \
                                                              self.__run_id)
-            self.__rundir = self.__dir_name+'/../..'
+            self.__rundir = os.path.join(self.__dir_name,'../..')
         else:
             history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
                                                              self.__run_id)
-            self.__rundir = self.__dir_name+'/..'
+            self.__rundir = os.path.join(self.__dir_name,'..')
 
-        self.__rundir = self.__rundir.replace('//','/')
 
         self.__history = RprofHistory(history_file_path, verbose=verbose)
         if not self.__history.is_valid():
