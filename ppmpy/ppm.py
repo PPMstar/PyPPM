@@ -158,6 +158,69 @@ def list_columns(obj, cols=6, columnwise=True, gap=4):
         for p in plist])
     print(printer)
 
+def get_units(show=False):
+    '''Get code units
+    
+    Parameters
+    ----------
+    
+    show :: boolean
+      show list of code units if True, default is False
+    
+    Returns
+    -------
+
+    cunits :: dict
+      a ductionary with units in astropy quantities
+    
+    Example
+    -------
+    `units = get_units(True)` populates dictionary units and prints
+    list of available units.
+    
+    `cunits['energy'].value` prints value of energy unit without unit
+    
+    Notes
+    -----
+
+    See https://docs.astropy.org/en/stable/units/format.html for how to 
+    format astropy unit quantities.
+
+    Code units as in PPM.F source code
+    1 unit of length = 1000 km = 1 Mm = 10**8 cm.
+    1 unit of velocity = 1000 km/sec = 10**8 cm/sec = 1 Mm / sec
+    1 unit of time = 1 sec
+    1 unit of density = 1 kgm/cc = 1000 gm/cc = 10**27 gm / Mm**3
+    1 unit of mass = 10**27 gm = 5.025e-07 solar masses
+                               = 1/6 earth masses
+           1 solar mass = 1.99 * 10**30 kg.
+           1 earth mass = 6.0e+24 kg.
+    1 unit of energy = 10**27 gm * 10**16 cm**2/sec**2
+                     = 10**43 ergs
+           1 unit of energy per unit volume = 10**43 / 10**24 cgs
+    1 unit of pressure = 1000 (gm/cc) * (10**8 cm/sec)**2
+                       = 10**19 gm/(cm-sec**2)
+    1 unit of acceleration = 10**8 cm/sec/sec
+    1 unit of temperature = 10**9 degrees Kelvin = GK
+    '''
+    cunits = {}
+    cunits['length']       = 1000*units.km
+    cunits['velocity']     = 1000*units.km/units.s
+    cunits['length']       = 1000*units.km
+    cunits['time']         = 1*units.s
+    cunits['density']      = 1*units.kg/units.cm**3
+    cunits['energy']       = 1e43*units.erg
+    cunits['pressure']     = 1e19*units.g/units.cm/units.s**2
+    cunits['acceleration'] = 1e8*units.cm/units.s**2
+    cunits['temperature']  = 1e9*units.K
+
+    if show:
+        for const in cunits.keys():
+            print(f"{const:12s} {cunits[const]:12.0g}")
+    
+    return cunits
+
+
 
 def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
                         ylab=None,  xlims=(None,None), ylims=(None,None), legends=0, vel_km = True,\
