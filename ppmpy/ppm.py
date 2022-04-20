@@ -870,7 +870,7 @@ class PPMtools:
 
         m = self.compute_m(fname, num_type=num_type)
         T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')
-        kappa = self.compute_kappa(fname)
+        kappa = self.compute_kappa(fname, num_type=num_type)
 
         if self.__isyprofile:
             p = 1e19*self.get('P', fname, num_type=num_type, resolution='l')
@@ -1014,7 +1014,7 @@ class PPMtools:
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
         rho = rho*1000
-        kappa = self.compute_kappa(fname, boost=boost)
+        kappa = self.compute_kappa(fname, boost=boost, num_type=num_type)
         
         Krad = (arad*cc/(3*kappa*rho))*4*T**3
         
