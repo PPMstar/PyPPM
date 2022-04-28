@@ -224,7 +224,7 @@ def get_units(show=False):
 
 
 def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
-                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=0, vel_km = True,\
+                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=0, lw = 1.0, vel_km = True,\
                         NDump_range = None, NDump_range_vals = (500,1000),\
                         mrange_interp = (12.,14.,0.0001), sparse = 10,\
                         t_transient_hr = 500, figsizes = (8,5), ifig=1394):
@@ -259,6 +259,9 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
 
     legends :: int 
       where are legends located
+
+    lw :: float
+      linewidth
 
     vel_km :: boolean
       True: velocity unit km
@@ -357,7 +360,7 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 if len(varss) > 1: label += ' '+var
                 if len(f_hps) > 1: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
                 pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
-                     label=label, lw=0.75)
+                     label=label, lw=lw)
             var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
         var_means_dict[case][f_hp] = var_means
     if ylab == None: 
