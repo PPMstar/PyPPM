@@ -350,10 +350,10 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 var_datas[var] = array(var_datas[var])
             times = array(times)
             for j,var in enumerate(varss): 
-                ything =  var_datas[var]
-                if logy: ything = log10(var_datas[var])
+                ything =  np.array(var_datas[var])
+                if logy: ything = np.log10(ything)
                 label = ""
-                if len(runs) > 1: label += case
+                if len(runs)  > 1: label += case
                 if len(varss) > 1: label += ' '+var
                 if len(f_hps) > 1: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
                 pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
