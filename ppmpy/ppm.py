@@ -125,6 +125,38 @@ G_code    = nuconst.grav_const*1000.   # code unit of gravitaional
 code_mass = 5.025e-07                  # code unit of mass in solar masses
 
 
+def list_columns(obj, cols=6, columnwise=True, gap=4):
+    """
+    Print the given list in evenly-spaced columns.
+
+    Parameters
+    ----------
+    obj : list
+        The list to be printed.
+    cols : int
+        The number of columns in which the list should be printed.
+    columnwise : bool, default=True
+        If True, the items in the list will be printed column-wise.
+        If False the items in the list will be printed row-wise.
+    gap : int
+        The number of spaces that should separate the longest column
+        item/s from the next column. This is the effective spacing
+        between columns based on the maximum len() of the list items.
+    """
+
+    sobj = [str(item) for item in obj]
+    if cols > len(sobj): cols = len(sobj)
+    max_len = max([len(item) for item in sobj])
+    if columnwise: cols = int(math.ceil(float(len(sobj)) / float(cols)))
+    plist = [sobj[i: i+cols] for i in range(0, len(sobj), cols)]
+    if columnwise:
+        if not len(plist[-1]) == cols:
+            plist[-1].extend(['']*(len(sobj) - len(plist[-1])))
+        plist = zip(*plist)
+    printer = '\n'.join([
+        ''.join([c.ljust(max_len + gap) for c in p])
+        for p in plist])
+    print(printer)
 
 def get_units(show=False):
     '''Get code units
@@ -192,7 +224,7 @@ def get_units(show=False):
 
 
 def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
-                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=0, vel_km = True,\
+                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=0, lw = 1.0, vel_km = True,\
                         NDump_range = None, NDump_range_vals = (500,1000),\
                         mrange_interp = (12.,14.,0.0001), sparse = 10,\
                         t_transient_hr = 500, figsizes = (8,5), ifig=1394):
@@ -227,6 +259,9 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
 
     legends :: int 
       where are legends located
+
+    lw :: float
+      linewidth
 
     vel_km :: boolean
       True: velocity unit km
@@ -318,14 +353,14 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 var_datas[var] = array(var_datas[var])
             times = array(times)
             for j,var in enumerate(varss): 
-                ything =  var_datas[var]
-                if logy: ything = log10(var_datas[var])
+                ything =  np.array(var_datas[var])
+                if logy: ything = np.log10(ything)
                 label = ""
-                if len(runs) > 1: label += case
+                if len(runs)  > 1: label += case
                 if len(varss) > 1: label += ' '+var
                 if len(f_hps) > 1: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
                 pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
-                     label=label, lw=0.75)
+                     label=label, lw=lw)
             var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
         var_means_dict[case][f_hp] = var_means
     if ylab == None: 
@@ -700,8 +735,18 @@ class PPMtools:
         # This sets which method computes which quantity.
         self.__compute_methods = {'enuc_C12pg':self.compute_enuc_C12pg, \
                                   'Hp':self.compute_Hp, \
+                                  'nabla_T':self.compute_nabla_T, \
+                                  'nabla_T_ad':self.compute_nabla_T_ad, \
+                                  'nabla_T_rad':self.compute_nabla_T_rad, \
+                                  'kappa':self.compute_kappa, \
+                                  'Krad':self.compute_Krad, \
+                                  'Drad':self.compute_Drad, \
                                   'nabla_rho':self.compute_nabla_rho, \
                                   'nabla_rho_ad':self.compute_nabla_rho_ad, \
+                                  'lum_rad':self.compute_lum_rad, \
+                                  'lum_conv':self.compute_lum_conv, \
+                                  'lum_kin':self.compute_lum_kin, \
+                                  'lum_tot':self.compute_lum_tot, \
                                   'prad':self.compute_prad, \
                                   'pgas_by_ptot':self.compute_pgas_by_ptot, \
                                   'g':self.compute_g, \
@@ -714,6 +759,7 @@ class PPMtools:
                                   'T9corr':self.compute_T9corr, \
                                   '|Ur|':self.compute_Ur, \
                                   'Xcld':self.compute_Xcld, \
+                                  'mu':self.compute_mu, \
                                   'FVair':self.compute_FVair, \
                                   'Xdot_C12pg':self.compute_Xdot_C12pg}
         self.__computable_quantities = self.__compute_methods.keys()
@@ -880,6 +926,333 @@ class PPMtools:
         Ur = np.sqrt(U**2 - Ut**2)
         return Ur
 
+    def compute_nabla_T(self, fname, num_type='ndump'):
+        '''
+        Returns the actual temperature gradient nabla
+        '''
+        
+        if self.__isyprofile:
+            T = self.get('T9', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            T = self.get('T9', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+
+        nabla_T = cdiff(np.log(T))/(cdiff(np.log(p)) + 1e-100)
+        return nabla_T
+
+    def compute_nabla_T_ad(self, fname, num_type='ndump', radeos=True):
+        '''
+        Returns the adiabatic temperature gradient nabla_ad
+        '''
+
+        if radeos:
+            beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
+            nabla_T_ad = (8-6*beta)/(32-24*beta-3*beta**2)
+        else:
+            if self.__isyprofile:
+                r = self.get('Y', fname, num_type=num_type, resolution='l')
+
+            if self.__isRprofSet:
+                r = self.get('R', fname, num_type=num_type, resolution='l')
+
+            nabla_T_ad = (2./5.)*np.ones(len(r))
+            
+        return nabla_T_ad
+
+
+    def compute_nabla_T_rad(self, fname, num_type='ndump'):
+        '''
+        Returns the radiative temperature gradient nabla_rad
+
+        Assumes a constant luminosity totallum for all radii
+        '''
+
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        self.__messenger.warning('PPMtools.compute_nabla_T_rad() assumes that all '
+                                 'the luminosity is injected at the center R=0')
+
+        m = self.compute_m(fname, num_type=num_type)
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')
+        kappa = self.compute_kappa(fname, num_type=num_type)
+
+        if self.__isyprofile:
+            p = 1e19*self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            p = 1e19*(self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l'))
+            
+        # compute nabla_T_rad with all quantities in cgs units
+        arad = 7.5646e-15
+        cc = 2.99792458e10
+        Gconst = 6.67430e-8
+        totallum = totallum*1.e43
+        m = m*1.e27
+        nabla_T_rad = 3*kappa*totallum*p / (16*np.pi*arad*cc*Gconst*m*T**4+1e-100)
+            
+        return nabla_T_rad
+
+    def compute_lum_conv(self, fname, num_type='ndump'):
+        '''
+        Returns the convective luminosity (Fconv*4piR^2)
+        
+        Includes both the kinetic energy term and the enthalpy term. Note that this
+        is different from the standard definition of Fconv: may require clarification
+        in the future.
+
+        In units of the total luminosity of the star
+        '''
+        
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        R = self.get('R', fname, num_type=num_type, resolution='l')
+        Fconv = self.get('RhoUrH', fname, num_type=num_type, resolution='l')
+        Lconv = Fconv*4*np.pi*R**2
+        
+        return Lconv/totallum
+
+    def compute_lum_kin(self, fname, num_type='ndump'):
+        '''
+        Returns the kinetic energy luminosity (Fkin*4piR^2)
+        
+        Note that this term is included in Lconv
+        In units of the total luminosity of the star
+        '''
+        
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        R = self.get('R', fname, num_type=num_type, resolution='l')
+        Fkin = self.get('RhoUrUsq', fname, num_type=num_type, resolution='l')
+        Lkin = Fkin*4*np.pi*R**2
+        
+        return Lkin/totallum
+
+    def compute_lum_tot(self, fname,  num_type='ndump'):
+        '''
+        Returns the total luminosity Frad+Fconv (where Fconv included the
+        kinetic and enthalpy terms)
+
+        In units of the total luminosity of the star
+        '''
+        Lconv = self.compute_lum_conv(fname)
+        Lrad = self.compute_lum_rad(fname)
+        Ltot = Lconv+Lrad
+
+        return Ltot
+
+    def compute_lum_rad(self, fname, num_type='ndump'):
+        '''
+        Returns the radiative luminosity (Frad*4piR^2)
+        
+        In units of the total luminosity of the star
+        '''
+        
+        # do all calculations in cgs units
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        totallum = totallum*1.e43
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')    
+        R = 1e8*self.get('R', fname, num_type=num_type, resolution='l')
+        dTdR = cdiff(T)/(cdiff(R) + 1e-100)
+
+        Krad = self.compute_Krad(fname)
+
+        Frad = -Krad*dTdR
+        Lrad = Frad*4*np.pi*R**2
+        
+        return Lrad/totallum
+
+    def compute_mu(self, fname, num_type='ndump', resolution='l'):
+        '''
+        Returns mu computed for FV
+        '''
+
+        cldmu = self.get('cldmu', fname, num_type=num_type)
+        airmu = self.get('airmu', fname, num_type=num_type)
+        FV = self.get('FV', fname, num_type=num_type, resolution='l')
+        mu = airmu*(1-FV) + cldmu*FV
+
+        return mu
+
+    def compute_Drad(self, fname, num_type='ndump', boost=True, radeos=True):
+        '''
+        Returns the radiative diffusivity in cm2/s
+        
+        Radiative diffusivity boost factor is included when boost=True
+        '''
+        
+        # do all calculations in cgs units
+        Rgas = 8.314462e7
+        mu = self.compute_mu(fname)
+
+        if radeos:
+            beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
+            cp = (Rgas/mu/(2*beta**2))*(32-24*beta-3*beta**2)
+        else:
+            cp = 2.5*Rgas/mu
+
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+        rho = 1000*rho
+
+        Krad = self.compute_Krad(fname)
+        Drad = Krad/rho/cp
+
+        return Drad
+        
+
+    def compute_Krad(self, fname, num_type='ndump', boost=True):
+        '''
+        Returns the radiative conductivity in erg/s/K/cm
+        
+        Radiative diffusivity boost factor is included when boost=True
+        '''
+        # do all calculations in cgs units
+        arad = 7.5646e-15
+        cc = 2.99792458e10
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')    
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+        rho = rho*1000
+        kappa = self.compute_kappa(fname, boost=boost, num_type=num_type)
+        
+        Krad = (arad*cc/(3*kappa*rho))*4*T**3
+        
+        return Krad
+
+
+    def compute_kappa(self, fname, num_type='ndump', boost=True, returnboost=False):
+        '''        
+        Returns the opacity kappa in cm2/g
+        
+        The opacity is computed by parsing the flags file for the opacity 
+        model parameters.
+
+        Parameters
+        ----------
+        boost : bool
+              The opacity is divided by the radiative diffusivity boost factor 
+              when boost=True.
+        returnboost: bool
+              The radiative conductivity boost factor (kkradfac) is also returned
+        '''
+        try:
+            flagsfile = self.get_flags_file()
+        except:
+            self.__messenger.error('Error: flags file not found, cannot evaluate kappa')
+        f = open(flagsfile, 'r')
+        ct = f.readlines()
+        f.close()
+        newopac = False
+        for line in ct:
+            if '#define issimonkappa 1' in line and line[0]!='c':
+                newopac = True
+        if newopac: # new opacity module is used
+            # get physical quantities needed to evaluate opacity fit formula
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+            rho = 1000.*rho
+            T = self.get('T9', fname, num_type=num_type, resolution='l')
+            T = 1.e9*T
+            logT = np.log10(T)-7.
+            logR = np.log10(rho/((T/1e6)**3))
+            FV = self.get('FV', fname, num_type=num_type, resolution='l')
+            # parse flags file for new opacity module parameters
+            p11 = np.zeros(6)
+            p12 = np.zeros(6)
+            p21 = np.zeros(6)
+            p22 = np.zeros(6)
+            aamux = 0.5
+            for line in ct:
+                if '#define aamux' in line and line[0]!='c': aamux = float(line.strip().split()[-1])
+                if '#define rr1log' in line and line[0]!='c': x1 = float(line.strip().split()[-1])
+                if '#define rr2log' in line and line[0]!='c': x2 = float(line.strip().split()[-1])
+                if '#define xx1' in line and line[0]!='c': y1 = float(line.strip().split()[-1])
+                if '#define xx2' in line and line[0]!='c': y2 = float(line.strip().split()[-1])
+                if '#define aa110' in line and line[0]!='c': p11[0] = float(line.strip().split()[-1])
+                if '#define aa111' in line and line[0]!='c': p11[1] = float(line.strip().split()[-1])
+                if '#define aa112' in line and line[0]!='c': p11[2] = float(line.strip().split()[-1])
+                if '#define aa113' in line and line[0]!='c': p11[3] = float(line.strip().split()[-1])
+                if '#define aa114' in line and line[0]!='c': p11[4] = float(line.strip().split()[-1])
+                if '#define aa115' in line and line[0]!='c': p11[5] = float(line.strip().split()[-1])
+                if '#define aa120' in line and line[0]!='c': p12[0] = float(line.strip().split()[-1])
+                if '#define aa121' in line and line[0]!='c': p12[1] = float(line.strip().split()[-1])
+                if '#define aa122' in line and line[0]!='c': p12[2] = float(line.strip().split()[-1])
+                if '#define aa123' in line and line[0]!='c': p12[3] = float(line.strip().split()[-1])
+                if '#define aa124' in line and line[0]!='c': p12[4] = float(line.strip().split()[-1])
+                if '#define aa125' in line and line[0]!='c': p12[5] = float(line.strip().split()[-1])
+                if '#define aa210' in line and line[0]!='c': p21[0] = float(line.strip().split()[-1])
+                if '#define aa211' in line and line[0]!='c': p21[1] = float(line.strip().split()[-1])
+                if '#define aa212' in line and line[0]!='c': p21[2] = float(line.strip().split()[-1])
+                if '#define aa213' in line and line[0]!='c': p21[3] = float(line.strip().split()[-1])
+                if '#define aa214' in line and line[0]!='c': p21[4] = float(line.strip().split()[-1])
+                if '#define aa215' in line and line[0]!='c': p21[5] = float(line.strip().split()[-1])
+                if '#define aa220' in line and line[0]!='c': p22[0] = float(line.strip().split()[-1])
+                if '#define aa221' in line and line[0]!='c': p22[1] = float(line.strip().split()[-1])
+                if '#define aa222' in line and line[0]!='c': p22[2] = float(line.strip().split()[-1])
+                if '#define aa223' in line and line[0]!='c': p22[3] = float(line.strip().split()[-1])
+                if '#define aa224' in line and line[0]!='c': p22[4] = float(line.strip().split()[-1])
+                if '#define aa225' in line and line[0]!='c': p22[5] = float(line.strip().split()[-1])
+            fkcld = self.get('fkcld', fname, num_type=num_type)
+            fkair = self.get('fkair', fname, num_type=num_type)
+            cldmu = self.get('cldmu', fname, num_type=num_type)
+            airmu = self.get('airmu', fname, num_type=num_type)
+            X = aamux*(FV*fkcld+(1.-FV)*fkair)/(airmu+FV*(cldmu-airmu))
+            # evaluate opacity analytical fit
+            w11 = (x2-logR)*(y2-X)/(x2-x1)/(y2-y1)
+            w12 = (x2-logR)*(X-y1)/(x2-x1)/(y2-y1)
+            w21 = (logR-x1)*(y2-X)/(x2-x1)/(y2-y1)
+            w22 = (logR-x1)*(X-y1)/(x2-x1)/(y2-y1)
+            kappa = np.zeros(len(logT))
+            for i,_ in enumerate(logT):
+                p = w11[i]*p11+w12[i]*p12+w21[i]*p21+w22[i]*p22
+                kappa[i] = np.polyval(p,logT[i])
+        else: # old opacity module is used
+            # get physical quantities needed to evaluate opacity fit formula
+            T = self.get('T9', fname, num_type=num_type, resolution='l')
+            logT = np.log10(1.e9*T)
+            FV = self.get('FV', fname, num_type=num_type, resolution='l')
+            aamux = 0.5
+            fkcld = self.get('fkcld', fname, num_type=num_type)
+            fkair = self.get('fkair', fname, num_type=num_type)
+            cldmu = self.get('cldmu', fname, num_type=num_type)
+            airmu = self.get('airmu', fname, num_type=num_type)
+            X = aamux*(FV*fkcld+(1.-FV)*fkair)/(airmu+FV*(cldmu-airmu))
+            # parse flags file for old opacity module parameters
+            for line in ct:
+                if '#define kkappa_max' in line and line[0]!='c': kmax = float(line.strip().split()[-1])
+                if '#define kkappa_min' in line and line[0]!='c': kmin = float(line.strip().split()[-1])
+                if '#define kkappa_tot_max' in line and line[0]!='c': ktmax = float(line.strip().split()[-1])
+                if '#define ffit_par0' in line and line[0]!='c': a = float(line.strip().split()[-1])
+                if '#define ffit_par1' in line and line[0]!='c': b = float(line.strip().split()[-1])
+                if '#define ffit_par2' in line and line[0]!='c': c = float(line.strip().split()[-1])
+                if '#define ffit_par3' in line and line[0]!='c': d = float(line.strip().split()[-1])
+                if '#define llogT0' in line and line[0]!='c': lT0 = float(line.strip().split()[-1])
+                if '#define llogT_width' in line and line[0]!='c': lTw = float(line.strip().split()[-1])
+            # evaluate opacity analytical fit
+            logkappa_fit = a*logT**3 + b*logT**2 + c*logT + d
+            k_corr = 1.+0.5*(kmax/kmin-1)*(1.-np.tanh(lTw*(logT-lT0)))
+            kappa_es = 0.2*(1+X)
+            kappa = kappa_es/(k_corr*kmin)*10**logkappa_fit
+            kappa[kappa>ktmax] = ktmax
+
+        if boost:
+            # apply radiative diffusivity boost factor to kappa
+            for line in ct:
+                if '#define kkradfac' in line and line[0]!='c': kradfac = float(line.strip().split()[-1])
+            kappa = kappa/kradfac
+
+        if not returnboost:
+            return kappa
+        else:
+            return kappa, kradfac
+            
 
     def compute_nabla_rho(self, fname, num_type='ndump'):
         if self.__isyprofile:
@@ -979,18 +1352,31 @@ class PPMtools:
         if self.__isyprofile:
             r = self.get00('Y', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            rinner = 0
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
+            rinner = self.get('radin0', fname, num_type=num_type, resolution='l')
 
-        dm = -4.*np.pi*r**2*cdiff(r)*rho
-        m = np.cumsum(dm)
+        minner = self.get_minner()
 
-        # We store everything from the surface to the core.
-        m = m[-1] - m
-        self.__messenger.warning('WARNING: PPMtools.compute_m() integrates mass from r = 0. This will not work for shell setups and wrong gravity will be returned.')
+        if minner==0 and rinner==0: # core setup
+            dm = -4.*np.pi*r**2*cdiff(r)*rho
+            m = np.cumsum(dm)
+            # We store everything from the surface to the core.
+            m = m[-1] - m
+        elif minner>0 and rinner>0: # shell setup
+            rho_int = rho[::-1]
+            r_int = r[::-1]
+            rho_int[r_int<rinner] = 0
+            dm = 4.*np.pi*r_int**2*cdiff(r_int)*rho_int
+            m = np.cumsum(dm) + minner
+            m = m[::-1]
+        else:
+             self.__messenger.error('Error in compute_m, inconsistent minner and rinner values')
+
         return m
 
     def compute_mt(self, fname, num_type='ndump'):
@@ -1662,6 +2048,62 @@ class PPMtools:
              'D':1.e16*D}
         return res
 
+    def schwarzschild_bound(self, cycles, rmin=None, rmax=None):
+        '''
+        Method that finds rhe radius of the Schwarzschild boundary
+
+        Parameters:
+        cycles: list
+            List of dump numbers to be used in the analysis
+        rmin: float, optional
+            Minimum radius for the boundary search
+            If None, rmin=radin0
+        rmax: float, optional
+            Maximum radius for the boundary search
+            If None, rmax=radout0
+
+        Returns:
+        rs: float
+            Radius of the Schwarzschild boundary
+
+        If only one dump is provided, then all Schwarzschild boundaries
+        are returned. Otherwise, one Schwarzschild boundary per dump is
+        returned (and if there are more than one Schwarzschild boundaries 
+        for any dump, a warning is issued).
+        '''
+
+        rmin_input = rmin
+        rmax_input = rmax
+
+        dump_list = any2list(cycles)
+        rs = []
+        for i, dump in enumerate(dump_list):
+            if not rmin_input:
+                rmin = self.get('radin0', dump, resolution='l')
+            if not rmax_input:
+                rmax = self.get('radout0', dump, resolution='l')
+            nabla_rad = self.compute('nabla_T_rad', dump)
+            nabla_ad  = self.compute('nabla_T_ad', dump)
+            R = self.get('R', dump, resolution='l')
+            nabla_rad = nabla_rad[(R>rmin)&(R<rmax)]
+            nabla_ad  = nabla_ad[(R>rmin)&(R<rmax)]
+            R = R[(R>rmin)&(R<rmax)]
+            f = scipy.interpolate.interp1d(R[::-1], nabla_ad[::-1]-nabla_rad[::-1],
+                                           bounds_error=False, fill_value=0.1)
+            R_guess = R[abs(nabla_ad-nabla_rad)<0.01]
+            sol = optimize.newton(f, R_guess, maxiter=100)
+            sol = unique([round(x,2) for x in sol])
+            sol = sol[(sol>rmin)&(sol<rmax)]
+            if len(dump_list)==1:
+                rs = sol
+            else:
+                rs.append(sol[0])
+                if len(sol)>1:
+                    self.__messenger.warning('More than one Schwarzschild boundary found'
+                                             ' but returning only one.')
+        return rs
+
+
     def bound_rad(self, cycles, r_min, r_max, var='ut', \
                   criterion='min_grad', var_value=None, \
                   return_var_scale_height=False, eps=1e-9):
@@ -1718,11 +2160,14 @@ class PPMtools:
             at rb are returned if return_var_scale_height == True.
         '''
         cycle_list = any2list(cycles)
-        try:
-            _ = len(var_value)
-            var_value = any2list(var_value)
-        except:
-            var_value = var_value*np.ones(len(cycle_list))
+
+        if criterion=='value':
+            try:
+                _ = len(var_value)
+                var_value = any2list(var_value)
+            except:
+                var_value = var_value*np.ones(len(cycle_list))
+
         rb = np.zeros(len(cycle_list))
         if return_var_scale_height:
             Hv = np.zeros(len(cycle_list))
@@ -9307,7 +9752,7 @@ class Messenger:
             self.__print_warnings = False
         if self.__verbose < 1:
             self.__print_errors = False
-
+        
     def message(self, message):
         '''
         Reports a message to the user. The message is currently printed to
@@ -9553,10 +9998,11 @@ class RprofSet(PPMtools):
         PPMtools.__init__(self,verbose=verbose)
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
+        self.__verbose = verbose
 
         self.__bqav = bqav
         self.__var_list = var_list
-        
+
         if len(self.__var_list)>0 and not self.__bqav:
             print('var_list argument will be ignored')
 
@@ -9575,12 +10021,17 @@ class RprofSet(PPMtools):
         self.__cache_rprofs = cache_rprofs
         self.__rprof_cache = {}
 
+
         if self.__bqav:
             history_file_path = '{:s}../{:s}-0000.hstry'.format(self.__dir_name, \
                                                              self.__run_id)
+            self.__rundir = os.path.join(self.__dir_name,'../..')
         else:
             history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
                                                              self.__run_id)
+            self.__rundir = os.path.join(self.__dir_name,'..')
+
+
         self.__history = RprofHistory(history_file_path, verbose=verbose)
         if not self.__history.is_valid():
             wrng = ('History not available. You will not be able to access '
@@ -9598,6 +10049,72 @@ class RprofSet(PPMtools):
         self.__is_valid = True
         self.astrounit = {}
         self.astrounit['on'] = astrounit
+
+        # find flags file
+        lf = glob.glob(self.__rundir+'/*flags.F')
+        if len(lf)>=1:
+            self.__flagsfile = lf[0]
+            if len(lf)>1:
+                self.__messenger.warning('WARNING: more than one flags '
+                                         'file found in '+self.__rundir+', '
+                                         'using '+self.__flagsfile)
+            # find .include file
+            f = open(self.__flagsfile, 'r')
+            ct = f.readlines()
+            f.close()
+            includefile = False
+            for line in ct:
+                if ('#define setupfilename' in line) and (line[0]!='c'):
+                    self.__includefile = line.strip().split()[-1].strip('"')
+                    includefile = True
+                    self.__includefile = self.__rundir+'/'+self.__includefile
+            if includefile:
+                try:
+                    _ = open(self.__includefile, 'r')
+                except:
+                    includefile = False
+
+        else:
+            self.__messenger.warning('No flags file found in '+self.__rundir+
+                                   ', cannot compute kappa or infer minner')
+            includefile = False
+
+        # read m0 from .include file
+        if not includefile:
+            self.__messenger.warning('WARNING: .include file could not be located, '
+                                     'assuming m0=0')
+            self.__minner = 0
+        else:
+            f = open(self.__includefile, 'r')
+            ct = f.readlines()
+            f.close()
+            for line in ct:
+                if 'mass m0' in line:
+                    try:
+                        self.__minner = float(line.split('=')[-1].split('"')[0])
+                    except:
+                        self.__messenger.warning('WARNING: m0 could not be read in '
+                                                 '.include file, assuming m0=0')
+                        self.__minner = 0
+        
+
+    def get_minner(self):
+        '''
+        Returns the mass located inside the inner boundary of a shell setup
+        The mass is in code units
+        '''
+
+        return float(self.__minner)
+
+
+    def get_flags_file(self):
+        '''
+        Returns the path of the flags file in the run directory where the
+        .rprof files are
+        '''
+
+        return str(self.__flagsfile)
+
 
 
     def __find_dumps(self, dir_name):
@@ -9761,10 +10278,12 @@ class RprofSet(PPMtools):
             if dump in self.__rprof_cache:
                 rp = self.__rprof_cache[dump]
             else:
-                rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, var_list=self.__var_list)
+                rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, \
+                    var_list=self.__var_list, verbose=self.__verbose)
                 self.__rprof_cache[dump] = rp
         else:
-            rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, var_list=self.__var_list)
+            rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, \
+                var_list=self.__var_list, verbose=self.__verbose)
 
         return rp
 
