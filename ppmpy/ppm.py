@@ -224,10 +224,9 @@ def get_units(show=False):
 
 
 def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
-                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=0, lw = 1.0, vel_km = True,\
-                        NDump_range = None, NDump_range_vals = (500,1000),\
-                        mrange_interp = (12.,14.,0.0001), sparse = 10,\
-                        t_transient_hr = 500, figsizes = (8,5), ifig=1394):
+                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=[0,"runs","varss","f_hps"], \
+                        lw = 1.0, vel_km = True,NDump_range = None, NDump_range_vals = (500,1000),\
+                        mrange_interp = (12.,14.,0.0001), sparse = 10, t_transient_hr = 500, figsizes = (8,5), ifig=1394):
     '''
     This function extracts time-evolution of a RProf column data quantity 
     at pressure-scale height fraction above/below N2-peak.
@@ -257,8 +256,10 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
     xlims, ylims ::  tuple 
       are what you think they are
 
-    legends :: int 
-      where are legends located
+    legends :: list
+      first element int where are legends located
+      following string elements can force legend composition
+      all options are: [0,"runs","varss","f_hps"]
 
     lw :: float
       linewidth
@@ -356,9 +357,9 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 ything =  np.array(var_datas[var])
                 if logy: ything = np.log10(ything)
                 label = ""
-                if len(runs)  > 1: label += case
-                if len(varss) > 1: label += ' '+var
-                if len(f_hps) > 1: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
+                if len(runs)  > 1 or "runs"  in legends: label += case
+                if len(varss) > 1 or "varss" in legends: label += ' '+var
+                if len(f_hps) > 1 or "f_hps" in legends: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
                 pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
                      label=label, lw=lw)
             var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
@@ -366,7 +367,7 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
     if ylab == None: 
         ylab = varss[0]
     pl.ylabel(ylab);pl.xlabel('$t / \mathrm{[h]}$')
-    pl.legend(loc=legends); pl.xlim(*xlims);pl.ylim(*ylims)
+    pl.legend(loc=legends[0]); pl.xlim(*xlims);pl.ylim(*ylims)
     pl.tight_layout()
     pl.savefig(key+fname+'.pdf')
     return var_means_dict
