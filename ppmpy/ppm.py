@@ -977,7 +977,7 @@ class PPMtools:
 
         m = self.compute_m(fname, num_type=num_type)
         T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')
-        kappa = self.compute_kappa(fname)
+        kappa = self.compute_kappa(fname, num_type=num_type)
 
         if self.__isyprofile:
             p = 1e19*self.get('P', fname, num_type=num_type, resolution='l')
@@ -1000,7 +1000,10 @@ class PPMtools:
         '''
         Returns the convective luminosity (Fconv*4piR^2)
         
-        Includes both the kinetic energy term and the enthalpy term
+        Includes both the kinetic energy term and the enthalpy term. Note that this
+        is different from the standard definition of Fconv: may require clarification
+        in the future.
+
         In units of the total luminosity of the star
         '''
         
@@ -1118,7 +1121,7 @@ class PPMtools:
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
         rho = rho*1000
-        kappa = self.compute_kappa(fname, boost=boost)
+        kappa = self.compute_kappa(fname, boost=boost, num_type=num_type)
         
         Krad = (arad*cc/(3*kappa*rho))*4*T**3
         
@@ -2063,6 +2066,11 @@ class PPMtools:
         Returns:
         rs: float
             Radius of the Schwarzschild boundary
+
+        If only one dump is provided, then all Schwarzschild boundaries
+        are returned. Otherwise, one Schwarzschild boundary per dump is
+        returned (and if there are more than one Schwarzschild boundaries 
+        for any dump, a warning is issued).
         '''
 
         rmin_input = rmin
@@ -2081,13 +2089,19 @@ class PPMtools:
             nabla_rad = nabla_rad[(R>rmin)&(R<rmax)]
             nabla_ad  = nabla_ad[(R>rmin)&(R<rmax)]
             R = R[(R>rmin)&(R<rmax)]
-            f = scipy.interpolate.interp1d(nabla_ad-nabla_rad, R, assume_sorted=False)
-            try:
-                rs_value = float(f(0))
-            except:
-                self.__messenger.warning('Schwarzschild boundary could not be located')
-                rs_value = np.nan
-            rs.append(rs_value)
+            f = scipy.interpolate.interp1d(R[::-1], nabla_ad[::-1]-nabla_rad[::-1],
+                                           bounds_error=False, fill_value=0.1)
+            R_guess = R[abs(nabla_ad-nabla_rad)<0.01]
+            sol = optimize.newton(f, R_guess, maxiter=100)
+            sol = unique([round(x,2) for x in sol])
+            sol = sol[(sol>rmin)&(sol<rmax)]
+            if len(dump_list)==1:
+                rs = sol
+            else:
+                rs.append(sol[0])
+                if len(sol)>1:
+                    self.__messenger.warning('More than one Schwarzschild boundary found'
+                                             ' but returning only one.')
         return rs
 
 
