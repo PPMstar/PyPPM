@@ -111,8 +111,11 @@ import glob
 from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
 from datetime import date
+from tqdm import tqdm
 import pickle
 from astropy import units
+import pyshtools.expand 
+import pyshtools.spectralanalysis
 # import collections
 # FH: turn of  logging as described here:
 # https://github.com/matplotlib/matplotlib/issues/14523
@@ -12937,6 +12940,132 @@ class MomsDataSet:
 
         return lmax, N, npoints
 
+    def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, 
+                            radius=None, mass=None, plot=0, momsarray=[]):
+        '''
+        Calculates the power spectrum of any moms variable 
+
+        Power spectrum is calculated for variable 'varloc' at radius 'radius' for
+        dumps arange(dump_start, dump_stop+1, dump_step). The spectrum is averaged
+        over the ranfe of dumps given as inputs.
+        The power spectrum is expressed as power per spherical harmonic mode 'ell'.
+        
+        Note that power spectrums of velocities will be in 10^12 m^2/s^2/ell
+
+        Parameters
+        ----------
+        varloc: str, int
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want the power spectrum of
+        dump_start: int
+            Dump number of the first dump to consider
+        dump_stop: int
+            Dump number of the last dump to consider
+        dump_step: int
+            Number of dumps between each dump to consider in the dump averaging
+        radius: float, optional
+            The radius of the sphere at which you want the power spectrum of 'varloc', in Mm
+            Note that if no radius is specified, then a mass must be specified
+        mass: float, optional
+            Mass M(R) at which to calculate the spectrum, in Msun
+            Note that if no mass is specified, then a radius must be specified
+        plot :: int
+            If > 0 make plot where value is fig number, tuned to show spectrum of ur 
+            for a radius in a H-core-25 convective core; may or may not look good for 
+            other vars, runs; default is 0
+        momsarray: 3D array, optional
+            If present, the power spectrum of this array is computed instead
+            varloc, dump_start, dump_stop, and dump_step are then ignored
+            momsarray must be on the same Cartesian grid as the moms instance
+
+        Returns
+        -------
+        ell: np.ndarray
+            Spherical harmonics modes ell
+        power_ell: np.ndarray
+            Power per model ell
+        '''
+
+        if (radius==None and mass==None) or (radius!=None and mass!=None):
+            err = 'You must select either a radius or a mass where to calculate the spectrum'
+            self._messenger.error(err)
+        
+        radiusinput = radius
+        massinput = mass
+
+        if len(momsarray)>0: # reading data directly from momsarray
+            var = momsarray
+            if radiusinput != None:
+                radius = radiusinput
+            elif massinput != None:
+                r = self._rprofset.get('R', fname=dump)
+                m = self._rprofset.compute_m(dump) * code_mass # Msun
+                radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
+
+            # what is lmax at this radius?
+            lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
+
+            # Calculate spherical harmonics up to lmax
+            var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+
+            # get coefficients and power
+            coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
+            power_ell = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')
+
+            ell = np.arange(0, lmax_r+1)
+
+        else: # reading data from the moms instance and over multiple dumps
+            dumps = np.arange(dump_start, dump_stop+1, dump_step)
+                    
+            idumpsuccess = 0
+
+            for i,dump in enumerate(tqdm(dumps)):
+                try:
+                    # get the desired variable
+                    var = self.get(varloc,fname=dump)
+
+                    if radiusinput != None:
+                        radius = radiusinput
+                    elif massinput != None:
+                        r = self._rprofset.get('R', fname=dump)
+                        m = self._rprofset.compute_m(dump) * code_mass # Msun
+                        radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
+
+                    # what is lmax at this radius?
+                    lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
+
+                    # Calculate spherical harmonics up to lmax
+                    var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+
+                    # get coefficients and power
+                    coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
+                    power_ell_dump = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')
+
+                    if idumpsuccess==0:
+                        power_ell = power_ell_dump
+                    else:
+                        power_ell = power_ell + power_ell_dump
+                    idumpsuccess += 1
+                except:
+                    self._messenger.warning('Skipping dump '+str(dump))
+                    continue
+
+            ell = np.arange(0, lmax_r+1)
+            power_ell = power_ell/idumpsuccess
+  
+        if plot > 0:
+            pl.close(plot);pl.figure(plot)
+            pl.loglog(ell, 1.e12*power_ell)
+            pmax=np.max(1.e12*power_ell)
+            xx = np.linspace(7*max(ell[0],1),0.7*ell[-1],5)
+            pl.loglog(xx,1.5*pmax*xx**(-5/3.),'w-',lw=0.5,)
+            pl.ylim(1e12*power_ell[-1],3*pmax)
+            pl.ylabel('$ power / \mathrm{[m^2/s^2]}$'); pl.xlabel('$l$')
+            pl.text(0.1*ell[-1],0.1*pmax,'$l^{-5/3}$')
+
+        return ell, power_ell
+
+    
     def norm(self, ux, uy, uz, fname=None):
         '''
         Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
