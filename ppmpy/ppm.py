@@ -12272,7 +12272,7 @@ class MomsDataSet:
             xx = np.linspace(7*max(ell[0],1),0.7*ell[-1],5)
             pl.loglog(xx,1.5*pmax*xx**(-5/3.),'w-',lw=0.5,)
             pl.ylim(1e12*power_ell[-1],3*pmax)
-            pl.ylabel('$ power / \mathrm{[m^2/ss^2]}$'); pl.xlabel('$l$')
+            pl.ylabel('$ power / \mathrm{[m^2/s^2]}$'); pl.xlabel('$l$')
             pl.text(0.1*ell[-1],0.1*pmax,'$l^{-5/3}$')
 
         return ell, power_ell
