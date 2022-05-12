@@ -13089,11 +13089,7 @@ class MomsDataSet:
                 print(f"Stopping early at dump {dump_number}")
                 break
             except Exception as err:
-                print(err)
-                traceback.print_exc()
-                print("Radius arr was", radius_arr)
                 print("Skipping dump", dump_number)
-                print()
                 continue
             used_dumps.append(dump_number)
         used_masses = []
