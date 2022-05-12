@@ -12950,7 +12950,7 @@ class MomsDataSet:
         over the ranfe of dumps given as inputs.
         The power spectrum is expressed as power per spherical harmonic mode 'ell'.
         
-        Note that power spectrums of velocities will be in 10^12 m^2/s^2/ell
+        Note that power spectrums of velocities will be in 10^-12 m^2/s^2/ell
 
         Parameters
         ----------
@@ -13055,10 +13055,10 @@ class MomsDataSet:
   
         if plot > 0:
             pl.close(plot);pl.figure(plot)
-            pl.loglog(ell, 1.e12*power_ell)
+            pl.loglog(ell, 1.e12*power_ell,'-')
             pmax=np.max(1.e12*power_ell)
             xx = np.linspace(7*max(ell[0],1),0.7*ell[-1],5)
-            pl.loglog(xx,1.5*pmax*xx**(-5/3.),'w-',lw=0.5,)
+            pl.loglog(xx,5.*pmax*xx**(-5/3.),'--',lw=0.5,)
             pl.ylim(1e12*power_ell[-1],3*pmax)
             pl.ylabel('$ power / \mathrm{[m^2/s^2]}$'); pl.xlabel('$l$')
             pl.text(0.1*ell[-1],0.1*pmax,'$l^{-5/3}$')
