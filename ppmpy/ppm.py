@@ -99,6 +99,7 @@ import re
 import nugridpy.constants as nuconst
 import scipy.interpolate
 import scipy.stats
+import scipy.signal
 from scipy import optimize
 from scipy import integrate as integrate
 import copy
@@ -111,8 +112,14 @@ import glob
 from ipywidgets import interact, interactive, fixed, interact_manual
 import ipywidgets as widgets
 from datetime import date
+from tqdm import tqdm
 import pickle
 from astropy import units
+from tqdm import tqdm
+import pyshtools
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import pyshtools.expand 
+import pyshtools.spectralanalysis
 # import collections
 # FH: turn of  logging as described here:
 # https://github.com/matplotlib/matplotlib/issues/14523
@@ -124,12 +131,109 @@ logging.getLogger('matplotlib').setLevel(logging.ERROR)
 G_code    = nuconst.grav_const*1000.   # code unit of gravitaional 
 code_mass = 5.025e-07                  # code unit of mass in solar masses
 
-# from rprofile import rprofile_reader
+
+def list_columns(obj, cols=6, columnwise=True, gap=4):
+    """
+    Print the given list in evenly-spaced columns.
+
+    Parameters
+    ----------
+    obj : list
+        The list to be printed.
+    cols : int
+        The number of columns in which the list should be printed.
+    columnwise : bool, default=True
+        If True, the items in the list will be printed column-wise.
+        If False the items in the list will be printed row-wise.
+    gap : int
+        The number of spaces that should separate the longest column
+        item/s from the next column. This is the effective spacing
+        between columns based on the maximum len() of the list items.
+    """
+
+    sobj = [str(item) for item in obj]
+    if cols > len(sobj): cols = len(sobj)
+    max_len = max([len(item) for item in sobj])
+    if columnwise: cols = int(math.ceil(float(len(sobj)) / float(cols)))
+    plist = [sobj[i: i+cols] for i in range(0, len(sobj), cols)]
+    if columnwise:
+        if not len(plist[-1]) == cols:
+            plist[-1].extend(['']*(len(sobj) - len(plist[-1])))
+        plist = zip(*plist)
+    printer = '\n'.join([
+        ''.join([c.ljust(max_len + gap) for c in p])
+        for p in plist])
+    print(printer)
+
+def get_units(show=False):
+    '''Get code units
+    
+    Parameters
+    ----------
+    
+    show :: boolean
+      show list of code units if True, default is False
+    
+    Returns
+    -------
+
+    cunits :: dict
+      a ductionary with units in astropy quantities
+    
+    Example
+    -------
+    `units = get_units(True)` populates dictionary units and prints
+    list of available units.
+    
+    `cunits['energy'].value` prints value of energy unit without unit
+    
+    Notes
+    -----
+
+    See https://docs.astropy.org/en/stable/units/format.html for how to 
+    format astropy unit quantities.
+
+    Code units as in PPM.F source code
+    1 unit of length = 1000 km = 1 Mm = 10**8 cm.
+    1 unit of velocity = 1000 km/sec = 10**8 cm/sec = 1 Mm / sec
+    1 unit of time = 1 sec
+    1 unit of density = 1 kgm/cc = 1000 gm/cc = 10**27 gm / Mm**3
+    1 unit of mass = 10**27 gm = 5.025e-07 solar masses
+                               = 1/6 earth masses
+           1 solar mass = 1.99 * 10**30 kg.
+           1 earth mass = 6.0e+24 kg.
+    1 unit of energy = 10**27 gm * 10**16 cm**2/sec**2
+                     = 10**43 ergs
+           1 unit of energy per unit volume = 10**43 / 10**24 cgs
+    1 unit of pressure = 1000 (gm/cc) * (10**8 cm/sec)**2
+                       = 10**19 gm/(cm-sec**2)
+    1 unit of acceleration = 10**8 cm/sec/sec
+    1 unit of temperature = 10**9 degrees Kelvin = GK
+    '''
+    cunits = {}
+    cunits['length']       = 1000*units.km
+    cunits['velocity']     = 1000*units.km/units.s
+    cunits['length']       = 1000*units.km
+    cunits['time']         = 1*units.s
+    cunits['density']      = 1*units.kg/units.cm**3
+    cunits['mass']         = 1e27*units.g
+    cunits['energy']       = 1e43*units.erg
+    cunits['pressure']     = 1e19*units.g/units.cm/units.s**2
+    cunits['acceleration'] = 1e8*units.cm/units.s**2
+    cunits['temperature']  = 1e9*units.K
+
+    if show:
+        for const in cunits.keys():
+            print(f"{const:12s} {cunits[const]:12.0g}")
+    
+    return cunits
+
+
+
 def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
-                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=0, vel_km = True,\
-                        NDump_range = None, NDump_range_vals = (500,1000),\
-                        mrange_interp = (12.,14.,0.0001), sparse = 10,\
-                        t_transient_hr = 500, figsizes = (8,5), ifig=1394):
+                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=[0,"runs","varss","f_hps"], \
+                        lw = 1.0, vel_km = True,NDump_range = None, NDump_range_vals = (500,1000),\
+                        mrange_interp = (12.,14.,0.0001), sparse = 10, t_transient_hr = 500, figsizes = (8,5), ifig=1394):
     '''
     This function extracts time-evolution of a RProf column data quantity 
     at pressure-scale height fraction above/below N2-peak.
@@ -159,8 +263,13 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
     xlims, ylims ::  tuple 
       are what you think they are
 
-    legends :: int 
-      where are legends located
+    legends :: list
+      first element int where are legends located
+      following string elements can force legend composition
+      all options are: [0,"runs","varss","f_hps"]
+
+    lw :: float
+      linewidth
 
     vel_km :: boolean
       True: velocity unit km
@@ -252,20 +361,20 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 var_datas[var] = array(var_datas[var])
             times = array(times)
             for j,var in enumerate(varss): 
-                ything =  var_datas[var]
-                if logy: ything = log10(var_datas[var])
+                ything =  np.array(var_datas[var])
+                if logy: ything = np.log10(ything)
                 label = ""
-                if len(runs) > 1: label += case
-                if len(varss) > 1: label += ' '+var
-                if len(f_hps) > 1: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
+                if len(runs)  > 1 or "runs"  in legends: label += case
+                if len(varss) > 1 or "varss" in legends: label += ' '+var
+                if len(f_hps) > 1 or "f_hps" in legends: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
                 pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
-                     label=label, lw=0.75)
+                     label=label, lw=lw)
             var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
         var_means_dict[case][f_hp] = var_means
     if ylab == None: 
         ylab = varss[0]
     pl.ylabel(ylab);pl.xlabel('$t / \mathrm{[h]}$')
-    pl.legend(loc=legends); pl.xlim(*xlims);pl.ylim(*ylims)
+    pl.legend(loc=legends[0]); pl.xlim(*xlims);pl.ylim(*ylims)
     pl.tight_layout()
     pl.savefig(key+fname+'.pdf')
     return var_means_dict
@@ -390,6 +499,11 @@ def cases_table(data, latex = False, cases = None):
 
     cases :: list
         defaults to all cases in data, else provide subset of cases
+    
+    Returns:
+    --------
+    cases :: list
+        the actually adopted list of cases
     '''
     
     if cases is None:
@@ -637,8 +751,18 @@ class PPMtools:
         # This sets which method computes which quantity.
         self.__compute_methods = {'enuc_C12pg':self.compute_enuc_C12pg, \
                                   'Hp':self.compute_Hp, \
+                                  'nabla_T':self.compute_nabla_T, \
+                                  'nabla_T_ad':self.compute_nabla_T_ad, \
+                                  'nabla_T_rad':self.compute_nabla_T_rad, \
+                                  'kappa':self.compute_kappa, \
+                                  'Krad':self.compute_Krad, \
+                                  'Drad':self.compute_Drad, \
                                   'nabla_rho':self.compute_nabla_rho, \
                                   'nabla_rho_ad':self.compute_nabla_rho_ad, \
+                                  'lum_rad':self.compute_lum_rad, \
+                                  'lum_conv':self.compute_lum_conv, \
+                                  'lum_kin':self.compute_lum_kin, \
+                                  'lum_tot':self.compute_lum_tot, \
                                   'prad':self.compute_prad, \
                                   'pgas_by_ptot':self.compute_pgas_by_ptot, \
                                   'g':self.compute_g, \
@@ -651,6 +775,7 @@ class PPMtools:
                                   'T9corr':self.compute_T9corr, \
                                   '|Ur|':self.compute_Ur, \
                                   'Xcld':self.compute_Xcld, \
+                                  'mu':self.compute_mu, \
                                   'FVair':self.compute_FVair, \
                                   'Xdot_C12pg':self.compute_Xdot_C12pg}
         self.__computable_quantities = self.__compute_methods.keys()
@@ -817,6 +942,333 @@ class PPMtools:
         Ur = np.sqrt(U**2 - Ut**2)
         return Ur
 
+    def compute_nabla_T(self, fname, num_type='ndump'):
+        '''
+        Returns the actual temperature gradient nabla
+        '''
+        
+        if self.__isyprofile:
+            T = self.get('T9', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            T = self.get('T9', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+
+        nabla_T = cdiff(np.log(T))/(cdiff(np.log(p)) + 1e-100)
+        return nabla_T
+
+    def compute_nabla_T_ad(self, fname, num_type='ndump', radeos=True):
+        '''
+        Returns the adiabatic temperature gradient nabla_ad
+        '''
+
+        if radeos:
+            beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
+            nabla_T_ad = (8-6*beta)/(32-24*beta-3*beta**2)
+        else:
+            if self.__isyprofile:
+                r = self.get('Y', fname, num_type=num_type, resolution='l')
+
+            if self.__isRprofSet:
+                r = self.get('R', fname, num_type=num_type, resolution='l')
+
+            nabla_T_ad = (2./5.)*np.ones(len(r))
+            
+        return nabla_T_ad
+
+
+    def compute_nabla_T_rad(self, fname, num_type='ndump'):
+        '''
+        Returns the radiative temperature gradient nabla_rad
+
+        Assumes a constant luminosity totallum for all radii
+        '''
+
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        self.__messenger.warning('PPMtools.compute_nabla_T_rad() assumes that all '
+                                 'the luminosity is injected at the center R=0')
+
+        m = self.compute_m(fname, num_type=num_type)
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')
+        kappa = self.compute_kappa(fname, num_type=num_type)
+
+        if self.__isyprofile:
+            p = 1e19*self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            p = 1e19*(self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l'))
+            
+        # compute nabla_T_rad with all quantities in cgs units
+        arad = 7.5646e-15
+        cc = 2.99792458e10
+        Gconst = 6.67430e-8
+        totallum = totallum*1.e43
+        m = m*1.e27
+        nabla_T_rad = 3*kappa*totallum*p / (16*np.pi*arad*cc*Gconst*m*T**4+1e-100)
+            
+        return nabla_T_rad
+
+    def compute_lum_conv(self, fname, num_type='ndump'):
+        '''
+        Returns the convective luminosity (Fconv*4piR^2)
+        
+        Includes both the kinetic energy term and the enthalpy term. Note that this
+        is different from the standard definition of Fconv: may require clarification
+        in the future.
+
+        In units of the total luminosity of the star
+        '''
+        
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        R = self.get('R', fname, num_type=num_type, resolution='l')
+        Fconv = self.get('RhoUrH', fname, num_type=num_type, resolution='l')
+        Lconv = Fconv*4*np.pi*R**2
+        
+        return Lconv/totallum
+
+    def compute_lum_kin(self, fname, num_type='ndump'):
+        '''
+        Returns the kinetic energy luminosity (Fkin*4piR^2)
+        
+        Note that this term is included in Lconv
+        In units of the total luminosity of the star
+        '''
+        
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        R = self.get('R', fname, num_type=num_type, resolution='l')
+        Fkin = self.get('RhoUrUsq', fname, num_type=num_type, resolution='l')
+        Lkin = Fkin*4*np.pi*R**2
+        
+        return Lkin/totallum
+
+    def compute_lum_tot(self, fname,  num_type='ndump'):
+        '''
+        Returns the total luminosity Frad+Fconv (where Fconv included the
+        kinetic and enthalpy terms)
+
+        In units of the total luminosity of the star
+        '''
+        Lconv = self.compute_lum_conv(fname)
+        Lrad = self.compute_lum_rad(fname)
+        Ltot = Lconv+Lrad
+
+        return Ltot
+
+    def compute_lum_rad(self, fname, num_type='ndump'):
+        '''
+        Returns the radiative luminosity (Frad*4piR^2)
+        
+        In units of the total luminosity of the star
+        '''
+        
+        # do all calculations in cgs units
+        totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
+        totallum = totallum*1.e43
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')    
+        R = 1e8*self.get('R', fname, num_type=num_type, resolution='l')
+        dTdR = cdiff(T)/(cdiff(R) + 1e-100)
+
+        Krad = self.compute_Krad(fname)
+
+        Frad = -Krad*dTdR
+        Lrad = Frad*4*np.pi*R**2
+        
+        return Lrad/totallum
+
+    def compute_mu(self, fname, num_type='ndump', resolution='l'):
+        '''
+        Returns mu computed for FV
+        '''
+
+        cldmu = self.get('cldmu', fname, num_type=num_type)
+        airmu = self.get('airmu', fname, num_type=num_type)
+        FV = self.get('FV', fname, num_type=num_type, resolution='l')
+        mu = airmu*(1-FV) + cldmu*FV
+
+        return mu
+
+    def compute_Drad(self, fname, num_type='ndump', boost=True, radeos=True):
+        '''
+        Returns the radiative diffusivity in cm2/s
+        
+        Radiative diffusivity boost factor is included when boost=True
+        '''
+        
+        # do all calculations in cgs units
+        Rgas = 8.314462e7
+        mu = self.compute_mu(fname)
+
+        if radeos:
+            beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
+            cp = (Rgas/mu/(2*beta**2))*(32-24*beta-3*beta**2)
+        else:
+            cp = 2.5*Rgas/mu
+
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+        rho = 1000*rho
+
+        Krad = self.compute_Krad(fname)
+        Drad = Krad/rho/cp
+
+        return Drad
+        
+
+    def compute_Krad(self, fname, num_type='ndump', boost=True):
+        '''
+        Returns the radiative conductivity in erg/s/K/cm
+        
+        Radiative diffusivity boost factor is included when boost=True
+        '''
+        # do all calculations in cgs units
+        arad = 7.5646e-15
+        cc = 2.99792458e10
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')    
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+        rho = rho*1000
+        kappa = self.compute_kappa(fname, boost=boost, num_type=num_type)
+        
+        Krad = (arad*cc/(3*kappa*rho))*4*T**3
+        
+        return Krad
+
+
+    def compute_kappa(self, fname, num_type='ndump', boost=True, returnboost=False):
+        '''        
+        Returns the opacity kappa in cm2/g
+        
+        The opacity is computed by parsing the flags file for the opacity 
+        model parameters.
+
+        Parameters
+        ----------
+        boost : bool
+              The opacity is divided by the radiative diffusivity boost factor 
+              when boost=True.
+        returnboost: bool
+              The radiative conductivity boost factor (kkradfac) is also returned
+        '''
+        try:
+            flagsfile = self.get_flags_file()
+        except:
+            self.__messenger.error('Error: flags file not found, cannot evaluate kappa')
+        f = open(flagsfile, 'r')
+        ct = f.readlines()
+        f.close()
+        newopac = False
+        for line in ct:
+            if '#define issimonkappa 1' in line and line[0]!='c':
+                newopac = True
+        if newopac: # new opacity module is used
+            # get physical quantities needed to evaluate opacity fit formula
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+            rho = 1000.*rho
+            T = self.get('T9', fname, num_type=num_type, resolution='l')
+            T = 1.e9*T
+            logT = np.log10(T)-7.
+            logR = np.log10(rho/((T/1e6)**3))
+            FV = self.get('FV', fname, num_type=num_type, resolution='l')
+            # parse flags file for new opacity module parameters
+            p11 = np.zeros(6)
+            p12 = np.zeros(6)
+            p21 = np.zeros(6)
+            p22 = np.zeros(6)
+            aamux = 0.5
+            for line in ct:
+                if '#define aamux' in line and line[0]!='c': aamux = float(line.strip().split()[-1])
+                if '#define rr1log' in line and line[0]!='c': x1 = float(line.strip().split()[-1])
+                if '#define rr2log' in line and line[0]!='c': x2 = float(line.strip().split()[-1])
+                if '#define xx1' in line and line[0]!='c': y1 = float(line.strip().split()[-1])
+                if '#define xx2' in line and line[0]!='c': y2 = float(line.strip().split()[-1])
+                if '#define aa110' in line and line[0]!='c': p11[0] = float(line.strip().split()[-1])
+                if '#define aa111' in line and line[0]!='c': p11[1] = float(line.strip().split()[-1])
+                if '#define aa112' in line and line[0]!='c': p11[2] = float(line.strip().split()[-1])
+                if '#define aa113' in line and line[0]!='c': p11[3] = float(line.strip().split()[-1])
+                if '#define aa114' in line and line[0]!='c': p11[4] = float(line.strip().split()[-1])
+                if '#define aa115' in line and line[0]!='c': p11[5] = float(line.strip().split()[-1])
+                if '#define aa120' in line and line[0]!='c': p12[0] = float(line.strip().split()[-1])
+                if '#define aa121' in line and line[0]!='c': p12[1] = float(line.strip().split()[-1])
+                if '#define aa122' in line and line[0]!='c': p12[2] = float(line.strip().split()[-1])
+                if '#define aa123' in line and line[0]!='c': p12[3] = float(line.strip().split()[-1])
+                if '#define aa124' in line and line[0]!='c': p12[4] = float(line.strip().split()[-1])
+                if '#define aa125' in line and line[0]!='c': p12[5] = float(line.strip().split()[-1])
+                if '#define aa210' in line and line[0]!='c': p21[0] = float(line.strip().split()[-1])
+                if '#define aa211' in line and line[0]!='c': p21[1] = float(line.strip().split()[-1])
+                if '#define aa212' in line and line[0]!='c': p21[2] = float(line.strip().split()[-1])
+                if '#define aa213' in line and line[0]!='c': p21[3] = float(line.strip().split()[-1])
+                if '#define aa214' in line and line[0]!='c': p21[4] = float(line.strip().split()[-1])
+                if '#define aa215' in line and line[0]!='c': p21[5] = float(line.strip().split()[-1])
+                if '#define aa220' in line and line[0]!='c': p22[0] = float(line.strip().split()[-1])
+                if '#define aa221' in line and line[0]!='c': p22[1] = float(line.strip().split()[-1])
+                if '#define aa222' in line and line[0]!='c': p22[2] = float(line.strip().split()[-1])
+                if '#define aa223' in line and line[0]!='c': p22[3] = float(line.strip().split()[-1])
+                if '#define aa224' in line and line[0]!='c': p22[4] = float(line.strip().split()[-1])
+                if '#define aa225' in line and line[0]!='c': p22[5] = float(line.strip().split()[-1])
+            fkcld = self.get('fkcld', fname, num_type=num_type)
+            fkair = self.get('fkair', fname, num_type=num_type)
+            cldmu = self.get('cldmu', fname, num_type=num_type)
+            airmu = self.get('airmu', fname, num_type=num_type)
+            X = aamux*(FV*fkcld+(1.-FV)*fkair)/(airmu+FV*(cldmu-airmu))
+            # evaluate opacity analytical fit
+            w11 = (x2-logR)*(y2-X)/(x2-x1)/(y2-y1)
+            w12 = (x2-logR)*(X-y1)/(x2-x1)/(y2-y1)
+            w21 = (logR-x1)*(y2-X)/(x2-x1)/(y2-y1)
+            w22 = (logR-x1)*(X-y1)/(x2-x1)/(y2-y1)
+            kappa = np.zeros(len(logT))
+            for i,_ in enumerate(logT):
+                p = w11[i]*p11+w12[i]*p12+w21[i]*p21+w22[i]*p22
+                kappa[i] = np.polyval(p,logT[i])
+        else: # old opacity module is used
+            # get physical quantities needed to evaluate opacity fit formula
+            T = self.get('T9', fname, num_type=num_type, resolution='l')
+            logT = np.log10(1.e9*T)
+            FV = self.get('FV', fname, num_type=num_type, resolution='l')
+            aamux = 0.5
+            fkcld = self.get('fkcld', fname, num_type=num_type)
+            fkair = self.get('fkair', fname, num_type=num_type)
+            cldmu = self.get('cldmu', fname, num_type=num_type)
+            airmu = self.get('airmu', fname, num_type=num_type)
+            X = aamux*(FV*fkcld+(1.-FV)*fkair)/(airmu+FV*(cldmu-airmu))
+            # parse flags file for old opacity module parameters
+            for line in ct:
+                if '#define kkappa_max' in line and line[0]!='c': kmax = float(line.strip().split()[-1])
+                if '#define kkappa_min' in line and line[0]!='c': kmin = float(line.strip().split()[-1])
+                if '#define kkappa_tot_max' in line and line[0]!='c': ktmax = float(line.strip().split()[-1])
+                if '#define ffit_par0' in line and line[0]!='c': a = float(line.strip().split()[-1])
+                if '#define ffit_par1' in line and line[0]!='c': b = float(line.strip().split()[-1])
+                if '#define ffit_par2' in line and line[0]!='c': c = float(line.strip().split()[-1])
+                if '#define ffit_par3' in line and line[0]!='c': d = float(line.strip().split()[-1])
+                if '#define llogT0' in line and line[0]!='c': lT0 = float(line.strip().split()[-1])
+                if '#define llogT_width' in line and line[0]!='c': lTw = float(line.strip().split()[-1])
+            # evaluate opacity analytical fit
+            logkappa_fit = a*logT**3 + b*logT**2 + c*logT + d
+            k_corr = 1.+0.5*(kmax/kmin-1)*(1.-np.tanh(lTw*(logT-lT0)))
+            kappa_es = 0.2*(1+X)
+            kappa = kappa_es/(k_corr*kmin)*10**logkappa_fit
+            kappa[kappa>ktmax] = ktmax
+
+        if boost:
+            # apply radiative diffusivity boost factor to kappa
+            for line in ct:
+                if '#define kkradfac' in line and line[0]!='c': kradfac = float(line.strip().split()[-1])
+            kappa = kappa/kradfac
+
+        if not returnboost:
+            return kappa
+        else:
+            return kappa, kradfac
+            
 
     def compute_nabla_rho(self, fname, num_type='ndump'):
         if self.__isyprofile:
@@ -916,18 +1368,31 @@ class PPMtools:
         if self.__isyprofile:
             r = self.get00('Y', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            rinner = 0
 
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
+            rinner = self.get('radin0', fname, num_type=num_type, resolution='l')
 
-        dm = -4.*np.pi*r**2*cdiff(r)*rho
-        m = np.cumsum(dm)
+        minner = self.get_minner()
 
-        # We store everything from the surface to the core.
-        m = m[-1] - m
-        self.__messenger.warning('WARNING: PPMtools.compute_m() integrates mass from r = 0. This will not work for shell setups and wrong gravity will be returned.')
+        if minner==0 and rinner==0: # core setup
+            dm = -4.*np.pi*r**2*cdiff(r)*rho
+            m = np.cumsum(dm)
+            # We store everything from the surface to the core.
+            m = m[-1] - m
+        elif minner>0 and rinner>0: # shell setup
+            rho_int = rho[::-1]
+            r_int = r[::-1]
+            rho_int[r_int<rinner] = 0
+            dm = 4.*np.pi*r_int**2*cdiff(r_int)*rho_int
+            m = np.cumsum(dm) + minner
+            m = m[::-1]
+        else:
+             self.__messenger.error('Error in compute_m, inconsistent minner and rinner values')
+
         return m
 
     def compute_mt(self, fname, num_type='ndump'):
@@ -1599,6 +2064,62 @@ class PPMtools:
              'D':1.e16*D}
         return res
 
+    def schwarzschild_bound(self, cycles, rmin=None, rmax=None):
+        '''
+        Method that finds rhe radius of the Schwarzschild boundary
+
+        Parameters:
+        cycles: list
+            List of dump numbers to be used in the analysis
+        rmin: float, optional
+            Minimum radius for the boundary search
+            If None, rmin=radin0
+        rmax: float, optional
+            Maximum radius for the boundary search
+            If None, rmax=radout0
+
+        Returns:
+        rs: float
+            Radius of the Schwarzschild boundary
+
+        If only one dump is provided, then all Schwarzschild boundaries
+        are returned. Otherwise, one Schwarzschild boundary per dump is
+        returned (and if there are more than one Schwarzschild boundaries 
+        for any dump, a warning is issued).
+        '''
+
+        rmin_input = rmin
+        rmax_input = rmax
+
+        dump_list = any2list(cycles)
+        rs = []
+        for i, dump in enumerate(dump_list):
+            if not rmin_input:
+                rmin = self.get('radin0', dump, resolution='l')
+            if not rmax_input:
+                rmax = self.get('radout0', dump, resolution='l')
+            nabla_rad = self.compute('nabla_T_rad', dump)
+            nabla_ad  = self.compute('nabla_T_ad', dump)
+            R = self.get('R', dump, resolution='l')
+            nabla_rad = nabla_rad[(R>rmin)&(R<rmax)]
+            nabla_ad  = nabla_ad[(R>rmin)&(R<rmax)]
+            R = R[(R>rmin)&(R<rmax)]
+            f = scipy.interpolate.interp1d(R[::-1], nabla_ad[::-1]-nabla_rad[::-1],
+                                           bounds_error=False, fill_value=0.1)
+            R_guess = R[abs(nabla_ad-nabla_rad)<0.01]
+            sol = optimize.newton(f, R_guess, maxiter=100)
+            sol = unique([round(x,2) for x in sol])
+            sol = sol[(sol>rmin)&(sol<rmax)]
+            if len(dump_list)==1:
+                rs = sol
+            else:
+                rs.append(sol[0])
+                if len(sol)>1:
+                    self.__messenger.warning('More than one Schwarzschild boundary found'
+                                             ' but returning only one.')
+        return rs
+
+
     def bound_rad(self, cycles, r_min, r_max, var='ut', \
                   criterion='min_grad', var_value=None, \
                   return_var_scale_height=False, eps=1e-9):
@@ -1655,11 +2176,14 @@ class PPMtools:
             at rb are returned if return_var_scale_height == True.
         '''
         cycle_list = any2list(cycles)
-        try:
-            _ = len(var_value)
-            var_value = any2list(var_value)
-        except:
-            var_value = var_value*np.ones(len(cycle_list))
+
+        if criterion=='value':
+            try:
+                _ = len(var_value)
+                var_value = any2list(var_value)
+            except:
+                var_value = var_value*np.ones(len(cycle_list))
+
         rb = np.zeros(len(cycle_list))
         if return_var_scale_height:
             Hv = np.zeros(len(cycle_list))
@@ -9244,7 +9768,7 @@ class Messenger:
             self.__print_warnings = False
         if self.__verbose < 1:
             self.__print_errors = False
-
+        
     def message(self, message):
         '''
         Reports a message to the user. The message is currently printed to
@@ -9490,10 +10014,11 @@ class RprofSet(PPMtools):
         PPMtools.__init__(self,verbose=verbose)
         self.__is_valid = False
         self.__messenger = Messenger(verbose=verbose)
+        self.__verbose = verbose
 
         self.__bqav = bqav
         self.__var_list = var_list
-        
+
         if len(self.__var_list)>0 and not self.__bqav:
             print('var_list argument will be ignored')
 
@@ -9512,12 +10037,17 @@ class RprofSet(PPMtools):
         self.__cache_rprofs = cache_rprofs
         self.__rprof_cache = {}
 
+
         if self.__bqav:
             history_file_path = '{:s}../{:s}-0000.hstry'.format(self.__dir_name, \
                                                              self.__run_id)
+            self.__rundir = os.path.join(self.__dir_name,'../..')
         else:
             history_file_path = '{:s}{:s}-0000.hstry'.format(self.__dir_name, \
                                                              self.__run_id)
+            self.__rundir = os.path.join(self.__dir_name,'..')
+
+
         self.__history = RprofHistory(history_file_path, verbose=verbose)
         if not self.__history.is_valid():
             wrng = ('History not available. You will not be able to access '
@@ -9535,6 +10065,72 @@ class RprofSet(PPMtools):
         self.__is_valid = True
         self.astrounit = {}
         self.astrounit['on'] = astrounit
+
+        # find flags file
+        lf = glob.glob(self.__rundir+'/*flags.F')
+        if len(lf)>=1:
+            self.__flagsfile = lf[0]
+            if len(lf)>1:
+                self.__messenger.warning('WARNING: more than one flags '
+                                         'file found in '+self.__rundir+', '
+                                         'using '+self.__flagsfile)
+            # find .include file
+            f = open(self.__flagsfile, 'r')
+            ct = f.readlines()
+            f.close()
+            includefile = False
+            for line in ct:
+                if ('#define setupfilename' in line) and (line[0]!='c'):
+                    self.__includefile = line.strip().split()[-1].strip('"')
+                    includefile = True
+                    self.__includefile = self.__rundir+'/'+self.__includefile
+            if includefile:
+                try:
+                    _ = open(self.__includefile, 'r')
+                except:
+                    includefile = False
+
+        else:
+            self.__messenger.warning('No flags file found in '+self.__rundir+
+                                   ', cannot compute kappa or infer minner')
+            includefile = False
+
+        # read m0 from .include file
+        if not includefile:
+            self.__messenger.warning('WARNING: .include file could not be located, '
+                                     'assuming m0=0')
+            self.__minner = 0
+        else:
+            f = open(self.__includefile, 'r')
+            ct = f.readlines()
+            f.close()
+            for line in ct:
+                if 'mass m0' in line:
+                    try:
+                        self.__minner = float(line.split('=')[-1].split('"')[0])
+                    except:
+                        self.__messenger.warning('WARNING: m0 could not be read in '
+                                                 '.include file, assuming m0=0')
+                        self.__minner = 0
+        
+
+    def get_minner(self):
+        '''
+        Returns the mass located inside the inner boundary of a shell setup
+        The mass is in code units
+        '''
+
+        return float(self.__minner)
+
+
+    def get_flags_file(self):
+        '''
+        Returns the path of the flags file in the run directory where the
+        .rprof files are
+        '''
+
+        return str(self.__flagsfile)
+
 
 
     def __find_dumps(self, dir_name):
@@ -9698,10 +10294,12 @@ class RprofSet(PPMtools):
             if dump in self.__rprof_cache:
                 rp = self.__rprof_cache[dump]
             else:
-                rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, var_list=self.__var_list)
+                rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, \
+                    var_list=self.__var_list, verbose=self.__verbose)
                 self.__rprof_cache[dump] = rp
         else:
-            rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, var_list=self.__var_list)
+            rp = Rprof(file_path, geometry=self.__geometry, bqav=self.__bqav, \
+                var_list=self.__var_list, verbose=self.__verbose)
 
         return rp
 
@@ -9781,9 +10379,9 @@ class RprofSet(PPMtools):
             else:
                 return None
 
-    def rprofgui(self,ifig=11):
-        def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig):
-            self.rp_plot([dump1,dump2],ything,logy=log10y,ifig=ifig)
+    def rprofgui(self,ifig=11,title=""):
+        def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig,title=title):
+            self.rp_plot([dump1,dump2],ything,logy=log10y,ifig=ifig,title=title)
             pyl.show()
         rp_hst = self.get_history()
         dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
@@ -9798,7 +10396,7 @@ class RprofSet(PPMtools):
                      ything=things_list,ifig=fixed(ifig))
 
     def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
-                xxlim=None, yylim=None, logy=False,newfig=True,idn=0):
+                xxlim=None, yylim=None, logy=False,newfig=True,idn=0,title=None):
         '''
         Plot one thing or list for a line profile
 
@@ -9835,7 +10433,8 @@ class RprofSet(PPMtools):
         idn : integer
            set to some value >0 to generate new series of line selection integers
         
-        astrounits
+        title :: str
+            figure title
         '''
         if runlabel is None: runlabel = self.__run_id
 
@@ -9885,6 +10484,9 @@ class RprofSet(PPMtools):
 
         if yylim is not None:
             pl.ylim(yylim)
+
+        if title is not None:
+            pl.title(title)
 
     def plot_vrad_prof(self,fname,num_type='NDump', vel_comps=['|U|','|Ut|','|Ur|'],\
                        plot_title=None,ifig=102,save_fig=True,logy=True,close_fig=True,\
@@ -10462,7 +11064,11 @@ class Rprof:
                         if '.' in sline[i+1]:
                             par_value = float(sline[i+1])
                         else:
-                            par_value = int(sline[i+1])
+                            try:
+                                par_value = int(sline[i+1])
+                            except ValueError:
+                                par_value = 0 
+                                self.__messenger.warning('RProf with faulty header vars')
 
                         # Although we are technically in the file's footer, we
                         # call these parameters "header variables".
@@ -12346,6 +12952,415 @@ class MomsDataSet:
 
         return lmax, N, npoints
 
+
+    def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
+                        makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None):
+        """
+        Plots/returns a k-omega diagram for a given radius/mass
+        Adapted from William Thompson's k-omega.py script
+        Now conserves total power via a correction for the Hann windowing
+
+        Parameters
+        ----------
+        dump_start: integer
+            First dump to use for the k-omega diagram calculation
+        dump_stop: integer
+            Last dump to use
+        varname: string, optional
+            Variable of which the k-omega should be computed
+            Default value is ur, other options are |ur|, utot, and ut_phi
+        lmax_crop: integer, optional
+            Impose a maximum ell value; if none is given then sphericalHarmonics_lmax
+            is used to determine the maximum ell value
+        radius: float, optional
+            Radius at which to calculate the k-omega diagram, in Mm
+            Note that if no radius is specified, then a mass must be specified
+        mass: float, optional
+            Mass M(R) at which to calculate the k-omega diagram, in Msun
+            Note that if no mass is specified, then a radius must be specified
+        makefigure: bool, optional
+            If True, a k-omega diagram is plotted
+        returnvalues: bool, optional
+            If True, the ell, nu, and power arrays are returned
+        vmin, vmax: float, optional
+            Min and max values of the color scale used for the power spectrum colormap
+            The units are log10(m2/s2/ell/microHz).
+        fmax: float, optional
+            Max frequency to show on k-omega diagram (in microHz)
+
+        Returns
+        -------
+        spatial_freqs: np.ndarray
+            The array containing the ell values
+        temporal_freqs: np.ndarray
+            The array containing the temporal frequencies in microHz
+        spec: np.ndarray
+            The array containing the power spectrum in m2/s2/ell/microHz
+            This array has shape (len(spatial_freqs),len(temporal_freqs))
+        """
+
+        radiusinput = radius
+        massinput = mass
+
+        if (radius==None and mass==None) or (radius!=None and mass!=None):
+            raise ValueError('You must select wither a radius or a mass where to calculate the spectrum')
+
+        used_dumps = []
+
+        if radiusinput != None:
+            radius = radiusinput
+        elif massinput != None:
+            r = self._rprofset.get('R', fname=dump_start)
+            m = self._rprofset.compute_m(dump_start) * 5.025e-07 # Convert from code units to solar masses
+            radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
+
+        fname = 'k-omega.bin'
+        extract_dumps = arange(dump_start, dump_stop+1)
+        lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
+        if lmax_crop is not None:
+            lmax = lmax_crop
+        shcoeffs_by_radius_by_dump = np.memmap(fname, dtype='csingle', mode='w+', shape=(
+            1,len(extract_dumps),2,lmax+1,lmax+1))
+
+        # sqrt(8/3) is to conserve energy despite windowing
+        # e.g., http://www.vibrationdata.com/tutorials_alt/Hanning_compensation.pdf
+        window =  scipy.signal.windows.hann(shape(shcoeffs_by_radius_by_dump)[1], sym=False)*sqrt(8/3)
+
+
+        for (dump_i, dump_number) in enumerate(tqdm(extract_dumps)):
+            try:
+                if radiusinput != None:
+                    radius = radiusinput
+                elif massinput != None:
+                    r = self._rprofset.get('R', fname=dump_number)
+                    m = self._rprofset.compute_m(dump_number) * 5.025e-07 # Convert from code units to solar masses
+                    radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
+                # For each radius/mass, compute the power spectral density up to lmax_crop
+                # get ur
+                #lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
+                #if lmax_crop is not None:
+                #    lmax = lmax_crop
+                if varname=='ur':
+                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                    x = radius*np.sin(theta)*np.cos(phi)
+                    y = radius*np.sin(theta)*np.sin(phi)
+                    z = radius*np.cos(theta)
+                    r_len = radius
+                    x /= r_len
+                    y /= r_len
+                    z /= r_len
+                    #x, y, z are now the x,y,z components of the r hat unit vector for each element on the grid
+                    ur = zeros_like(uz)
+                    ur = x*ux + y*uy + z*uz
+                    quantity_values, theta_grid, phi_grid = ur, theta_grid, phi_grid
+                elif varname=='|ur|':
+                    ur, theta_grid, phi_grid = self.sphericalHarmonics_format('|ur|', radius, dump_number, 
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    quantity_values, theta_grid, phi_grid = ur, theta_grid, phi_grid
+                elif varname=='utot':
+                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                    utot = np.sqrt(ux**2 + uy**2 + uz**2)
+                    quantity_values, theta_grid, phi_grid = utot, theta_grid, phi_grid
+                elif varname=='ut_phi':
+                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                    phi_hat_x = -np.sin(phi)
+                    phi_hat_y = -np.cos(phi)
+                    phi_hat_z = 0.
+                    ut_phi = phi_hat_x*ux + phi_hat_y*uy + phi_hat_z*uz
+                    quantity_values, theta_grid, phi_grid = ut_phi, theta_grid, phi_grid
+                else:
+                    raise ValueError('Invalid varname value; supported values are ur, utot, and ut_phi')
+                if lmax_crop is not None:
+                    coeffs_vec = pyshtools.shtools.SHExpandDHC(quantity_values, sampling=2, 
+                                                               lmax_calc=lmax_crop)*window[dump_i]
+                else:
+                    coeffs_vec = pyshtools.shtools.SHExpandDHC(quantity_values, sampling=2)*window[dump_i]
+                # Pad out the data and store it into the mmap'd array
+                shcoeffs_by_radius_by_dump[0,dump_i,] = np.pad(coeffs_vec, 
+                                                               ((0,0),(0,lmax+1-shape(coeffs_vec)[1]),
+                                                                (0,lmax+1-shape(coeffs_vec)[2])), 
+                                                               'constant', constant_values=0)
+                sys.stdout.flush()
+            except KeyboardInterrupt:
+                print(f"Stopping early at dump {dump_number}")
+                break
+            except Exception as err:
+                print("Skipping dump", dump_number)
+                continue
+            used_dumps.append(dump_number)
+        used_masses = []
+        used_radii = []
+        if mass != None:
+            try:
+                # Take the Fourier transform along the time axis.
+                ft = np.fft.fftn(
+                    shcoeffs_by_radius_by_dump[0],#*window[:,np.newaxis,np.newaxis,np.newaxis],
+                    axes=[0]
+                )
+                #print("took fft, now taking SH spectrum of slices")
+                # Now compute the spherical harmonic power spectral density of those coefficients
+                spectrum = []
+                for j in range(shape(ft)[0]):
+                    psd = pyshtools.spectralanalysis.spectrum(ft[j,], convention='power', unit='per_l')
+                    spectrum.append(psd)
+                    pdf = None
+                # Save to a text file
+                tracked = f"{mass:05.2f}Msun"
+                #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
+                #spectrum = None
+                ft = None
+            except Exception as err:
+                print(" failed", err)
+            used_masses.append(mass)
+        else:
+            try:
+                # Take the Fourier transform along the time axis.
+                ft = np.fft.fftn(
+                    shcoeffs_by_radius_by_dump[0],#*window[:,np.newaxis,np.newaxis,np.newaxis],
+                    axes=[0]
+                )
+                #print("took fft, now taking SH spectrum of slices")
+                # Now compute the spherical harmonic power spectral density of those coefficients
+                spectrum = []
+                for j in range(shape(ft)[0]):
+                    psd = pyshtools.spectralanalysis.spectrum(ft[j,], convention='power', unit='per_l')
+                    spectrum.append(psd)
+                    pdf = None
+                # Save to a text file
+                tracked = f"{radius:05.2f}Mm"
+                #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
+                #spectrum = None
+                ft = None
+            except Exception as err:
+                print(" failed", err)
+            used_radii.append(radius)
+        del shcoeffs_by_radius_by_dump
+        os.remove(fname)
+
+        time_step_s = np.median(np.diff(self._rprofset.get_history().get('time(mins)')[used_dumps])) * 60
+        dump_numbers = used_dumps
+        spectrum = array(spectrum)
+        spectra_unnorm = spectrum
+        #print(spectra_unnorm[0],spectra_unnorm)
+        temporal_freqs = np.fft.fftfreq(spectra_unnorm.shape[0], time_step_s)
+        freq_max = np.max(temporal_freqs)*1e6
+        if fmax:
+            freq_max = fmax
+        spatial_freqs = arange(0,spectra_unnorm.shape[1])
+        # dt/N * (Mm^2 -> m^2) * ()
+        dt = time_step_s # 1/np.nanmax(temporal_freqs[temporal_freqs>0])
+        sampling_factor = dt/len(dump_numbers) * 1e12 * 1e-6 
+        spectrum = spectrum*sampling_factor
+
+        spatial_mask = argsort(spatial_freqs)
+        temporal_mask = argsort(temporal_freqs)
+
+        spec = (spectrum[temporal_mask,spatial_mask[:,np.newaxis]]).T
+
+        if makefigure:
+            # Create new figure
+            fig = pl.figure(figsize=(12,8))
+    
+            ax = pl.gca()
+            divider = make_axes_locatable(ax)
+        
+            # The main panel: 2d plot
+            im = ax.pcolormesh(
+                spatial_freqs[spatial_mask],#+0.5, careful with tick alignment
+                temporal_freqs[temporal_mask]*1e6,
+                np.log10(spec),
+                cmap='magma',
+                vmin=vmin,
+                vmax=vmax,
+                shading='auto',
+                rasterized=True
+            )
+            ax.set_ylabel("$f$ -- $\\mu Hz$")
+            ax.set_xlabel("Spherical Harmonic Degree")
+            ax.set_ylim(1, lmax);
+            ax.set_xlim(1, freq_max)
+            ax.set_facecolor('black')
+            
+            # Add a colour bar
+            cax = divider.append_axes('right', size='5%', pad=0.0)
+            fig.colorbar(im, cax=cax, orientation='vertical')
+            pl.title(f"power spectral density")
+            pl.ylabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\ell/\\mu Hz}}$")
+            
+            # Histogram on the left margin by summing along the frequency axis
+            ax_spectrum = divider.append_axes("left", 1.2, pad=0.0, sharey=ax)
+            ax_spectrum.plot(
+                np.log10(np.sum(spec, axis=1)),
+                temporal_freqs[temporal_mask]*1e6,
+                'k-',
+            )
+            ax_spectrum.set_ylim(ax.get_xlim())
+            ax_spectrum.set_ylabel("Frequency -- $\\mu Hz$")
+            ax_spectrum.xaxis.tick_top()
+            ax_spectrum.xaxis.set_label_position("top")
+            ax_spectrum.set_xlabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\\mu Hz}}$")
+            
+            # Histogram on the bottom margin by summiung along the wavenumber axis
+            ax_wavenum = divider.append_axes("bottom", 1.2, pad=0.0, sharex=ax)
+            pl.setp(ax.get_xticklabels(), visible=False)
+            x = spatial_freqs[spatial_mask]
+            deltafreq = np.mean(np.diff(temporal_freqs[temporal_mask]*1e6))
+            y = np.log10(np.sum(spec, axis=0)*deltafreq)
+
+            ax_wavenum.plot(x, y, 'k-')
+            
+            ax_wavenum.set_xlim(0,lmax)
+            ax_wavenum.set_xlabel("$\ell$")
+            ax_wavenum.yaxis.tick_right()
+            ax_wavenum.yaxis.set_label_position("right")
+            ax_wavenum.set_ylabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\ell}}$")
+            
+            pl.tight_layout()
+
+        if returnvalues:
+            return spatial_freqs[spatial_mask],temporal_freqs[temporal_mask]*1e6,spec
+        else:
+            return
+
+
+    def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, 
+                            radius=None, mass=None, plot=0, momsarray=[]):
+        '''
+        Calculates the power spectrum of any moms variable 
+
+        Power spectrum is calculated for variable 'varloc' at radius 'radius' for
+        dumps arange(dump_start, dump_stop+1, dump_step). The spectrum is averaged
+        over the ranfe of dumps given as inputs.
+        The power spectrum is expressed as power per spherical harmonic mode 'ell'.
+        
+        Note that power spectrums of velocities will be in Mm^2/s^2/ell
+
+        Parameters
+        ----------
+        varloc: str, int
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want the power spectrum of
+        dump_start: int
+            Dump number of the first dump to consider
+        dump_stop: int
+            Dump number of the last dump to consider
+        dump_step: int
+            Number of dumps between each dump to consider in the dump averaging
+        radius: float, optional
+            The radius of the sphere at which you want the power spectrum of 'varloc', in Mm
+            Note that if no radius is specified, then a mass must be specified
+        mass: float, optional
+            Mass M(R) at which to calculate the spectrum, in Msun
+            Note that if no mass is specified, then a radius must be specified
+        plot :: int
+            If > 0 make plot where value is fig number, tuned to show spectrum of ur 
+            for a radius in a H-core-25 convective core; may or may not look good for 
+            other vars, runs; default is 0
+        momsarray: 3D array, optional
+            If present, the power spectrum of this array is computed instead
+            varloc, dump_start, dump_stop, and dump_step are then ignored
+            momsarray must be on the same Cartesian grid as the moms instance
+
+        Returns
+        -------
+        ell: np.ndarray
+            Spherical harmonics modes ell
+        power_ell: np.ndarray
+            Power per model ell
+        '''
+
+        if (radius==None and mass==None) or (radius!=None and mass!=None):
+            err = 'You must select either a radius or a mass where to calculate the spectrum'
+            self._messenger.error(err)
+        
+        radiusinput = radius
+        massinput = mass
+
+        if len(momsarray)>0: # reading data directly from momsarray
+            var = momsarray
+            if radiusinput != None:
+                radius = radiusinput
+            elif massinput != None:
+                r = self._rprofset.get('R', fname=dump)
+                m = self._rprofset.compute_m(dump) * code_mass # Msun
+                radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
+
+            # what is lmax at this radius?
+            lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
+
+            # Calculate spherical harmonics up to lmax
+            var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+
+            # get coefficients and power
+            coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
+            power_ell = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')
+
+            ell = np.arange(0, lmax_r+1)
+
+        else: # reading data from the moms instance and over multiple dumps
+            dumps = np.arange(dump_start, dump_stop+1, dump_step)
+                    
+            idumpsuccess = 0
+
+            for i,dump in enumerate(tqdm(dumps)):
+                try:
+                    # get the desired variable
+                    var = self.get(varloc,fname=dump)
+
+                    if radiusinput != None:
+                        radius = radiusinput
+                    elif massinput != None:
+                        r = self._rprofset.get('R', fname=dump)
+                        m = self._rprofset.compute_m(dump) * code_mass # Msun
+                        radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
+
+                    # what is lmax at this radius?
+                    lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
+
+                    # Calculate spherical harmonics up to lmax
+                    var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+
+                    # get coefficients and power
+                    coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
+                    power_ell_dump = pyshtools.spectralanalysis.spectrum(coeffs, unit='per_l')
+
+                    if idumpsuccess==0:
+                        power_ell = power_ell_dump
+                    else:
+                        power_ell = power_ell + power_ell_dump
+                    idumpsuccess += 1
+                except:
+                    self._messenger.warning('Skipping dump '+str(dump))
+                    continue
+
+            ell = np.arange(0, lmax_r+1)
+            power_ell = power_ell/idumpsuccess
+  
+        if plot > 0:
+            pl.close(plot);pl.figure(plot)
+            pl.loglog(ell, 1.e12*power_ell,'-')
+            pmax=np.max(1.e12*power_ell)
+            xx = np.linspace(7*max(ell[0],1),0.7*ell[-1],5)
+            pl.loglog(xx,5.*pmax*xx**(-5/3.),'--',lw=0.5,)
+            pl.ylim(1e12*power_ell[-1],3*pmax)
+            pl.ylabel('$ power / \mathrm{[m^2/s^2]}$'); pl.xlabel('$l$')
+            pl.text(0.1*ell[-1],0.1*pmax,'$l^{-5/3}$')
+
+        return ell, power_ell
+
+    
     def norm(self, ux, uy, uz, fname=None):
         '''
         Norm of some vector quantity. It is written as ux, uy, uz which will give |u| through
