@@ -405,7 +405,15 @@ def cases_table(data, latex = False, cases = None):
         for i,case in enumerate(cases):
             print("{:40s} {:7.1f} {:5d} {:8d} {:8.1f}".format(case,data[case]['X_Lfactors'], \
                       data[case]['grids'],data[case]['NDump'][-1],data[case]['time(mins)'][-1]/60.))
-        
+    case_table = {}
+    for case in cases:
+        case_table[case] = {}
+        case_table[case]['X heat']   = round(data[case]['X_Lfactors'])
+        case_table[case]['grids']    = data[case]['grids']
+        case_table[case]['max dump'] = data[case]['NDump'][-1]
+        case_table[case]['max t_hr'] = round(data[case]['time(mins)'][-1]/60.)
+ 
+    return cases, case_table
 
 def where_near(t,tt_arr,num_arr=None):
     '''Finds n in num that corresponds closest to t in tt_sec
