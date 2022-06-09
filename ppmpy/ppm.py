@@ -759,6 +759,8 @@ class PPMtools:
                                   'Drad':self.compute_Drad, \
                                   'nabla_rho':self.compute_nabla_rho, \
                                   'nabla_rho_ad':self.compute_nabla_rho_ad, \
+                                  'Gamma_1':self.compute_Gamma1, \
+                                  'csound':self.compute_csound, \
                                   'lum_rad':self.compute_lum_rad, \
                                   'lum_conv':self.compute_lum_conv, \
                                   'lum_kin':self.compute_lum_kin, \
@@ -942,6 +944,41 @@ class PPMtools:
         Ur = np.sqrt(U**2 - Ut**2)
         return Ur
 
+    def compute_Gamma1(self, fname, num_type='ndump', radeos=True):
+        '''
+        Returns the adiabatic exponent Gamma_1
+        '''
+        if radeos:
+            beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
+            Gamma1 = (32-24*beta-3*beta**2)/(24-21*beta)
+        else:
+            if self.__isyprofile:
+                r = self.get('Y', fname, num_type=num_type, resolution='l')
+
+            if self.__isRprofSet:
+                r = self.get('R', fname, num_type=num_type, resolution='l')
+
+            Gamma1 = (5./3.)*np.ones(len(r))
+        return Gamma1
+
+    def compute_csound(self, fname, num_type='ndump', radeos=True):
+        '''
+        Returns the sound speed in code units
+        '''
+        Gamma1 = self.compute_Gamma1(fname, num_type=num_type, radeos=radeos)
+        if self.__isyprofile:
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+
+        csound = np.sqrt(Gamma1*p/rho)
+        return csound
+
     def compute_nabla_T(self, fname, num_type='ndump'):
         '''
         Returns the actual temperature gradient nabla
@@ -1089,6 +1126,7 @@ class PPMtools:
         mu = airmu*(1-FV) + cldmu*FV
 
         return mu
+
 
     def compute_Drad(self, fname, num_type='ndump', boost=True, radeos=True):
         '''
