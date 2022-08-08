@@ -13022,9 +13022,10 @@ class MomsDataSet:
         shcoeffs_by_radius_by_dump = np.memmap(fname, dtype='csingle', mode='w+', shape=(
             1,len(extract_dumps),2,lmax+1,lmax+1))
 
-        # sqrt(8/3) is to conserve energy despite windowing
+        # 2.0 is to conserve energy despite windowing
         # e.g., http://www.vibrationdata.com/tutorials_alt/Hanning_compensation.pdf
-        window =  scipy.signal.windows.hann(shape(shcoeffs_by_radius_by_dump)[1], sym=False)*sqrt(8/3)
+        # e.g., https://community.sw.siemens.com/s/article/window-correction-factors
+        window =  scipy.signal.windows.hann(shape(shcoeffs_by_radius_by_dump)[1], sym=False)*2.0
 
 
         for (dump_i, dump_number) in enumerate(tqdm(extract_dumps)):
