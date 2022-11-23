@@ -13283,9 +13283,8 @@ class MomsDataSet:
         var : str
             Variable name
         num_points : int
-            Number of points to be spherically distributed. Must be atleast 30.
-            It is recommended you more points for a more evenly spread distribution.
-            See Notes for more information.
+            Number of points to be spherically distributed (approximate); see Notes for more information.
+            It is recommended you use atleast 30 points for a more evenly spread distribution.
         radius : int
             Radius at which all the points will be spherically distributed
         dump_init : int
@@ -13329,10 +13328,6 @@ class MomsDataSet:
             yind = find_nearest(yy[0,:,0],yval)
             zind = find_nearest(zz[:,0,0],zval)
             return getvar[xind,yind,zind]
-        
-        min_num_points = 30
-        if num_points < min_num_points:
-            raise ValueError("num_points must be atleast {}".format(min_num_points))
             
         start_timer = time.time()
         N,total_points = getN(num_points)
@@ -13359,7 +13354,6 @@ class MomsDataSet:
             
         end_timer = time.time()
         sys.stdout.write("\b  |  run time: {:3.0f} minutes and {:2.0f} seconds".format((end_timer-start_timer)//60,(end_timer-start_timer)%60))
-
         return data
     
     
