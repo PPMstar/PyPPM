@@ -13237,7 +13237,7 @@ class MomsDataSet:
             return
 
         
-    def spherically_distribute(self, var, num_points, radius, dump_init, dump_stop):
+    def spherically_distribute(self, var, num_points, radius, dump_init, dump_stop, dump_step=1):
         """
         This function spherically distributes a specified number of points around a sphere at the desired radius.
         It returns data of the specified variable at these points.
@@ -13255,12 +13255,13 @@ class MomsDataSet:
             First dump to get the data at
         dump_stop : int
             Last dump to get the data at
+        dump_step : int, optional
+            Number of dumps between each dump which is used for computation. Default is 1
 
         Returns
         -------
-        data : list
+        data : np.ndarray
             Data values from the specified variable during the given dump range at each of the given points.
-            For num_points=32 and dump_stop-dump_init=10 -> len(data)=320
 
         Notes
         -----
@@ -13305,7 +13306,8 @@ class MomsDataSet:
             phis = np.linspace(0,360,num_phis)[:-1]*(np.pi/180)
 
             for index2,phi in enumerate(phis):
-                dumps = range(dump_init,dump_stop)
+                dumps = range(dump_init,dump_stop, dump_step)
+                data_at_point = []
                 
                 for index3,dump in enumerate(dumps):
                     # these lines print/update a progress monitor
@@ -13314,11 +13316,13 @@ class MomsDataSet:
                     dump_str = "t: {:3}%".format(int(((index3+1)/len(dumps))*100))
                     points_str = "points used: {}".format(total_points)
                     sys.stdout.write("\r"+points_str+"  |  "+theta_str+" "+phi_str+" "+dump_str)
-                    data.append(get_var_data(var,dump,x,y,z,radius,theta,phi))
+                    data_at_point.append(get_var_data(var,dump,x,y,z,radius,theta,phi))
+                    
+                data.append(data_at_point)
             
         end_timer = time.time()
         sys.stdout.write("\b  |  run time: {:3.0f} minutes and {:2.0f} seconds".format((end_timer-start_timer)//60,(end_timer-start_timer)%60))
-        return data
+        return np.array(data).T
     
     
     def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, 
