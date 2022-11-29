@@ -942,6 +942,7 @@ class PPMtools:
         Ur = np.sqrt(U**2 - Ut**2)
         return Ur
 
+
     def compute_nabla_T(self, fname, num_type='ndump'):
         '''
         Returns the actual temperature gradient nabla
@@ -1089,6 +1090,7 @@ class PPMtools:
         mu = airmu*(1-FV) + cldmu*FV
 
         return mu
+
 
     def compute_Drad(self, fname, num_type='ndump', boost=True, radeos=True):
         '''
@@ -13234,7 +13236,95 @@ class MomsDataSet:
         else:
             return
 
+        
+    def spherically_distribute(self, var, num_points, radius, dump_init, dump_stop, dump_step=1):
+        """
+        This function spherically distributes a specified number of points around a sphere at the desired radius.
+        It returns data of the specified variable at these points.
 
+        Parameters
+        ----------
+        var : str
+            Variable name
+        num_points : int
+            Number of points to be spherically distributed (approximate); see Notes for more information.
+            It is recommended you use atleast 30 points for a more evenly spread distribution.
+        radius : int
+            Radius at which all the points will be spherically distributed
+        dump_init : int
+            First dump to get the data at
+        dump_stop : int
+            Last dump to get the data at
+        dump_step : int, optional
+            Number of dumps between each dump which is used for computation. Default is 1
+
+        Returns
+        -------
+        data : np.ndarray
+            Data values from the specified variable during the given dump range at each of the given points.
+
+        Notes
+        -----
+        The number of points which are distributed is often not the same as the value specified by the user. 
+        Due to the scaling factor used to disperse the points around the sphere, a similar value is generated.
+        When the value is not the same, the generated value will always be larger.
+        
+        """
+
+        import sys
+
+        def getN(user_num_points):
+            N = 0; total_points = 0
+            while total_points < user_num_points:
+                N += 1
+                total_points = sum([int(np.sin(theta*(np.pi/180))*N-1) for theta in np.linspace(0,180,int(N/2))[1:-1]])
+            return N,total_points
+
+        def find_nearest(array, value):
+            """returns index of value from the array that is nearest to the input value"""
+            return (np.abs(array - value)).argmin()
+
+        def get_var_data(var,dump,xx,yy,zz,rr,th,ph):
+            getvar = self.get(var,fname=dump)
+            xval = rr*np.sin(th)*np.cos(ph)
+            yval = rr*np.sin(th)*np.sin(ph)
+            zval = rr*np.cos(th)
+            xind = find_nearest(xx[0,0,:],xval)
+            yind = find_nearest(yy[0,:,0],yval)
+            zind = find_nearest(zz[:,0,0],zval)
+            return getvar[xind,yind,zind]
+            
+        start_timer = time.time()
+        N,total_points = getN(num_points)
+        data = []
+        thetas = np.linspace(0,180,int(N/2))[1:-1]*(np.pi/180)
+        max_num_phis = max([int(np.sin(theta)*N) for theta in thetas])
+        x,y,z = self.get_cgrid()
+        
+        for index1,theta in enumerate(thetas):        
+            num_phis = int(np.sin(theta)*N)
+            phis = np.linspace(0,360,num_phis)[:-1]*(np.pi/180)
+
+            for index2,phi in enumerate(phis):
+                dumps = range(dump_init,dump_stop, dump_step)
+                data_at_point = []
+                
+                for index3,dump in enumerate(dumps):
+                    # these lines print/update a progress monitor
+                    theta_str = "θ: {:3}%".format(int(((index1+1)/len(thetas))*100))
+                    phi_str = "φ: {:3}%".format(int(((index2+1)/len(phis))*100))
+                    dump_str = "t: {:3}%".format(int(((index3+1)/len(dumps))*100))
+                    points_str = "points used: {}".format(total_points)
+                    sys.stdout.write("\r"+points_str+"  |  "+theta_str+" "+phi_str+" "+dump_str)
+                    data_at_point.append(get_var_data(var,dump,x,y,z,radius,theta,phi))
+                    
+                data.append(data_at_point)
+            
+        end_timer = time.time()
+        sys.stdout.write("\b  |  run time: {:3.0f} minutes and {:2.0f} seconds".format((end_timer-start_timer)//60,(end_timer-start_timer)%60))
+        return np.array(data).T
+    
+    
     def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, 
                             radius=None, mass=None, plot=0, momsarray=[]):
         '''
