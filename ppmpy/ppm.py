@@ -13329,7 +13329,7 @@ class MomsDataSet:
     
     def get_var_at_point(self, var, radius, theta, phi, dump_init, dump_stop, dump_step=1):
         """
-        This function returns the desired quantity at a given point in spherical polar coordinates for a specified dump range.
+        This function returns the desired quantity at a given point for a specified dump range.
         
         Parameters
         ----------
@@ -13367,12 +13367,18 @@ class MomsDataSet:
             yind = find_nearest(yy[0,:,0],yval)
             zind = find_nearest(zz[:,0,0],zval)
             return getvar[xind,yind,zind]
+        
+        def check_dump_exists(dump):
+            """checks that the dump exists
+            looks for the dir and if anything is inside"""
+            path = os.path.join(moms_dir,str(dump).zfill(4))
+            return os.path.isdir(path) and os.listdir(path)
 
         start_timer = time.time()
         data = []
         x,y,z = self.get_cgrid()
 
-        dumps = range(dump_init,dump_stop, dump_step)
+        dumps = [dump for dump in range(dump_init,dump_stop,dump_step) if check_dump_exists(dump)]
         
         point_str = "point used: ({}, {}, {})".format(radius,theta,phi)
         radius *= np.pi/180; theta *= np.pi/180; phi *= np.pi/180
