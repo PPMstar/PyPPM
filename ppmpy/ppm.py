@@ -13269,6 +13269,9 @@ class MomsDataSet:
         Due to the scaling factor used to disperse the points around the sphere, a similar value is generated.
         When the value is not the same, the generated value will always be larger.
         
+        This function does not use any interpolation methods, instead it simply uses the nearest grid point
+        when it looks for a specific value. As a result, this method may return values that are near the given
+        radius but are not exactly at this value.
         """
 
         import sys
