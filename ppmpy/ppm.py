@@ -378,6 +378,7 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
     pl.tight_layout()
     pl.savefig(key+fname+'.pdf')
     return var_means_dict
+
 def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
     '''Initialize Rprof data for several runs in one directory
     
@@ -1105,6 +1106,7 @@ class PPMtools:
         mu = airmu*(1-FV) + cldmu*FV
 
         return mu
+
 
     def compute_Drad(self, fname, num_type='ndump', boost=True, radeos=True):
         '''
@@ -12995,6 +12997,57 @@ class MomsDataSet:
 
         return lmax, N, npoints
 
+    def sk_plot(self, fname, rlim = [1400,1600], delta_R = 10, ifig=1):
+        '''
+        Profile of S*K for given dump and radius range and (by default) makes plot.
+        
+        Parameters
+        ----------
+        fname: 
+            dump for SK data
+        rlim:
+            radius range
+        delta_R:
+            radius interval, should not be smaller than grid cell
+        ifig:
+            The figure number defaulted to 1. No plot if < 1
+        
+        '''
+        # setting up the needed radii to see the convective boundary and learning the run id
+        res = int(self._rprofset.get('Nx',fname)) # the run resolution
+        radii = np.arange(rlim[0], rlim[1],delta_R)
+        run_name = self._run_id
+           
+    
+        # Loading the data needed to create the plot
+        ux = self.get(1, fname=fname)
+        uy = self.get(2, fname=fname)
+        uz = self.get(3, fname=fname)
+        ur, utheta, uphi = self.get_spherical_components(ux, uy, uz)
+        
+        def __processRad(rad):
+            #Get utheta_r and uphi_r values and the skew/ kurtosis
+            print("Processing Radius: {}".format(rad), end='\r')
+            npoints = self.sphericalHarmonics_lmax(rad)[-1]
+            ur_r = self.get_spherical_interpolation(ur, rad, npoints=npoints, plot_mollweide=True)[0]
+            ur_r *= 1e3
+            kurt = scipy.stats.kurtosis(ur_r)
+            skew = scipy.stats.skew(ur_r)
+            SK = kurt * skew
+            return [SK]
+        
+        # loading the data
+        plot_val = [__processRad(i) for i in radii]
+        plot_val = np.array(plot_val)
+        if ifig > 0:    
+            pl.close(ifig);pl.figure(ifig)
+            pl.plot(radii, plot_val, 'tab:blue')
+            pl.title('{} - S$\cdot$K - Dump {}'.format(run_name, fname));pl.xlabel('Radii (Mm)');pl.ylabel('S$\cdot$K')        
+            pl.tight_layout()
+            pl.show()
+        return (radii, plot_val)
+
+
 
     def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
                         makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None):
@@ -13277,7 +13330,95 @@ class MomsDataSet:
         else:
             return
 
+        
+    def spherically_distribute(self, var, num_points, radius, dump_init, dump_stop, dump_step=1):
+        """
+        This function spherically distributes a specified number of points around a sphere at the desired radius.
+        It returns data of the specified variable at these points.
 
+        Parameters
+        ----------
+        var : str
+            Variable name
+        num_points : int
+            Number of points to be spherically distributed (approximate); see Notes for more information.
+            It is recommended you use atleast 30 points for a more evenly spread distribution.
+        radius : int
+            Radius at which all the points will be spherically distributed
+        dump_init : int
+            First dump to get the data at
+        dump_stop : int
+            Last dump to get the data at
+        dump_step : int, optional
+            Number of dumps between each dump which is used for computation. Default is 1
+
+        Returns
+        -------
+        data : np.ndarray
+            Data values from the specified variable during the given dump range at each of the given points.
+
+        Notes
+        -----
+        The number of points which are distributed is often not the same as the value specified by the user. 
+        Due to the scaling factor used to disperse the points around the sphere, a similar value is generated.
+        When the value is not the same, the generated value will always be larger.
+        
+        """
+
+        import sys
+
+        def getN(user_num_points):
+            N = 0; total_points = 0
+            while total_points < user_num_points:
+                N += 1
+                total_points = sum([int(np.sin(theta*(np.pi/180))*N-1) for theta in np.linspace(0,180,int(N/2))[1:-1]])
+            return N,total_points
+
+        def find_nearest(array, value):
+            """returns index of value from the array that is nearest to the input value"""
+            return (np.abs(array - value)).argmin()
+
+        def get_var_data(var,dump,xx,yy,zz,rr,th,ph):
+            getvar = self.get(var,fname=dump)
+            xval = rr*np.sin(th)*np.cos(ph)
+            yval = rr*np.sin(th)*np.sin(ph)
+            zval = rr*np.cos(th)
+            xind = find_nearest(xx[0,0,:],xval)
+            yind = find_nearest(yy[0,:,0],yval)
+            zind = find_nearest(zz[:,0,0],zval)
+            return getvar[xind,yind,zind]
+            
+        start_timer = time.time()
+        N,total_points = getN(num_points)
+        data = []
+        thetas = np.linspace(0,180,int(N/2))[1:-1]*(np.pi/180)
+        max_num_phis = max([int(np.sin(theta)*N) for theta in thetas])
+        x,y,z = self.get_cgrid()
+        
+        for index1,theta in enumerate(thetas):        
+            num_phis = int(np.sin(theta)*N)
+            phis = np.linspace(0,360,num_phis)[:-1]*(np.pi/180)
+
+            for index2,phi in enumerate(phis):
+                dumps = range(dump_init,dump_stop, dump_step)
+                data_at_point = []
+                
+                for index3,dump in enumerate(dumps):
+                    # these lines print/update a progress monitor
+                    theta_str = "θ: {:3}%".format(int(((index1+1)/len(thetas))*100))
+                    phi_str = "φ: {:3}%".format(int(((index2+1)/len(phis))*100))
+                    dump_str = "t: {:3}%".format(int(((index3+1)/len(dumps))*100))
+                    points_str = "points used: {}".format(total_points)
+                    sys.stdout.write("\r"+points_str+"  |  "+theta_str+" "+phi_str+" "+dump_str)
+                    data_at_point.append(get_var_data(var,dump,x,y,z,radius,theta,phi))
+                    
+                data.append(data_at_point)
+            
+        end_timer = time.time()
+        sys.stdout.write("\b  |  run time: {:3.0f} minutes and {:2.0f} seconds".format((end_timer-start_timer)//60,(end_timer-start_timer)%60))
+        return np.array(data).T
+    
+    
     def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, 
                             radius=None, mass=None, plot=0, momsarray=[]):
         '''
@@ -13394,12 +13535,16 @@ class MomsDataSet:
         if plot > 0:
             pl.close(plot);pl.figure(plot)
             pl.loglog(ell, 1.e12*power_ell,'-')
-            pmax=np.max(1.e12*power_ell)
-            xx = np.linspace(7*max(ell[0],1),0.7*ell[-1],5)
-            pl.loglog(xx,5.*pmax*xx**(-5/3.),'--',lw=0.5,)
-            pl.ylim(1e12*power_ell[-1],3*pmax)
+
+            ell_scale = 6
+            xx = np.linspace(0.6*ell_scale,0.7*ell[-1],5)
+            fac = 1./(ell_scale**(-5/3))
+            pow_scale = float(power_ell[ell == ell_scale])
+            pmax = 1.e12*power_ell.max()
+            pl.loglog(xx,1.e12*pow_scale*fac*xx**(-5/3),'--',lw=0.5,)
+            pl.ylim(3*1e12*power_ell[-1],3*pmax)
             pl.ylabel('$ power / \mathrm{[m^2/s^2]}$'); pl.xlabel('$l$')
-            pl.text(0.1*ell[-1],0.1*pmax,'$l^{-5/3}$')
+            pl.text(1.2*xx[0],0.2*1.e12*pow_scale*fac*xx[1]**(-5/3),'$l^{-5/3}$')
 
         return ell, power_ell
 
