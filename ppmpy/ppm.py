@@ -943,7 +943,22 @@ class PPMtools:
         Ur = np.sqrt(U**2 - Ut**2)
         return Ur
 
+    def compute_nabla_mu(self, fname, num_type='ndump'):
+        '''
+        Returns the mean molecular weight gradient
+        '''
+        if self.__isyprofile:
+            p = self.get('P', fname, num_type=num_type, resolution='l')
 
+        if self.__isRprofSet:
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+
+        mu = self.compute_mu(fname, num_type=num_type)
+
+        nabla_mu = cdiff(np.log(mu))/(cdiff(np.log(p)) + 1e-100)
+        return nabla_mu
+            
     def compute_nabla_T(self, fname, num_type='ndump'):
         '''
         Returns the actual temperature gradient nabla
@@ -1342,30 +1357,57 @@ class PPMtools:
         g = G_code*m/r**2
         return g
 
-    def compute_N2(self, fname, num_type='ndump', radeos=True):
+    def compute_N2(self, fname, num_type='ndump', radeos=True, components=False):
+        '''
+        Method to compute the N2 profile
+
+        Returns N2 if components=False, returns N2,N2_T,N2_mu if components=True,
+        where N2_T and N2_mu are the temperature and molecular weight gradient
+        contributions to the total N2.
+        '''
+        
+        Rgasconst = 8.314472471220217
+        aconst = 756.5767381646406
         if self.__isyprofile:
             if radeos:
                 print('radeos option not implemented for YProfile input.')
                 return None
             r = self.get('Y', fname, num_type=num_type, resolution='l')
-
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l') 
+            
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
-
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+            
         g = self.compute_g(fname, num_type=num_type)
         Hp = self.compute_Hp(fname, num_type=num_type)
-        nabla_rho = self.compute_nabla_rho(fname, num_type=num_type)
-        nabla_rho_ad = self.compute_nabla_rho_ad(fname, num_type=num_type,
-                       radeos=radeos)
-        N2 = (g/Hp)*(nabla_rho - nabla_rho_ad)
+        T = self.get('T9', fname, num_type=num_type, resolution='l')
+        mu = self.compute_mu(fname, num_type=num_type)
+        if radeos:
+            delta = (mu/rho/Rgasconst)*(p/T+aconst*T**3)
+        else:
+            delta = 1
+        phi = 1
+        nabla_mu = self.compute_nabla_mu(fname, num_type=num_type)
+        nabla_T = self.compute_nabla_T(fname, num_type=num_type)
+        nabla_T_ad = self.compute_nabla_T_ad(fname, num_type=num_type, radeos=radeos)
+        N2_T = (g*delta/Hp)*(nabla_T_ad-nabla_T)
+        N2_mu = g*phi*nabla_mu/Hp
+        N2 = N2_T + N2_mu
         if self.astrounit['on']:
         # This N^2 is an angular frequency. We are plotting in asteroseismology the linear or ordinary frequency, which is f = N/2pi
         # We also wish to plot f^2 in units of muHz^2; the conversion factor including both effects is 25330295910.584446 (see notebook 
         # http://206-12-89-164.cloud.computecanada.ca/csa/hcore-m25-letter/-/blob/master/paper_gas/scratch_pad.ipynb)
             N2 = N2*25330295910.6  # make unit of N muHz^2 and linear frequency
             self.astrounit[self.quantity] = units.uHz**2
-
-        return N2
+        if components==False:
+            return N2
+        else:
+            return N2,N2_T,N2_mu
 
     def compute_m(self, fname, num_type='ndump'):
         if self.__isyprofile:
