@@ -306,15 +306,17 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
 
     '''
     var_means_dict = {} 
-    for case in runs:
-        var_means_dict[case] = {}
+#    for case in runs:
+#        var_means_dict[case] = {}
     pl.close(ifig); fig=pl.figure(ifig,figsize=(figsizes[0],figsizes[1]))
     m_hr = arange(*mrange_interp)
     s = 0
     num_type = 'NDump' 
     for k,f_hp in enumerate(f_hps):
-        var_means = []
+        var_means_dict[f_hp]={}
+        var_means = {}
         for i,case in enumerate(runs):
+            var_means[case] = {}
             print(f"Case: {case:s} f_hp = {f_hp:4.2}")
             NDump = data[case]['NDump']
             timemins = data[case]['time(mins)']
@@ -367,10 +369,10 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 if len(runs)  > 1 or "runs"  in legends: label += case
                 if len(varss) > 1 or "varss" in legends: label += ' '+var
                 if len(f_hps) > 1 or "f_hps" in legends: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
-                pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
-                     label=label, lw=lw)
-            var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
-        var_means_dict[case][f_hp] = var_means
+                pl.plot(times/60.,ything,utils.linestylecb(k)[0],\
+                        color=utils.colourblind((i+1)*(j+1)),label=label, lw=lw)
+                var_means[case][var]=mean(var_datas[var][(times/60>t_transient_hr)])
+            var_means_dict[f_hp] = var_means
     if ylab == None: 
         ylab = varss[0]
     pl.ylabel(ylab);pl.xlabel('$t / \mathrm{[h]}$')
