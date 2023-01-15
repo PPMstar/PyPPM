@@ -13290,6 +13290,8 @@ class MomsDataSet:
             ax.set_ylim(1, lmax);
             ax.set_xlim(1, freq_max)
             ax.set_facecolor('black')
+            ax.get_yaxis().set_visible(False)
+            ax.get_xaxis().set_visible(False)
             
             # Add a colour bar
             cax = divider.append_axes('right', size='5%', pad=0.0)
