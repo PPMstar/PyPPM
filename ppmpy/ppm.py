@@ -76,6 +76,7 @@ plots the data.
 """
 
 from __future__ import (division,print_function)
+from array import array
 
 from builtins import zip
 from builtins import input
@@ -230,14 +231,18 @@ def get_units(show=False):
 
 
 
-def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
-                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=[0,"runs","varss","f_hps"], \
-                        lw = 1.0, vel_km = True,NDump_range = None, NDump_range_vals = (500,1000),\
-                        mrange_interp = (12.,14.,0.0001), sparse = 10, t_transient_hr = 500, figsizes = (8,5), ifig=1394):
-    '''
-    This function extracts time-evolution of a RProf column data quantity 
+def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo",\
+                        fname = '-Ut', logy = False, ylab=None, xlims=(None,None), \
+                        ylims=(None,None), legends=[0,"runs","varss","f_hps"],\
+                        lw = 1.0, vel_km = True,NDump_range = None, \
+                        NDump_range_vals = (500,1000), mrange_interp = (12.,14.,0.0001),\
+                        sparse = 10, t_transient_hr = 500, figsizes = (8,5), \
+                        ifig=1394, save_plot=False):
+    '''This function extracts time-evolution of a RProf column data quantity 
     at pressure-scale height fraction above/below N2-peak.
 
+    data :: dictionary
+      a data object containing a collection of runs and created with ppm.initialize_cases
     varss :: list 
          list of column items from RProf files for which time evolution is 
          shown
@@ -283,26 +288,35 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
       interpret as NDump_start,NDump_end according to value of NDump_range
 
     mrange_interp :: tuple
-      m_low, m_up, delta_m specifies range for high-res interpolation to find N2-peak, N2-peak must be in this mass range
+      m_low, m_up, delta_m specifies range for high-res interpolation
+      to find N2-peak, N2-peak must be in this mass range
 
     sparse :: int
       take every sparses dump to save time for quick look  
 
     t_transient_hr :: float
-      for populating var_means_dict (e.g. for convergence plots) ignore this many hrs and take mean of rest
+      for populating var_means_dict (e.g. for convergence plots)
+      ignore this many hrs and take mean of rest
 
     figsizes :: tuple
       figsize of figure
 
     ifig :: int
       figure number
+    
+    saveplot :: boolean
+      if True save plot to pdf, default is False
 
+    Returns:
+    --------
+
+    var_means_dict
 
     Examples:
     ---------
 
       vars = ['lum1','lum2','lum3']
-      vars  = ['|Ur|','|Ut|']   
+      vars  = ['|Ur|','|Ut|']
 
     '''
     var_means_dict = {} 
@@ -313,9 +327,12 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
     s = 0
     num_type = 'NDump' 
     for k,f_hp in enumerate(f_hps):
+        var_means_dict[case][f_hp] = {}
         var_means = []
+        rad_means = []
+        N2_means = []
         for i,case in enumerate(runs):
-            print(f"Case: {case:s} f_hp = {f_hp:4.2}")
+            print(f"Case: {case:s} f_hp = {f_hp:4.2f}")
             NDump = data[case]['NDump']
             timemins = data[case]['time(mins)']
             # take average of variable between two radii and plot as function of time
@@ -324,22 +341,26 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
             for var in varss: 
                 var_datas[var] = []
             times = []
+            rads = []
+            N2s = []
             if NDump_range is None: 
                 NDump_end = NDump[-1]
                 NDump_start = NDump[0]
             elif NDump_range == "time":
-                NDump_start,NDump_end = [where_near(tt*60,timemins) for tt in [ *NDump_range_vals]]
+                NDump_start,NDump_end = [where_near(tt*60,timemins)
+                                         for tt in [ *NDump_range_vals]]
             elif NDump_range == "range":
                 NDump_start,NDump_end = NDump_range_vals
             else:
                 break
-            for dump in NDump[NDump_start:NDump_end:sparse]:
+            for dump in range(NDump_start,NDump_end+1,sparse):
                 try:
                     m = data[case]['rp'].compute_m(dump,num_type=num_type)*code_mass
                 except TypeError:
                     continue
                 Hp = data[case]['rp'].compute_Hp(dump,num_type=num_type) 
-                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,radeos=data[case]['radeos'])
+                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,\
+                                                  radeos=data[case]['radeos'])
                 tck = scipy.interpolate.splrep(m[::-1],N2[::-1], s=s)
                 N2_hr = scipy.interpolate.splev(m_hr, tck, der=0)
                 m_N2peak = m_hr[where(max(N2_hr)==N2_hr)[0][0]]
@@ -350,16 +371,22 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 dmdr_N2_peak = where_near(R_N2peak,R,dmdr)
                 Hp_N2_peak_m = dmdr_N2_peak*Hp_N2_peak_R   # H_p at N2_peak in Msun
                 mcoord = m_N2peak + f_hp*Hp_N2_peak_m
+                rad = f_R_from_m(mcoord)
                 times.append(data[case]['rp'].get('t',fname=dump)/60.)
+                rads.append(rad)
+                N2s.append(N2)
                 for var in varss:
                     thing = data[case]['rp'].get(var, dump)
                     if var in ['|Ut|','|Ur|','|U|'] and vel_km:
                         thing *= 1000 # unit of velocity Mm/s -> km/s
-                    f_thing_int = scipy.interpolate.interp1d(m,thing,kind='linear',fill_value="extrapolate")
+                    f_thing_int = scipy.interpolate.interp1d(m,thing,kind='linear',\
+                                                             fill_value="extrapolate")
                     var_datas[var].append(f_thing_int(mcoord))
             for var in varss: 
                 var_datas[var] = array(var_datas[var])
             times = array(times)
+            rads = array(rads)
+            N2s = array(N2s)
             for j,var in enumerate(varss): 
                 ything =  np.array(var_datas[var])
                 if logy: ything = np.log10(ything)
@@ -367,17 +394,21 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 if len(runs)  > 1 or "runs"  in legends: label += case
                 if len(varss) > 1 or "varss" in legends: label += ' '+var
                 if len(f_hps) > 1 or "f_hps" in legends: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
-                pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
-                     label=label, lw=lw)
+            pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)), label=label, lw=lw)
             var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
-        var_means_dict[case][f_hp] = var_means
+            rad_means.append(mean(rads))
+            N2_means.append(N2s.mean(axis=0))
+        var_means_dict[case][f_hp]['means'] = (rad_means,var_means,N2_means)
+        var_means_dict[case][f_hp]['varevol'] = (times,var_datas)
     if ylab == None: 
         ylab = varss[0]
     pl.ylabel(ylab);pl.xlabel('$t / \mathrm{[h]}$')
     pl.legend(loc=legends[0]); pl.xlim(*xlims);pl.ylim(*ylims)
     pl.tight_layout()
-    pl.savefig(key+fname+'.pdf')
+    if save_plot:
+        pl.savefig(key+fname+'.pdf')
     return var_means_dict
+
 def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
     '''Initialize Rprof data for several runs in one directory
     
