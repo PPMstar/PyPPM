@@ -8607,7 +8607,7 @@ def compare_entrained_material(yps, labels, fname, ifig = 1):
     fig.subplots_adjust( left = 0.17 )
 
 ########################################################################
-# Plotting funcitons that dont have supported dependencies
+# Plotting functions that dont have supported dependencies
 ########################################################################
 
 def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=None, l_max=6):
@@ -13027,9 +13027,10 @@ class MomsDataSet:
         uz = self.get(3, fname=fname)
         ur, utheta, uphi = self.get_spherical_components(ux, uy, uz)
         
-        def __processRad(rad):
+        def __processRad(self,rad):
             #Get utheta_r and uphi_r values and the skew/ kurtosis
-            print("Processing Radius: {}".format(rad), end='\r')
+            message = f"Processing Radius: {rad:5.0f}\r"
+            self._messenger.message(message)
             npoints = self.sphericalHarmonics_lmax(rad)[-1]
             ur_r = self.get_spherical_interpolation(ur, rad, npoints=npoints, plot_mollweide=True)[0]
             ur_r *= 1e3
@@ -13039,7 +13040,7 @@ class MomsDataSet:
             return [SK]
         
         # loading the data
-        plot_val = [__processRad(i) for i in radii]
+        plot_val = [__processRad(self,i) for i in radii]
         plot_val = np.array(plot_val)
         if ifig > 0:    
             pl.close(ifig);pl.figure(ifig)
@@ -13287,7 +13288,7 @@ class MomsDataSet:
             )
             ax.set_ylabel("$f$ -- $\\mu Hz$")
             ax.set_xlabel("Spherical Harmonic Degree")
-            ax.set_ylim(1, lmax);
+            ax.set_ylim(1, lmax)
             ax.set_xlim(1, freq_max)
             ax.set_facecolor('black')
             ax.get_yaxis().set_visible(False)
