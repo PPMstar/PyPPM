@@ -76,6 +76,7 @@ plots the data.
 """
 
 from __future__ import (division,print_function)
+from array import array
 
 from builtins import zip
 from builtins import input
@@ -230,14 +231,18 @@ def get_units(show=False):
 
 
 
-def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo", fname = '-Ut', logy = False,\
-                        ylab=None,  xlims=(None,None), ylims=(None,None), legends=[0,"runs","varss","f_hps"], \
-                        lw = 1.0, vel_km = True,NDump_range = None, NDump_range_vals = (500,1000),\
-                        mrange_interp = (12.,14.,0.0001), sparse = 10, t_transient_hr = 500, figsizes = (8,5), ifig=1394):
-    '''
-    This function extracts time-evolution of a RProf column data quantity 
+def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo",\
+                        fname = '-Ut', logy = False, ylab=None, xlims=(None,None), \
+                        ylims=(None,None), legends=[0,"runs","varss","f_hps"],\
+                        lw = 1.0, vel_km = True,NDump_range = None, \
+                        NDump_range_vals = (500,1000), mrange_interp = (12.,14.,0.0001),\
+                        sparse = 10, t_transient_hr = 500, figsizes = (8,5), \
+                        ifig=1394, save_plot=False):
+    '''This function extracts time-evolution of a RProf column data quantity 
     at pressure-scale height fraction above/below N2-peak.
 
+    data :: dictionary
+      a data object containing a collection of runs and created with ppm.initialize_cases
     varss :: list 
          list of column items from RProf files for which time evolution is 
          shown
@@ -283,38 +288,49 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
       interpret as NDump_start,NDump_end according to value of NDump_range
 
     mrange_interp :: tuple
-      m_low, m_up, delta_m specifies range for high-res interpolation to find N2-peak, N2-peak must be in this mass range
+      m_low, m_up, delta_m specifies range for high-res interpolation
+      to find N2-peak, N2-peak must be in this mass range
 
     sparse :: int
       take every sparses dump to save time for quick look  
 
     t_transient_hr :: float
-      for populating var_means_dict (e.g. for convergence plots) ignore this many hrs and take mean of rest
+      for populating var_means_dict (e.g. for convergence plots)
+      ignore this many hrs and take mean of rest
 
     figsizes :: tuple
       figsize of figure
 
     ifig :: int
       figure number
+    
+    saveplot :: boolean
+      if True save plot to pdf, default is False
 
+    Returns:
+    --------
+
+    var_means_dict
 
     Examples:
     ---------
 
       vars = ['lum1','lum2','lum3']
-      vars  = ['|Ur|','|Ut|']   
+      vars  = ['|Ur|','|Ut|']
 
     '''
     var_means_dict = {} 
-    for case in runs:
-        var_means_dict[case] = {}
+#    for case in runs:
+#        var_means_dict[case] = {}
     pl.close(ifig); fig=pl.figure(ifig,figsize=(figsizes[0],figsizes[1]))
     m_hr = arange(*mrange_interp)
     s = 0
     num_type = 'NDump' 
     for k,f_hp in enumerate(f_hps):
-        var_means = []
+        var_means_dict[f_hp]={}
+        var_means = {}
         for i,case in enumerate(runs):
+            var_means[case] = {}
             print(f"Case: {case:s} f_hp = {f_hp:4.2}")
             NDump = data[case]['NDump']
             timemins = data[case]['time(mins)']
@@ -324,22 +340,26 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
             for var in varss: 
                 var_datas[var] = []
             times = []
+            rads = []
+            N2s = []
             if NDump_range is None: 
                 NDump_end = NDump[-1]
                 NDump_start = NDump[0]
             elif NDump_range == "time":
-                NDump_start,NDump_end = [where_near(tt*60,timemins) for tt in [ *NDump_range_vals]]
+                NDump_start,NDump_end = [where_near(tt*60,timemins)
+                                         for tt in [ *NDump_range_vals]]
             elif NDump_range == "range":
                 NDump_start,NDump_end = NDump_range_vals
             else:
                 break
-            for dump in NDump[NDump_start:NDump_end:sparse]:
+            for dump in range(NDump_start,NDump_end+1,sparse):
                 try:
                     m = data[case]['rp'].compute_m(dump,num_type=num_type)*code_mass
                 except TypeError:
                     continue
                 Hp = data[case]['rp'].compute_Hp(dump,num_type=num_type) 
-                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,radeos=data[case]['radeos'])
+                N2 =  data[case]['rp'].compute_N2(dump,num_type=num_type,\
+                                                  radeos=data[case]['radeos'])
                 tck = scipy.interpolate.splrep(m[::-1],N2[::-1], s=s)
                 N2_hr = scipy.interpolate.splev(m_hr, tck, der=0)
                 m_N2peak = m_hr[where(max(N2_hr)==N2_hr)[0][0]]
@@ -350,16 +370,22 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 dmdr_N2_peak = where_near(R_N2peak,R,dmdr)
                 Hp_N2_peak_m = dmdr_N2_peak*Hp_N2_peak_R   # H_p at N2_peak in Msun
                 mcoord = m_N2peak + f_hp*Hp_N2_peak_m
+                rad = f_R_from_m(mcoord)
                 times.append(data[case]['rp'].get('t',fname=dump)/60.)
+                rads.append(rad)
+                N2s.append(N2)
                 for var in varss:
                     thing = data[case]['rp'].get(var, dump)
                     if var in ['|Ut|','|Ur|','|U|'] and vel_km:
                         thing *= 1000 # unit of velocity Mm/s -> km/s
-                    f_thing_int = scipy.interpolate.interp1d(m,thing,kind='linear',fill_value="extrapolate")
+                    f_thing_int = scipy.interpolate.interp1d(m,thing,kind='linear',\
+                                                             fill_value="extrapolate")
                     var_datas[var].append(f_thing_int(mcoord))
             for var in varss: 
                 var_datas[var] = array(var_datas[var])
             times = array(times)
+            rads = array(rads)
+            N2s = array(N2s)
             for j,var in enumerate(varss): 
                 ything =  np.array(var_datas[var])
                 if logy: ything = np.log10(ything)
@@ -367,17 +393,19 @@ def time_evol_r_Hp_vars(data,runs,varss  = ['|Ut|'], f_hps = [-1.0,1.0], key = "
                 if len(runs)  > 1 or "runs"  in legends: label += case
                 if len(varss) > 1 or "varss" in legends: label += ' '+var
                 if len(f_hps) > 1 or "f_hps" in legends: label += ' $ \delta H_\mathrm{p}=$'+str(f_hp)
-                pl.plot(times/60.,ything,utils.linestylecb(k)[0],color=utils.colourblind((i+1)*(j+1)),\
-                     label=label, lw=lw)
-            var_means.append(mean(var_datas[var][(times/60>t_transient_hr)]))
-        var_means_dict[case][f_hp] = var_means
+                pl.plot(times/60.,ything,utils.linestylecb(k)[0],\
+                        color=utils.colourblind((i+1)*(j+1)),label=label, lw=lw)
+                var_means[case][var]=mean(var_datas[var][(times/60>t_transient_hr)])
+            var_means_dict[f_hp] = var_means
     if ylab == None: 
         ylab = varss[0]
     pl.ylabel(ylab);pl.xlabel('$t / \mathrm{[h]}$')
     pl.legend(loc=legends[0]); pl.xlim(*xlims);pl.ylim(*ylims)
     pl.tight_layout()
-    pl.savefig(key+fname+'.pdf')
+    if save_plot:
+        pl.savefig(key+fname+'.pdf')
     return var_means_dict
+
 def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
     '''Initialize Rprof data for several runs in one directory
     
@@ -979,6 +1007,24 @@ class PPMtools:
         csound = np.sqrt(Gamma1*p/rho)
         return csound
 
+
+    def compute_nabla_mu(self, fname, num_type='ndump'):
+        '''
+        Returns the mean molecular weight gradient
+        '''
+        if self.__isyprofile:
+            p = self.get('P', fname, num_type=num_type, resolution='l')
+
+        if self.__isRprofSet:
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+
+        mu = self.compute_mu(fname, num_type=num_type)
+
+        nabla_mu = cdiff(np.log(mu))/(cdiff(np.log(p)) + 1e-100)
+        return nabla_mu
+            
+
     def compute_nabla_T(self, fname, num_type='ndump'):
         '''
         Returns the actual temperature gradient nabla
@@ -1377,30 +1423,57 @@ class PPMtools:
         g = G_code*m/r**2
         return g
 
-    def compute_N2(self, fname, num_type='ndump', radeos=True):
+    def compute_N2(self, fname, num_type='ndump', radeos=True, components=False):
+        '''
+        Method to compute the N2 profile
+
+        Returns N2 if components=False, returns N2,N2_T,N2_mu if components=True,
+        where N2_T and N2_mu are the temperature and molecular weight gradient
+        contributions to the total N2.
+        '''
+        
+        Rgasconst = 8.314472471220217
+        aconst = 756.5767381646406
         if self.__isyprofile:
             if radeos:
                 print('radeos option not implemented for YProfile input.')
                 return None
             r = self.get('Y', fname, num_type=num_type, resolution='l')
-
+            rho = self.get('Rho', fname, num_type=num_type, resolution='l')
+            p = self.get('P', fname, num_type=num_type, resolution='l') 
+            
         if self.__isRprofSet:
             r = self.get('R', fname, num_type=num_type, resolution='l')
-
+            rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
+                  self.get('Rho1', fname, num_type=num_type, resolution='l')
+            p = self.get('P0', fname, num_type=num_type, resolution='l') + \
+                self.get('P1', fname, num_type=num_type, resolution='l')
+            
         g = self.compute_g(fname, num_type=num_type)
         Hp = self.compute_Hp(fname, num_type=num_type)
-        nabla_rho = self.compute_nabla_rho(fname, num_type=num_type)
-        nabla_rho_ad = self.compute_nabla_rho_ad(fname, num_type=num_type,
-                       radeos=radeos)
-        N2 = (g/Hp)*(nabla_rho - nabla_rho_ad)
+        T = self.get('T9', fname, num_type=num_type, resolution='l')
+        mu = self.compute_mu(fname, num_type=num_type)
+        if radeos:
+            delta = (mu/rho/Rgasconst)*(p/T+aconst*T**3)
+        else:
+            delta = 1
+        phi = 1
+        nabla_mu = self.compute_nabla_mu(fname, num_type=num_type)
+        nabla_T = self.compute_nabla_T(fname, num_type=num_type)
+        nabla_T_ad = self.compute_nabla_T_ad(fname, num_type=num_type, radeos=radeos)
+        N2_T = (g*delta/Hp)*(nabla_T_ad-nabla_T)
+        N2_mu = g*phi*nabla_mu/Hp
+        N2 = N2_T + N2_mu
         if self.astrounit['on']:
         # This N^2 is an angular frequency. We are plotting in asteroseismology the linear or ordinary frequency, which is f = N/2pi
         # We also wish to plot f^2 in units of muHz^2; the conversion factor including both effects is 25330295910.584446 (see notebook 
         # http://206-12-89-164.cloud.computecanada.ca/csa/hcore-m25-letter/-/blob/master/paper_gas/scratch_pad.ipynb)
             N2 = N2*25330295910.6  # make unit of N muHz^2 and linear frequency
             self.astrounit[self.quantity] = units.uHz**2
-
-        return N2
+        if components==False:
+            return N2
+        else:
+            return N2,N2_T,N2_mu
 
     def compute_m(self, fname, num_type='ndump'):
         if self.__isyprofile:
@@ -8598,7 +8671,7 @@ def compare_entrained_material(yps, labels, fname, ifig = 1):
     fig.subplots_adjust( left = 0.17 )
 
 ########################################################################
-# Plotting funcitons that dont have supported dependencies
+# Plotting functions that dont have supported dependencies
 ########################################################################
 
 def get_power_spectrum_RProfile(yprof_path, rprof_path, r0, t_lim=None, t_res=None, l_max=6):
@@ -12990,6 +13063,58 @@ class MomsDataSet:
 
         return lmax, N, npoints
 
+    def sk_plot(self, fname, rlim = [1400,1600], delta_R = 10, ifig=1):
+        '''
+        Profile of S*K for given dump and radius range and (by default) makes plot.
+        
+        Parameters
+        ----------
+        fname: 
+            dump for SK data
+        rlim:
+            radius range
+        delta_R:
+            radius interval, should not be smaller than grid cell
+        ifig:
+            The figure number defaulted to 1. No plot if < 1
+        
+        '''
+        # setting up the needed radii to see the convective boundary and learning the run id
+        res = int(self._rprofset.get('Nx',fname)) # the run resolution
+        radii = np.arange(rlim[0], rlim[1],delta_R)
+        run_name = self._run_id
+           
+    
+        # Loading the data needed to create the plot
+        ux = self.get(1, fname=fname)
+        uy = self.get(2, fname=fname)
+        uz = self.get(3, fname=fname)
+        ur, utheta, uphi = self.get_spherical_components(ux, uy, uz)
+        
+        def __processRad(self,rad):
+            #Get utheta_r and uphi_r values and the skew/ kurtosis
+            message = f"Processing Radius: {rad:5.0f}\r"
+            self._messenger.message(message)
+            npoints = self.sphericalHarmonics_lmax(rad)[-1]
+            ur_r = self.get_spherical_interpolation(ur, rad, npoints=npoints, plot_mollweide=True)[0]
+            ur_r *= 1e3
+            kurt = scipy.stats.kurtosis(ur_r)
+            skew = scipy.stats.skew(ur_r)
+            SK = kurt * skew
+            return [SK]
+        
+        # loading the data
+        plot_val = [__processRad(self,i) for i in radii]
+        plot_val = np.array(plot_val)
+        if ifig > 0:    
+            pl.close(ifig);pl.figure(ifig)
+            pl.plot(radii, plot_val, 'tab:blue')
+            pl.title('{} - S$\cdot$K - Dump {}'.format(run_name, fname));pl.xlabel('Radii (Mm)');pl.ylabel('S$\cdot$K')        
+            pl.tight_layout()
+            pl.show()
+        return (radii, plot_val)
+
+
 
     def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
                         makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None):
@@ -13227,9 +13352,11 @@ class MomsDataSet:
             )
             ax.set_ylabel("$f$ -- $\\mu Hz$")
             ax.set_xlabel("Spherical Harmonic Degree")
-            ax.set_ylim(1, lmax);
+            ax.set_ylim(1, lmax)
             ax.set_xlim(1, freq_max)
             ax.set_facecolor('black')
+            ax.get_yaxis().set_visible(False)
+            ax.get_xaxis().set_visible(False)
             
             # Add a colour bar
             cax = divider.append_axes('right', size='5%', pad=0.0)
@@ -13272,7 +13399,95 @@ class MomsDataSet:
         else:
             return
 
+        
+    def spherically_distribute(self, var, num_points, radius, dump_init, dump_stop, dump_step=1):
+        """
+        This function spherically distributes a specified number of points around a sphere at the desired radius.
+        It returns data of the specified variable at these points.
 
+        Parameters
+        ----------
+        var : str
+            Variable name
+        num_points : int
+            Number of points to be spherically distributed (approximate); see Notes for more information.
+            It is recommended you use atleast 30 points for a more evenly spread distribution.
+        radius : int
+            Radius at which all the points will be spherically distributed
+        dump_init : int
+            First dump to get the data at
+        dump_stop : int
+            Last dump to get the data at
+        dump_step : int, optional
+            Number of dumps between each dump which is used for computation. Default is 1
+
+        Returns
+        -------
+        data : np.ndarray
+            Data values from the specified variable during the given dump range at each of the given points.
+
+        Notes
+        -----
+        The number of points which are distributed is often not the same as the value specified by the user. 
+        Due to the scaling factor used to disperse the points around the sphere, a similar value is generated.
+        When the value is not the same, the generated value will always be larger.
+        
+        """
+
+        import sys
+
+        def getN(user_num_points):
+            N = 0; total_points = 0
+            while total_points < user_num_points:
+                N += 1
+                total_points = sum([int(np.sin(theta*(np.pi/180))*N-1) for theta in np.linspace(0,180,int(N/2))[1:-1]])
+            return N,total_points
+
+        def find_nearest(array, value):
+            """returns index of value from the array that is nearest to the input value"""
+            return (np.abs(array - value)).argmin()
+
+        def get_var_data(var,dump,xx,yy,zz,rr,th,ph):
+            getvar = self.get(var,fname=dump)
+            xval = rr*np.sin(th)*np.cos(ph)
+            yval = rr*np.sin(th)*np.sin(ph)
+            zval = rr*np.cos(th)
+            xind = find_nearest(xx[0,0,:],xval)
+            yind = find_nearest(yy[0,:,0],yval)
+            zind = find_nearest(zz[:,0,0],zval)
+            return getvar[xind,yind,zind]
+            
+        start_timer = time.time()
+        N,total_points = getN(num_points)
+        data = []
+        thetas = np.linspace(0,180,int(N/2))[1:-1]*(np.pi/180)
+        max_num_phis = max([int(np.sin(theta)*N) for theta in thetas])
+        x,y,z = self.get_cgrid()
+        
+        for index1,theta in enumerate(thetas):        
+            num_phis = int(np.sin(theta)*N)
+            phis = np.linspace(0,360,num_phis)[:-1]*(np.pi/180)
+
+            for index2,phi in enumerate(phis):
+                dumps = range(dump_init,dump_stop, dump_step)
+                data_at_point = []
+                
+                for index3,dump in enumerate(dumps):
+                    # these lines print/update a progress monitor
+                    theta_str = "θ: {:3}%".format(int(((index1+1)/len(thetas))*100))
+                    phi_str = "φ: {:3}%".format(int(((index2+1)/len(phis))*100))
+                    dump_str = "t: {:3}%".format(int(((index3+1)/len(dumps))*100))
+                    points_str = "points used: {}".format(total_points)
+                    sys.stdout.write("\r"+points_str+"  |  "+theta_str+" "+phi_str+" "+dump_str)
+                    data_at_point.append(get_var_data(var,dump,x,y,z,radius,theta,phi))
+                    
+                data.append(data_at_point)
+            
+        end_timer = time.time()
+        sys.stdout.write("\b  |  run time: {:3.0f} minutes and {:2.0f} seconds".format((end_timer-start_timer)//60,(end_timer-start_timer)%60))
+        return np.array(data).T
+    
+    
     def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, 
                             radius=None, mass=None, plot=0, momsarray=[]):
         '''
@@ -13389,12 +13604,16 @@ class MomsDataSet:
         if plot > 0:
             pl.close(plot);pl.figure(plot)
             pl.loglog(ell, 1.e12*power_ell,'-')
-            pmax=np.max(1.e12*power_ell)
-            xx = np.linspace(7*max(ell[0],1),0.7*ell[-1],5)
-            pl.loglog(xx,5.*pmax*xx**(-5/3.),'--',lw=0.5,)
-            pl.ylim(1e12*power_ell[-1],3*pmax)
+
+            ell_scale = 6
+            xx = np.linspace(0.6*ell_scale,0.7*ell[-1],5)
+            fac = 1./(ell_scale**(-5/3))
+            pow_scale = float(power_ell[ell == ell_scale])
+            pmax = 1.e12*power_ell.max()
+            pl.loglog(xx,1.e12*pow_scale*fac*xx**(-5/3),'--',lw=0.5,)
+            pl.ylim(3*1e12*power_ell[-1],3*pmax)
             pl.ylabel('$ power / \mathrm{[m^2/s^2]}$'); pl.xlabel('$l$')
-            pl.text(0.1*ell[-1],0.1*pmax,'$l^{-5/3}$')
+            pl.text(1.2*xx[0],0.2*1.e12*pow_scale*fac*xx[1]**(-5/3),'$l^{-5/3}$')
 
         return ell, power_ell
 
