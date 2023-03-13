@@ -13151,7 +13151,7 @@ class MomsDataSet:
         fmax: float, optional
             Max frequency to show on k-omega diagram (in microHz)
         ut_direction: float, optional
-            Direction of in which to take the ut spectrum on the tangential plane (in degrees)
+            Direction in which to take the ut spectrum on the tangential plane (in degrees)
             0 corresponds to the conventional phi direction; 90 to the conventional theta direction
             Only applicable when varname='ut'
 
@@ -13172,6 +13172,9 @@ class MomsDataSet:
 
         if (radius==None and mass==None) or (radius!=None and mass!=None):
             raise ValueError('You must select wither a radius or a mass where to calculate the spectrum')
+
+        if varname=='ut' and ut_direction==0:
+            self._messenger.warning('ut_direction=0, this is equivalent to a ut_phi spectrum')
 
         used_dumps = []
 
