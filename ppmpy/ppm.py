@@ -13130,7 +13130,8 @@ class MomsDataSet:
             Last dump to use
         varname: string, optional
             Variable of which the k-omega should be computed
-            Default value is ur, other options are |ur|, utot, and ut_phi
+            Default value is ur, other options are |ur|, utot, ut_phi, or any available
+            moms quantities
         lmax_crop: integer, optional
             Impose a maximum ell value; if none is given then sphericalHarmonics_lmax
             is used to determine the maximum ell value
