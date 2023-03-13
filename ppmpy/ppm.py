@@ -13257,7 +13257,16 @@ class MomsDataSet:
                     phi_hat_x = -np.sin(phi)
                     phi_hat_y = -np.cos(phi)
                     phi_hat_z = 0.
-                    ut_phi = phi_hat_x*uxp + phi_hat_y*uyp + phi_hat_z*uzp
+                    phi_hat_xp = np.cos(beta)*np.cos(gamma)*phi_hat_x
+                    phi_hat_xp += (np.sin(alpha)*np.sin(beta)*np.cos(gamma) - np.cos(alpha)*np.sin(gamma))*phi_hat_y
+                    phi_hat_xp += (np.cos(alpha)*np.sin(beta)*np.cos(gamma) + np.sin(alpha)*np.sin(gamma))*phi_hat_z
+                    phi_hat_yp = np.cos(beta)*np.sin(gamma)*phi_hat_x
+                    phi_hat_yp += (np.sin(alpha)*np.sin(beta)*np.sin(gamma) + np.cos(alpha)*np.cos(gamma))*phi_hat_y
+                    phi_hat_yp += (np.cos(alpha)*np.sin(beta)*np.sin(gamma) - np.sin(alpha)*np.cos(gamma))*phi_hat_z
+                    phi_hat_zp = -np.sin(beta)*phi_hat_x
+                    phi_hat_zp += np.sin(alpha)*np.cos(beta)*phi_hat_y
+                    phi_hat_zp += np.cos(alpha)*np.cos(beta)*phi_hat_z
+                    ut_phi = phi_hat_xp*uxp + phi_hat_yp*uyp + phi_hat_zp*uzp
                     quantity_values, theta_grid, phi_grid = ut_phi, theta_grid, phi_grid
                 else:
                     quantity_values, theta_grid, phi_grid = self.sphericalHarmonics_format(varname, radius, dump_number,
