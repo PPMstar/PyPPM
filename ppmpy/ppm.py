@@ -13153,7 +13153,8 @@ class MomsDataSet:
         rotation: (float,float,float)
             Rotation (yaw, pitch, roll) to apply to the (ux,uy,uz) vector with respect to the
             simulation grid, three angles in degrees. Note: yaw = rotation around z axis,
-            pitch = rotation around y axis, and roll = rotation around x axis
+            pitch = rotation around y axis, and roll = rotation around x axis. Only applicable
+            when varname='ut_phi'
 
 
         Returns
