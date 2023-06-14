@@ -976,6 +976,10 @@ class PPMtools:
         '''
         Returns the adiabatic exponent Gamma_1
         '''
+        if radeos=='g':
+            radeos = False
+            self.__messenger.warning('WARNING: radeos set to False.'+
+                                     'Use only True of False for radeos, not g or r')
         if radeos:
             beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
             Gamma1 = (32-24*beta-3*beta**2)/(24-21*beta)
@@ -993,6 +997,10 @@ class PPMtools:
         '''
         Returns the sound speed in code units
         '''
+        if radeos=='g':
+            radeos = False
+            self.__messenger.warning('WARNING: radeos set to False. '+
+                                     'Use only True of False for radeos, not g or r')
         Gamma1 = self.compute_Gamma1(fname, num_type=num_type, radeos=radeos)
         if self.__isyprofile:
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
@@ -1046,7 +1054,10 @@ class PPMtools:
         '''
         Returns the adiabatic temperature gradient nabla_ad
         '''
-
+        if radeos=='g':
+            radeos = False
+            self.__messenger.warning('WARNING: radeos set to False. '+
+                                     'Use only True of False for radeos, not g or r')
         if radeos:
             beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
             nabla_T_ad = (8-6*beta)/(32-24*beta-3*beta**2)
@@ -1180,7 +1191,11 @@ class PPMtools:
         
         Radiative diffusivity boost factor is included when boost=True
         '''
-        
+        if radeos=='g':
+            radeos = False
+            self.__messenger.warning('WARNING: radeos set to False. '+
+                                     'Use only True of False for radeos, not g or r')
+
         # do all calculations in cgs units
         Rgas = 8.314462e7
         mu = self.compute_mu(fname)
@@ -1369,6 +1384,10 @@ class PPMtools:
         return nabla_rho
 
     def compute_nabla_rho_ad(self, fname, num_type='ndump', radeos=True):
+        if radeos=='g':
+            radeos = False
+            self.__messenger.warning('WARNING: radeos set to False. '+
+                                     'Use only True of False for radeos, not g or r')
         if radeos:
             beta = self.compute_pgas_by_ptot(fname, num_type=num_type)
             gamma3 = 1. + (2./3.)*(4. - 3.*beta)/(8. - 7.*beta)
@@ -1432,6 +1451,11 @@ class PPMtools:
         contributions to the total N2.
         '''
         
+        if radeos=='g':
+            radeos = False
+            self.__messenger.warning('WARNING: radeos set to False. '+
+                                     'Use only True of False for radeos, not g or r')
+            
         Rgasconst = 8.314472471220217
         aconst = 756.5767381646406
         if self.__isyprofile:
