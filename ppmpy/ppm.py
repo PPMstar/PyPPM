@@ -13115,9 +13115,8 @@ class MomsDataSet:
         return (radii, plot_val)
 
 
-
     def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
-                        makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None):
+                        makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None, ut_direction=0):
         """
         Plots/returns a k-omega diagram for a given radius/mass
         Adapted from William Thompson's k-omega.py script
@@ -13131,7 +13130,8 @@ class MomsDataSet:
             Last dump to use
         varname: string, optional
             Variable of which the k-omega should be computed
-            Default value is ur, other options are |ur|, utot, and ut_phi
+            Default value is ur, other options are |ur|, utot, ut_phi, ut_theta,
+            ut, or any available moms quantities
         lmax_crop: integer, optional
             Impose a maximum ell value; if none is given then sphericalHarmonics_lmax
             is used to determine the maximum ell value
@@ -13150,6 +13150,11 @@ class MomsDataSet:
             The units are log10(m2/s2/ell/microHz).
         fmax: float, optional
             Max frequency to show on k-omega diagram (in microHz)
+        ut_direction: float, optional
+            Direction in which to take the ut spectrum on the tangential plane (in degrees)
+            0 corresponds to the conventional phi direction; 90 to the conventional theta direction
+            Only applicable when varname='ut'
+
 
         Returns
         -------
@@ -13167,6 +13172,9 @@ class MomsDataSet:
 
         if (radius==None and mass==None) or (radius!=None and mass!=None):
             raise ValueError('You must select wither a radius or a mass where to calculate the spectrum')
+
+        if varname=='ut' and ut_direction==0:
+            self._messenger.warning('ut_direction=0, this is equivalent to a ut_phi spectrum')
 
         used_dumps = []
 
@@ -13239,12 +13247,42 @@ class MomsDataSet:
                     uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
                     theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
                     phi_hat_x = -np.sin(phi)
-                    phi_hat_y = -np.cos(phi)
+                    phi_hat_y = np.cos(phi)
                     phi_hat_z = 0.
                     ut_phi = phi_hat_x*ux + phi_hat_y*uy + phi_hat_z*uz
                     quantity_values, theta_grid, phi_grid = ut_phi, theta_grid, phi_grid
+                elif varname=='ut_theta':
+                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number,
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                    theta_hat_x = np.cos(theta)*np.cos(phi)
+                    theta_hat_y = np.cos(theta)*np.sin(phi)
+                    theta_hat_z = -np.sin(theta)
+                    ut_theta =  theta_hat_x*ux + theta_hat_y*uy + theta_hat_z*uz
+                    quantity_values, theta_grid, phi_grid = ut_theta, theta_grid, phi_grid
+                elif varname=='ut':
+                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number,
+                                                                              lmax=lmax, get_theta_phi_grids=True)
+                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                    theta_hat_x = np.cos(theta)*np.cos(phi)
+                    theta_hat_y = np.cos(theta)*np.sin(phi)
+                    theta_hat_z = -np.sin(theta)
+                    phi_hat_x = -np.sin(phi)
+                    phi_hat_y = np.cos(phi)
+                    phi_hat_z = 0.
+                    alpha = np.deg2rad(ut_direction)
+                    hat_x = np.cos(alpha)*phi_hat_x + np.sin(alpha)*theta_hat_x
+                    hat_y = np.cos(alpha)*phi_hat_y + np.sin(alpha)*theta_hat_y
+                    hat_z = np.cos(alpha)*phi_hat_z + np.sin(alpha)*theta_hat_z
+                    ut = hat_x*ux + hat_y*uy + hat_z*uz
+                    quantity_values, theta_grid, phi_grid = ut, theta_grid, phi_grid
                 else:
-                    raise ValueError('Invalid varname value; supported values are ur, utot, and ut_phi')
+                    quantity_values, theta_grid, phi_grid = self.sphericalHarmonics_format(varname, radius, dump_number,
+                                                                                           lmax=lmax, get_theta_phi_grids=True)
                 if lmax_crop is not None:
                     coeffs_vec = pyshtools.shtools.SHExpandDHC(quantity_values, sampling=2, 
                                                                lmax_calc=lmax_crop)*window[dump_i]
