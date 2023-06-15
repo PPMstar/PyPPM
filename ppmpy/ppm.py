@@ -237,7 +237,7 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
                         lw = 1.0, vel_km = True,NDump_range = None, \
                         NDump_range_vals = (500,1000), mrange_interp = (12.,14.,0.0001),\
                         sparse = 10, t_transient_hr = 500, figsizes = (8,5), \
-                        ifig=1394, save_plot=False):
+                        ifig=1394, save_plot=False, verbose=3):
     '''This function extracts time-evolution of a RProf column data quantity 
     at pressure-scale height fraction above/below N2-peak.
 
@@ -307,6 +307,9 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
     saveplot :: boolean
       if True save plot to pdf, default is False
 
+    verbose :: int
+        verbosity as defined in Messenger class
+
     Returns:
     --------
 
@@ -319,6 +322,7 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
       vars  = ['|Ur|','|Ut|']
 
     '''
+    mes = Messenger(verbose=verbose)
     var_means_dict = {} 
 #    for case in runs:
 #        var_means_dict[case] = {}
@@ -346,8 +350,13 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
                 NDump_end = NDump[-1]
                 NDump_start = NDump[0]
             elif NDump_range == "time":
-                NDump_start,NDump_end = [where_near(tt*60,timemins)
+                NDump_start,NDump_end = [where_near(tt*60,timemins) \
                                          for tt in [ *NDump_range_vals]]
+                # NDump_start,NDump_end are indices of timemins, not dumps! 
+                try:
+                    NDump_start,NDump_end = [data[case]['NDump'][dump] for dump in (NDump_start,NDump_end)]
+                except IndexError:
+                    mes.warning(f"requested time range not included in run {case}")
             elif NDump_range == "range":
                 NDump_start,NDump_end = NDump_range_vals
             else:
