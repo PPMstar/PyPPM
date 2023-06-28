@@ -1082,16 +1082,25 @@ class PPMtools:
         return nabla_T_ad
 
 
-    def compute_nabla_T_rad(self, fname, num_type='ndump'):
+    def compute_nabla_T_rad(self, fname, num_type='ndump', gauss_sigma=False):
         '''
         Returns the radiative temperature gradient nabla_rad
 
-        Assumes a constant luminosity totallum for all radii
+        The optional parameter gauss_sigma can be used to specify the width of
+        the heating Gaussian centered at 0. If False, then all the luminosity
+        is assumed to be injected at the center R=0.
         '''
 
         totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
-        self.__messenger.warning('PPMtools.compute_nabla_T_rad() assumes that all '
-                                 'the luminosity is injected at the center R=0')
+        if gauss_sigma:
+            R = self.get('R', fname, num_type=num_type, resolution='l')
+            gauss = np.exp(-R**2/2/gauss_sigma**2)
+            integrand = gauss*R*R
+            fac = np.cumsum(integrand[::-1])[::-1]/np.sum(integrand)
+            totallum = totallum*fac
+        else:
+            self.__messenger.warning('PPMtools.compute_nabla_T_rad() assumes that all '
+                                     'the luminosity is injected at the center R=0')
 
         m = self.compute_m(fname, num_type=num_type)
         T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')
