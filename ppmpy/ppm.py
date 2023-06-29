@@ -14325,6 +14325,9 @@ class MomsDataSet:
 
         # If npoints not specified, calculate it based on 'nside'. Factor of 2.5 used to prevent issues with empty spots in the projection.
 
+        if math.log(nside, 2) % 1 != 0:
+            self.__messenger.warning("Use a power of 2 for NSIDE")
+
         if not npoints:
             npoints = int(2.5*12*nside**2)
 
