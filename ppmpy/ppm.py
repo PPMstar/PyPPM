@@ -14291,6 +14291,69 @@ class MomsDataSet:
         self.mollweide_plot(quantity.value, log.value, log_min.value, log_max.value, colour_select.value, colour_values, range_values, ifig)
 
 
+    def healpix_projection(self, varloc, radius, nside, npoints=None, plot=False, nest=False, lonlat=False):
+        '''
+        Implements HEALPix projection of 'varloc' onto a sphere of given 'radius'. Number of points used for the projection
+        is calculated based on the 'nside' parameter of the HEALPix projection, unless explicitly specified via 'npoints'.
+        The function can also return the data plotted using a Mollweide projection if 'plot' is set to True.
+
+        Parameters
+        ----------
+        varloc: str, int, np.ndarray
+            String: for the variable you want if defined on instantiation
+            Int: index location of the variable you want
+            np.ndarray: quantity you want to have interpolated on the sphere
+        radius: float or np.array
+            The radius of the sphere you want data to be interpolated and projected to.
+        nside: int
+            The 'nside' parameter of the HEALPix projection, which determines the number of pixels used. Recommended to use a power of 2.
+        npoints: int, optional
+            The number of points used for the projection. If not specified, it is calculated as 2.5 times the number of HEALPix pixels.
+        plot: bool, optional
+            If True, plot the HEALPix pixelization using a Mollweide projection.
+        nest: bool, optional
+            if True, assume NESTED pixel ordering, otherwise, RING pixel ordering
+        lonlat: bool, optional
+            If True, input angles are assumed to be longitude and latitude in degree, otherwise, they are co-latitude and longitude in radians
+
+        Returns
+        -------
+        m: np.ndarray
+            The HEALPix map resulting from the projection.
+        '''
+        import healpy as hp
+
+        # If npoints not specified, calculate it based on 'nside'. Factor of 2.5 used to prevent issues with empty spots in the projection.
+
+        if not npoints:
+            npoints = int(2.5*12*nside**2)
+
+        # Get spherical interpolation of varloc
+        data_s, theta, phi = self.get_spherical_interpolation(varloc, radius=radius,npoints=npoints, 
+                                                            plot_mollweide=True)
+
+        # phi must be shifted by pi to lie within the range of 0-2pi
+        # theta must be shifted by pi/2 to lie within the range of 0-pi
+
+        phi_shifted = phi + np.pi
+        phi_shifted = np.mod(phi_shifted, 2 * np.pi)
+        theta_shifted = theta + np.pi/2
+        theta_shifted = np.mod(theta_shifted, np.pi)
+
+        # Convert spherical coordinates to HEALPix indices
+        pixel_indices = hp.ang2pix(nside, theta_shifted, phi_shifted, nest, lonlat)
+
+        # Initialize the HEALPix map and assign data values to the corresponding pixels
+        m = np.zeros(hp.nside2npix(nside))
+        m[pixel_indices] = data_s
+
+        # # Plot the HEALPix map using a Mollweide projection if requested
+        if plot:
+            hp.mollview(m)
+
+        return m
+
+
 # now the 2X classes will override a couple of methods in the instantiation processes
 class MomsData2X(MomsData):
     '''
