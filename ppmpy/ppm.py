@@ -234,10 +234,10 @@ def get_units(show=False):
 def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "Demo",\
                         fname = '-Ut', logy = False, ylab=None, xlims=(None,None), \
                         ylims=(None,None), legends=[0,"runs","varss","f_hps"],\
-                        lw = 1.0, vel_km = True,NDump_range = None, \
-                        NDump_range_vals = (500,1000), mrange_interp = (12.,14.,0.0001),\
-                        sparse = 10, t_transient_hr = 500, figsizes = (8,5), \
-                        ifig=1394, save_plot=False, verbose=3):
+                        lw = 1.0, vel_km = True, NDump_range = None, \
+                        NDump_range_vals = None, mrange_interp = (12.,14.,0.0001),\
+                        sparse = 10, t_transient_hr = 500, return_vardatas=False,\
+                        figsizes = (8,5), ifig=1394, save_plot=False, verbose=3):
     '''This function extracts time-evolution of a RProf column data quantity 
     at pressure-scale height fraction above/below N2-peak.
 
@@ -297,6 +297,10 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
     t_transient_hr :: float
       for populating var_means_dict (e.g. for convergence plots)
       ignore this many hrs and take mean of rest
+    
+    return_vardatas :: boolean
+       If True return in addition to var_means_dict also var_datas_dict
+       default False
 
     figsizes :: tuple
       figsize of figure
@@ -313,7 +317,8 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
     Returns:
     --------
 
-    var_means_dict
+    var_means_dict time averages for all vars and all runs
+    var_datas_dict (if return_vardatas=True) time evolutions for all vars and all runs
 
     Examples:
     ---------
@@ -324,6 +329,7 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
     '''
     mes = Messenger(verbose=verbose)
     var_means_dict = {} 
+    var_datas_dict = {} 
 #    for case in runs:
 #        var_means_dict[case] = {}
     pl.close(ifig); fig=pl.figure(ifig,figsize=(figsizes[0],figsizes[1]))
@@ -331,7 +337,8 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
     s = 0
     num_type = 'NDump' 
     for k,f_hp in enumerate(f_hps):
-        var_means_dict[f_hp]={}
+        var_means_dict[f_hp] = {}
+        var_datas_dict[f_hp] = {}
         var_means = {}
         for i,case in enumerate(runs):
             var_means[case] = {}
@@ -346,13 +353,13 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
             times = []
             rads = []
             N2s = []
-            if NDump_range is None: 
+            if NDump_range is None or NDump_range_vals is None: 
                 NDump_end = NDump[-1]
                 NDump_start = NDump[0]
             elif NDump_range == "time":
+                # NDump_start,NDump_end are indices of timemins, not dumps! 
                 NDump_start,NDump_end = [where_near(tt*60,timemins) \
                                          for tt in [ *NDump_range_vals]]
-                # NDump_start,NDump_end are indices of timemins, not dumps! 
                 try:
                     NDump_start,NDump_end = [data[case]['NDump'][dump] for dump in (NDump_start,NDump_end)]
                 except IndexError:
@@ -390,13 +397,14 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
                     f_thing_int = scipy.interpolate.interp1d(m,thing,kind='linear',\
                                                              fill_value="extrapolate")
                     var_datas[var].append(f_thing_int(mcoord))
-            for var in varss: 
-                var_datas[var] = array(var_datas[var])
             times = array(times)
             rads = array(rads)
             N2s = array(N2s)
+            for var in varss: 
+                var_datas[var] = array(var_datas[var])
+            var_datas['time(mins)'] = times
             for j,var in enumerate(varss): 
-                ything =  np.array(var_datas[var])
+                ything =  var_datas[var]
                 if logy: ything = np.log10(ything)
                 label = ""
                 if len(runs)  > 1 or "runs"  in legends: label += case
@@ -406,6 +414,7 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
                         color=utils.colourblind((i+1)*(j+1)),label=label, lw=lw)
                 var_means[case][var]=mean(var_datas[var][(times/60>t_transient_hr)])
             var_means_dict[f_hp] = var_means
+            var_datas_dict[f_hp][case] = var_datas 
     if ylab == None: 
         ylab = varss[0]
     pl.ylabel(ylab);pl.xlabel('$t / \mathrm{[h]}$')
@@ -413,7 +422,10 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
     pl.tight_layout()
     if save_plot:
         pl.savefig(key+fname+'.pdf')
-    return var_means_dict
+    if return_vardatas:
+        return var_means_dict,var_datas_dict
+    else:
+       return var_means_dict
 
 def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
     '''Initialize Rprof data for several runs in one directory
