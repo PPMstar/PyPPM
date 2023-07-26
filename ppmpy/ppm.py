@@ -13603,7 +13603,7 @@ class MomsDataSet:
             If > 0 make plot where value is fig number, tuned to show spectrum of ur 
             for a radius in a H-core-25 convective core; may or may not look good for 
             other vars, runs; default is 0
-        momsarray: 3D array or string, optional
+        momsarray: 3D array, optional
             If present, the power spectrum of this array is computed instead
             varloc, dump_start, dump_stop, and dump_step are then ignored
             momsarray must be on the same Cartesian grid as the moms instance.
