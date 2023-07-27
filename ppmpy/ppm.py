@@ -13597,6 +13597,8 @@ class MomsDataSet:
         varloc: str, int
             String: for the variable you want if defined on instantiation
             Int: index location of the variable you want the power spectrum of
+            'ur': the signed Ur will be calculated from the ux, uy and uz components
+            '|u|': the rms velocity |U| will be calculated from the ux, uy and uz components
         dump_start: int
             Dump number of the first dump to consider
         dump_stop: int
@@ -13616,7 +13618,7 @@ class MomsDataSet:
         momsarray: 3D array, optional
             If present, the power spectrum of this array is computed instead
             varloc, dump_start, dump_stop, and dump_step are then ignored
-            momsarray must be on the same Cartesian grid as the moms instance
+            momsarray must be on the same Cartesian grid as the moms instance.
 
         Returns
         -------
@@ -13661,9 +13663,7 @@ class MomsDataSet:
 
             for i,dump in enumerate(tqdm(dumps)):
                 try:
-                    # get the desired variable
-                    var = self.get(varloc,fname=dump)
-
+                    # find radius where spectrum is calculated
                     if radiusinput != None:
                         radius = radiusinput
                     elif massinput != None:
@@ -13674,8 +13674,32 @@ class MomsDataSet:
                     # what is lmax at this radius?
                     lmax_r, N, npoints = self.sphericalHarmonics_lmax(radius)
 
-                    # Calculate spherical harmonics up to lmax
-                    var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
+                    # get the desired quantity and calculate the spherical harmonics up to lmax
+                    if varloc=='ur':
+                        ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump, 
+                                                                                  lmax=lmax_r, get_theta_phi_grids=True)
+                        uy = self.sphericalHarmonics_format('uy', radius, dump, lmax=lmax_r)
+                        uz = self.sphericalHarmonics_format('uz', radius, dump, lmax=lmax_r)
+                        theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+                        x = radius*np.sin(theta)*np.cos(phi)
+                        y = radius*np.sin(theta)*np.sin(phi)
+                        z = radius*np.cos(theta)
+                        r_len = radius
+                        x /= r_len
+                        y /= r_len
+                        z /= r_len
+                        #x, y, z are now the x,y,z components of the r hat unit vector for each element on the grid
+                        ur = zeros_like(uz)
+                        ur = x*ux + y*uy + z*uz
+                        var_interp = ur
+                    elif varloc=='|u|':
+                        unorm = np.sqrt( self.get('ux',fname=dump)**2 + 
+                                         self.get('uy',fname=dump)**2 +
+                                         self.get('uz',fname=dump)**2 )
+                        var_interp = self.sphericalHarmonics_format(unorm, radius, lmax=lmax_r)
+                    else:
+                        var = self.get(varloc,fname=dump)
+                        var_interp = self.sphericalHarmonics_format(var, radius, lmax=lmax_r)
 
                     # get coefficients and power
                     coeffs = pyshtools.expand.SHExpandDH(var_interp, sampling=2)
