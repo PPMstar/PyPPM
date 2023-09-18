@@ -1389,8 +1389,16 @@ class PPMtools:
 
         if boost:
             # apply radiative diffusivity boost factor to kappa
+            applyenhance = False
             for line in ct:
-                if '#define kkradfac' in line and line[0]!='c': kradfac = float(line.strip().split()[-1])
+                if '#define kkradfac' in line and line[0]!='c' and 'eenhancelum' not in line: 
+                    kradfac = float(line.strip().split()[-1])
+                if '#define kkradfac' in line and line[0]!='c' and 'eenhancelum' in line:
+                    applyenhance = True
+                if '#define eenhancelum' in line and line[0]!='c': 
+                    enhance = float(line.strip().split()[-1])
+            if applyenhance:
+                kradfac = enhance
             kappa = kappa/kradfac
 
         if not returnboost:
