@@ -1295,9 +1295,12 @@ class PPMtools:
         ct = f.readlines()
         f.close()
         newopac = False
+        is2019code = False
         for line in ct:
             if '#define issimonkappa 1' in line and line[0]!='c':
                 newopac = True
+            if '#define is2019code 1' in line and line[0]!='c':
+                is2019code = True
         if newopac: # new opacity module is used
             # get physical quantities needed to evaluate opacity fit formula
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
@@ -1358,7 +1361,7 @@ class PPMtools:
             for i,_ in enumerate(logT):
                 p = w11[i]*p11+w12[i]*p12+w21[i]*p21+w22[i]*p22
                 kappa[i] = np.polyval(p,logT[i])
-        else: # old opacity module is used
+        elif (not newopac): # old opacity module is used
             # get physical quantities needed to evaluate opacity fit formula
             T = self.get('T9', fname, num_type=num_type, resolution='l')
             logT = np.log10(1.e9*T)
@@ -1370,22 +1373,35 @@ class PPMtools:
             airmu = self.get('airmu', fname, num_type=num_type)
             X = aamux*(FV*fkcld+(1.-FV)*fkair)/(airmu+FV*(cldmu-airmu))
             # parse flags file for old opacity module parameters
-            for line in ct:
-                if '#define kkappa_max' in line and line[0]!='c': kmax = float(line.strip().split()[-1])
-                if '#define kkappa_min' in line and line[0]!='c': kmin = float(line.strip().split()[-1])
-                if '#define kkappa_tot_max' in line and line[0]!='c': ktmax = float(line.strip().split()[-1])
-                if '#define ffit_par0' in line and line[0]!='c': a = float(line.strip().split()[-1])
-                if '#define ffit_par1' in line and line[0]!='c': b = float(line.strip().split()[-1])
-                if '#define ffit_par2' in line and line[0]!='c': c = float(line.strip().split()[-1])
-                if '#define ffit_par3' in line and line[0]!='c': d = float(line.strip().split()[-1])
-                if '#define llogT0' in line and line[0]!='c': lT0 = float(line.strip().split()[-1])
-                if '#define llogT_width' in line and line[0]!='c': lTw = float(line.strip().split()[-1])
+            if is2019code:
+                for line in ct:
+                    if '#define kkappa_max' in line and line[0]!='c': kmax = float(line.strip().split()[-1])
+                    if '#define kkappa_min' in line and line[0]!='c': kmin = float(line.strip().split()[-1])
+                    if '#define kkappa_tot_max' in line and line[0]!='c': ktmax = float(line.strip().split()[-1])
+                    if '#define ffit_par0' in line and line[0]!='c': a = float(line.strip().split()[-1])
+                    if '#define ffit_par1' in line and line[0]!='c': b = float(line.strip().split()[-1])
+                    if '#define ffit_par2' in line and line[0]!='c': c = float(line.strip().split()[-1])
+                    if '#define ffit_par3' in line and line[0]!='c': d = float(line.strip().split()[-1])
+                    if '#define llogT0' in line and line[0]!='c': lT0 = float(line.strip().split()[-1])
+                    if '#define llogT_width' in line and line[0]!='c': lTw = float(line.strip().split()[-1])
+            else:
+                for line in ct:
+                    if '#define ccappa_max' in line and line[0]!='c': kmax = float(line.strip().split()[-1])
+                    if '#define ccappa_min' in line and line[0]!='c': kmin = float(line.strip().split()[-1])
+                    if '#define ccappa_tot_max' in line and line[0]!='c': ktmax = float(line.strip().split()[-1])
+                    if '#define ffit_par0' in line and line[0]!='c': a = float(line.strip().split()[-1])
+                    if '#define ffit_par1' in line and line[0]!='c': b = float(line.strip().split()[-1])
+                    if '#define ffit_par2' in line and line[0]!='c': c = float(line.strip().split()[-1])
+                    if '#define ffit_par3' in line and line[0]!='c': d = float(line.strip().split()[-1])
+                    if '#define TT0log' in line and line[0]!='c': lT0 = float(line.strip().split()[-1])
+                    if '#define TTlog_width' in line and line[0]!='c': lTw = float(line.strip().split()[-1])
             # evaluate opacity analytical fit
             logkappa_fit = a*logT**3 + b*logT**2 + c*logT + d
             k_corr = 1.+0.5*(kmax/kmin-1)*(1.-np.tanh(lTw*(logT-lT0)))
             kappa_es = 0.2*(1+X)
             kappa = kappa_es/(k_corr*kmin)*10**logkappa_fit
             kappa[kappa>ktmax] = ktmax
+
 
         if boost:
             # apply radiative diffusivity boost factor to kappa
