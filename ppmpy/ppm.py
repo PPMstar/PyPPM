@@ -2314,8 +2314,17 @@ class PPMtools:
             R = R[(R>rmin)&(R<rmax)]
             f = scipy.interpolate.interp1d(R[::-1], nabla_ad[::-1]-nabla_rad[::-1],
                                            bounds_error=False, fill_value=0.1)
-            R_guess = R[abs(nabla_ad-nabla_rad)<0.01]
-            sol = optimize.newton(f, R_guess, maxiter=100)
+
+            R_guess = R[np.diff(np.sign(nabla_ad - nabla_rad), prepend=np.sign(nabla_ad - nabla_rad)[0]) != 0]
+            sol = []
+            for guess in R_guess:
+                try:
+                    bracket = (max(rmin, guess - (rmax-rmin)/len(R)), min(rmax, guess + (rmax-rmin)/len(R)))
+                    if f(bracket[0]) * f(bracket[1]) < 0:
+                        root = optimize.brentq(f, bracket[0], bracket[1], xtol=1e-5)
+                        sol.append(root)
+                except ValueError:
+                    continue
             sol = unique([round(x,2) for x in sol])
             sol = sol[(sol>rmin)&(sol<rmax)]
             if len(dump_list)==1:
