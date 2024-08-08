@@ -1296,12 +1296,31 @@ class PPMtools:
         f.close()
         newopac = False
         is2019code = False
+        iskappafunctofradiusonly = False
         for line in ct:
             if '#define issimonkappa 1' in line and line[0]!='c':
                 newopac = True
             if '#define is2019code 1' in line and line[0]!='c':
                 is2019code = True
-        if newopac: # new opacity module is used
+            if '#define iskappafunctofradiusonly 1' in line and line[0]!='c':
+                iskappafunctofradiusonly = True
+        if iskappafunctofradiusonly: # kappa is a function of radius only
+            p4notdefined = True
+            for line in ct:
+                if '#define aa110' in line and line[0]!='c' and p4notdefined: 
+                    p0 = float(line.strip().split()[-1])
+                if '#define aa111' in line and line[0]!='c' and p4notdefined:
+                    p1 = float(line.strip().split()[-1])
+                if '#define aa112' in line and line[0]!='c' and p4notdefined:
+                    p2 = float(line.strip().split()[-1])
+                if '#define aa113' in line and line[0]!='c' and p4notdefined:
+                    p3 = float(line.strip().split()[-1])
+                if '#define aa114' in line and line[0]!='c' and p4notdefined:
+                    p4 = float(line.strip().split()[-1])
+                    p4notdefined = False
+            R = self.get('R', fname, num_type=num_type, resolution='l')
+            kappa = p0 + p1 * (R/1000)**3 + p2 * np.exp(-(R-p3)**2/(2.*p4**2))
+        elif newopac: # new opacity module is used
             # get physical quantities needed to evaluate opacity fit formula
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
