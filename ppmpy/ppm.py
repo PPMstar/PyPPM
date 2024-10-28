@@ -13271,6 +13271,8 @@ class MomsDataSet:
         spec: np.ndarray
             The array containing the power spectrum in m2/s2/ell/microHz
             This array has shape (len(spatial_freqs),len(temporal_freqs))
+        spec_m: np.ndarray
+            Same as spec, but without collapsing the m's (m, ell, t)
         """
 
         radiusinput = radius
@@ -13423,6 +13425,18 @@ class MomsDataSet:
                     psd = pyshtools.spectralanalysis.spectrum(ft[j,], convention='power', unit='per_l')
                     spectrum.append(psd)
                     pdf = None
+                #### save m decomposition as well
+                n_times = np.shape(ft)[0]
+                spectrum_with_m = np.zeros((n_times, lmax+1, 2*lmax+1))
+                for j in range(n_times):
+                    power_lm = np.zeros((lmax+1, 2*lmax+1))  # +/- m values
+                    for l in range(lmax+1):
+                        for m in range(-l, l+1):
+                            if m >= 0:
+                                spectrum_with_m[j, l, m+lmax] = abs(ft[j,0,l,m])**2
+                            else:
+                                spectrum_with_m[j, l, m+lmax] = abs(ft[j,1,l,-m])**2
+                ####
                 # Save to a text file
                 tracked = f"{mass:05.2f}Msun"
                 #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
@@ -13445,6 +13459,18 @@ class MomsDataSet:
                     psd = pyshtools.spectralanalysis.spectrum(ft[j,], convention='power', unit='per_l')
                     spectrum.append(psd)
                     pdf = None
+                #### save m decomposition as well
+                n_times = np.shape(ft)[0]
+                spectrum_with_m = np.zeros((n_times, lmax+1, 2*lmax+1))
+                for j in range(n_times):
+                    power_lm = np.zeros((lmax+1, 2*lmax+1))  # +/- m values
+                    for l in range(lmax+1):
+                        for m in range(-l, l+1):
+                            if m >= 0:
+                                spectrum_with_m[j, l, m+lmax] = abs(ft[j,0,l,m])**2
+                            else:
+                                spectrum_with_m[j, l, m+lmax] = abs(ft[j,1,l,-m])**2
+                ####
                 # Save to a text file
                 tracked = f"{radius:05.2f}Mm"
                 #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
@@ -13475,6 +13501,12 @@ class MomsDataSet:
         temporal_mask = argsort(temporal_freqs)
 
         spec = (spectrum[temporal_mask,spatial_mask[:,np.newaxis]]).T
+
+        spectrum_with_m =spectrum_with_m * sampling_factor
+        print(spectrum_with_m.shape)
+        print(temporal_mask.shape)
+        print(spatial_mask.shape)
+        spec_m = (spectrum_with_m[temporal_mask][:, spatial_mask, :]).T
 
         if makefigure:
             # Create new figure
@@ -13539,7 +13571,7 @@ class MomsDataSet:
             pl.tight_layout()
 
         if returnvalues:
-            return spatial_freqs[spatial_mask],temporal_freqs[temporal_mask]*1e6,spec
+            return spatial_freqs[spatial_mask],temporal_freqs[temporal_mask]*1e6,spec,spec_m
         else:
             return
 
@@ -13748,6 +13780,10 @@ class MomsDataSet:
                         unorm = np.sqrt( self.get('ux',fname=dump)**2 + 
                                          self.get('uy',fname=dump)**2 +
                                          self.get('uz',fname=dump)**2 )
+                        var_interp = self.sphericalHarmonics_format(unorm, radius, lmax=lmax_r)
+                    elif varloc=='|u|_from_ur_and_ut':
+                        unorm = np.sqrt( self.get('ur',fname=dump)**2 + 
+                                         self.get('ut',fname=dump)**2 )
                         var_interp = self.sphericalHarmonics_format(unorm, radius, lmax=lmax_r)
                     else:
                         var = self.get(varloc,fname=dump)
