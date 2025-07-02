@@ -507,11 +507,36 @@ def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
         data[case]['NDump'] = data[case]['rph'].get('NDump')
         data[case]['time(mins)'] = data[case]['rph'].get('time(mins)')
         data[case]['time(secs)'] = data[case]['rph'].get('time(secs)')
-        onedump = data[case]['rp'].get_dumps()[0]
-        data[case]['rp_one'] = data[case]['rp'].get_dump(onedump)
-        data[case]['X_Lfactors'] = data[case]['rp_one'].get(
-            'totallum')/nominal_heat
-        data[case]['grids'] = data[case]['rp_one'].get('Nx')
+        
+        # Get dumps list and check if it's not empty
+        available_dumps = data[case]['rp'].get_dumps()
+        if len(available_dumps) > 0:
+            onedump = available_dumps[-1]
+            # Double check that the dump actually exists before trying to get it
+            if onedump in available_dumps:
+                data[case]['rp_one'] = data[case]['rp'].get_dump(onedump)
+                if data[case]['rp_one'] is None:
+                    # If get_dump returns None, try with the first dump instead
+                    onedump = available_dumps[0]
+                    data[case]['rp_one'] = data[case]['rp'].get_dump(onedump)
+            else:
+                # Fallback to the first dump if last one doesn't exist
+                onedump = available_dumps[0]
+                data[case]['rp_one'] = data[case]['rp'].get_dump(onedump)
+        else:
+            # Handle case where no dumps are available
+            print(f"Warning: No dumps available for case {case}")
+            data[case]['rp_one'] = None
+        
+        # Only try to get data if rp_one is not None
+        if data[case]['rp_one'] is not None:
+            data[case]['X_Lfactors'] = data[case]['rp_one'].get(
+                'totallum')/nominal_heat
+            data[case]['grids'] = data[case]['rp_one'].get('Nx')
+        else:
+            # Set default values if no dump data is available
+            data[case]['X_Lfactors'] = 0.0
+            data[case]['grids'] = 0
         data[case]['eos'] = eos
         if data[case]['eos'] == 'r':
             data[case]['radeos'] = True
@@ -10151,6 +10176,11 @@ class RprofHistory:
         '''
         Plots wall-clock time (WCT) per dump as a function of dump
         number.
+
+        Returns
+        -------
+        wct_per_dump: numpy.ndarray
+            WCT per dump in seconds.
         '''
 
         dumps = self.get('NDump')
@@ -10162,6 +10192,7 @@ class RprofHistory:
         pl.plot(dumps[:-1], wct_per_dump[:-1])
         pl.xlabel('NDump')
         pl.ylabel('WCT per dump / s')
+        return wct_per_dump
 
 
 
