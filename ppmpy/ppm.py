@@ -1321,12 +1321,31 @@ class PPMtools:
         f.close()
         newopac = False
         is2019code = False
+        iskappafunctofradiusonly = False
         for line in ct:
             if '#define issimonkappa 1' in line and line[0]!='c':
                 newopac = True
             if '#define is2019code 1' in line and line[0]!='c':
                 is2019code = True
-        if newopac: # new opacity module is used
+            if '#define iskappafunctofradiusonly 1' in line and line[0]!='c':
+                iskappafunctofradiusonly = True
+        if iskappafunctofradiusonly: # kappa is a function of radius only
+            p4notdefined = True
+            for line in ct:
+                if '#define aa110' in line and line[0]!='c' and p4notdefined: 
+                    p0 = float(line.strip().split()[-1])
+                if '#define aa111' in line and line[0]!='c' and p4notdefined:
+                    p1 = float(line.strip().split()[-1])
+                if '#define aa112' in line and line[0]!='c' and p4notdefined:
+                    p2 = float(line.strip().split()[-1])
+                if '#define aa113' in line and line[0]!='c' and p4notdefined:
+                    p3 = float(line.strip().split()[-1])
+                if '#define aa114' in line and line[0]!='c' and p4notdefined:
+                    p4 = float(line.strip().split()[-1])
+                    p4notdefined = False
+            R = self.get('R', fname, num_type=num_type, resolution='l')
+            kappa = p0 + p1 * (R/1000)**3 + p2 * np.exp(-(R-p3)**2/(2.*p4**2))
+        elif newopac: # new opacity module is used
             # get physical quantities needed to evaluate opacity fit formula
             rho = self.get('Rho0', fname, num_type=num_type, resolution='l') + \
                   self.get('Rho1', fname, num_type=num_type, resolution='l')
@@ -2320,8 +2339,17 @@ class PPMtools:
             R = R[(R>rmin)&(R<rmax)]
             f = scipy.interpolate.interp1d(R[::-1], nabla_ad[::-1]-nabla_rad[::-1],
                                            bounds_error=False, fill_value=0.1)
-            R_guess = R[abs(nabla_ad-nabla_rad)<0.01]
-            sol = optimize.newton(f, R_guess, maxiter=100)
+
+            R_guess = R[np.diff(np.sign(nabla_ad - nabla_rad), prepend=np.sign(nabla_ad - nabla_rad)[0]) != 0]
+            sol = []
+            for guess in R_guess:
+                try:
+                    bracket = (max(rmin, guess - (rmax-rmin)/len(R)), min(rmax, guess + (rmax-rmin)/len(R)))
+                    if f(bracket[0]) * f(bracket[1]) < 0:
+                        root = optimize.brentq(f, bracket[0], bracket[1], xtol=1e-5)
+                        sol.append(root)
+                except ValueError:
+                    continue
             sol = unique([round(x,2) for x in sol])
             sol = sol[(sol>rmin)&(sol<rmax)]
             if len(dump_list)==1:
@@ -13274,6 +13302,8 @@ class MomsDataSet:
         spec: np.ndarray
             The array containing the power spectrum in m2/s2/ell/microHz
             This array has shape (len(spatial_freqs),len(temporal_freqs))
+        spec_m: np.ndarray
+            Same as spec, but without collapsing the m's (m, ell, t)
         """
 
         radiusinput = radius
@@ -13426,6 +13456,18 @@ class MomsDataSet:
                     psd = pyshtools.spectralanalysis.spectrum(ft[j,], convention='power', unit='per_l')
                     spectrum.append(psd)
                     pdf = None
+                #### save m decomposition as well
+                n_times = np.shape(ft)[0]
+                spectrum_with_m = np.zeros((n_times, lmax+1, 2*lmax+1))
+                for j in range(n_times):
+                    power_lm = np.zeros((lmax+1, 2*lmax+1))  # +/- m values
+                    for l in range(lmax+1):
+                        for m in range(-l, l+1):
+                            if m >= 0:
+                                spectrum_with_m[j, l, m+lmax] = abs(ft[j,0,l,m])**2
+                            else:
+                                spectrum_with_m[j, l, m+lmax] = abs(ft[j,1,l,-m])**2
+                ####
                 # Save to a text file
                 tracked = f"{mass:05.2f}Msun"
                 #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
@@ -13448,6 +13490,18 @@ class MomsDataSet:
                     psd = pyshtools.spectralanalysis.spectrum(ft[j,], convention='power', unit='per_l')
                     spectrum.append(psd)
                     pdf = None
+                #### save m decomposition as well
+                n_times = np.shape(ft)[0]
+                spectrum_with_m = np.zeros((n_times, lmax+1, 2*lmax+1))
+                for j in range(n_times):
+                    power_lm = np.zeros((lmax+1, 2*lmax+1))  # +/- m values
+                    for l in range(lmax+1):
+                        for m in range(-l, l+1):
+                            if m >= 0:
+                                spectrum_with_m[j, l, m+lmax] = abs(ft[j,0,l,m])**2
+                            else:
+                                spectrum_with_m[j, l, m+lmax] = abs(ft[j,1,l,-m])**2
+                ####
                 # Save to a text file
                 tracked = f"{radius:05.2f}Mm"
                 #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
@@ -13478,6 +13532,12 @@ class MomsDataSet:
         temporal_mask = argsort(temporal_freqs)
 
         spec = (spectrum[temporal_mask,spatial_mask[:,np.newaxis]]).T
+
+        spectrum_with_m =spectrum_with_m * sampling_factor
+        print(spectrum_with_m.shape)
+        print(temporal_mask.shape)
+        print(spatial_mask.shape)
+        spec_m = (spectrum_with_m[temporal_mask][:, spatial_mask, :]).T
 
         if makefigure:
             # Create new figure
@@ -13542,7 +13602,7 @@ class MomsDataSet:
             pl.tight_layout()
 
         if returnvalues:
-            return spatial_freqs[spatial_mask],temporal_freqs[temporal_mask]*1e6,spec
+            return spatial_freqs[spatial_mask],temporal_freqs[temporal_mask]*1e6,spec,spec_m
         else:
             return
 
@@ -13751,6 +13811,10 @@ class MomsDataSet:
                         unorm = np.sqrt( self.get('ux',fname=dump)**2 + 
                                          self.get('uy',fname=dump)**2 +
                                          self.get('uz',fname=dump)**2 )
+                        var_interp = self.sphericalHarmonics_format(unorm, radius, lmax=lmax_r)
+                    elif varloc=='|u|_from_ur_and_ut':
+                        unorm = np.sqrt( self.get('ur',fname=dump)**2 + 
+                                         self.get('ut',fname=dump)**2 )
                         var_interp = self.sphericalHarmonics_format(unorm, radius, lmax=lmax_r)
                     else:
                         var = self.get(varloc,fname=dump)
