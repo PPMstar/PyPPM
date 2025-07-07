@@ -78,12 +78,6 @@ plots the data.
 from __future__ import (division,print_function)
 from array import array
 
-from builtins import zip
-from builtins import input
-from builtins import str
-from builtins import range
-from builtins import object
-
 from numpy import *
 import numpy as np
 from math import *
@@ -107,6 +101,7 @@ import copy
 from . import rprofile as bprof
 from nugridpy import utils
 cb = utils.colourblind
+from .derived import DerivedMixin
 from dateutil.parser import parse
 import time
 import glob
@@ -132,6 +127,52 @@ logging.getLogger('matplotlib').setLevel(logging.ERROR)
 G_code    = nuconst.grav_const*1000.   # code unit of gravitaional 
 code_mass = 5.025e-07                  # code unit of mass in solar masses
 
+def detrend_timeseries(time_data, signal_data, method='linear', order=1):
+    """
+    Detrend a time series using various methods.
+    
+    Parameters:
+    -----------
+    time_data : array-like
+        Time values (e.g., dump numbers)
+    signal_data : array-like  
+        Signal values (e.g., luminosity, velocity)
+    method : str
+        'linear' - linear detrending
+        'polynomial' - polynomial detrending
+        'scipy' - use scipy.signal.detrend
+    order : int
+        Order of polynomial for polynomial detrending
+        
+    Returns:
+    --------
+    detrended_data : array
+        Detrended signal
+    trend : array
+        The trend that was removed
+    """
+    
+    if method == 'linear':
+        # Linear detrending using polyfit
+        coeffs = np.polyfit(time_data, signal_data, 1)
+        trend = np.polyval(coeffs, time_data)
+        detrended_data = signal_data - trend
+        
+    elif method == 'polynomial':
+        # Polynomial detrending
+        coeffs = np.polyfit(time_data, signal_data, order)
+        trend = np.polyval(coeffs, time_data)
+        detrended_data = signal_data - trend
+        
+    elif method == 'scipy':
+        # Using scipy's detrend function
+        detrended_data = scipy.signal.detrend(signal_data)
+        trend = signal_data - detrended_data
+        
+    else:
+        raise ValueError("Method must be 'linear', 'polynomial', or 'scipy'")
+    
+    return detrended_data, trend
 
 def list_columns(obj, cols=6, columnwise=True, gap=4):
     """
@@ -225,7 +266,7 @@ def get_units(show=False):
 
     if show:
         for const in cunits.keys():
-            print(f"{const:12s} {cunits[const]:12.0g}")
+            print("{:12s} {:12.0g}".format(const, cunits[const]))
     
     return cunits
 
@@ -342,7 +383,7 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
         var_means = {}
         for i,case in enumerate(runs):
             var_means[case] = {}
-            print(f"Case: {case:s} f_hp = {f_hp:4.2}")
+            print("Case: {:s} f_hp = {:4.2}".format(case, f_hp))
             NDump = data[case]['NDump']
             timemins = data[case]['time(mins)']
             # take average of variable between two radii and plot as function of time
@@ -359,11 +400,11 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
             elif NDump_range == "time":
                 # NDump_start,NDump_end are indices of timemins, not dumps! 
                 NDump_start,NDump_end = [where_near(tt*60,timemins) \
-                                         for tt in [ *NDump_range_vals]]
+                                         for tt in NDump_range_vals]
                 try:
                     NDump_start,NDump_end = [data[case]['NDump'][dump] for dump in (NDump_start,NDump_end)]
                 except IndexError:
-                    mes.warning(f"requested time range not included in run {case}")
+                    mes.warning("requested time range not included in run {}".format(case))
             elif NDump_range == "range":
                 NDump_start,NDump_end = NDump_range_vals
             else:
@@ -512,20 +553,23 @@ def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
         available_dumps = data[case]['rp'].get_dumps()
         if len(available_dumps) > 0:
             onedump = available_dumps[-1]
+            print("Case {}: 'rp_one' dump {} (last available dump from {} total dumps)".format(case, onedump, len(available_dumps)))
             # Double check that the dump actually exists before trying to get it
             if onedump in available_dumps:
                 data[case]['rp_one'] = data[case]['rp'].get_dump(onedump)
                 if data[case]['rp_one'] is None:
                     # If get_dump returns None, try with the first dump instead
                     onedump = available_dumps[0]
+                    print("Case {}: 'rp_one' failed to load last dump, falling back to dump {} (first available dump)".format(case, onedump))
                     data[case]['rp_one'] = data[case]['rp'].get_dump(onedump)
             else:
                 # Fallback to the first dump if last one doesn't exist
                 onedump = available_dumps[0]
+                print("Case {}: 'rp_one' last dump not found, using dump {} (first available dump)".format(case, onedump))
                 data[case]['rp_one'] = data[case]['rp'].get_dump(onedump)
         else:
             # Handle case where no dumps are available
-            print(f"Warning: No dumps available for case {case}")
+            print("Warning: No dumps available for case {}".format(case))
             data[case]['rp_one'] = None
         
         # Only try to get data if rp_one is not None
@@ -546,12 +590,70 @@ def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
                 mes.warning('New EOS, not ideal gas, some routines such as compute_N2 '+\
                     'will think eos is gas.')
 
-        # make history arrays monotonic
-        NDump_mono = np.copy(data[case]['NDump'])
-        while sum(diff(NDump_mono) <= 0) > 0:
-            for thing in data_hist_arrs:
-                data[case][thing] = delete(data[case][thing][:-1],(diff(NDump_mono) <= 0))
-            NDump_mono = np.copy(data[case]['NDump'])
+        # make history arrays monotonic by progressively fixing setbacks
+        original_length = len(data[case]['NDump'])
+        print("Case {}: Original NDump range: {} to {} (length: {})".format(case, data[case]['NDump'][0], data[case]['NDump'][-1], len(data[case]['NDump'])))
+        
+        iteration = 0
+        while True:
+            iteration += 1
+            NDump_current = data[case]['NDump']
+            
+            # Find all setbacks (where NDump decreases)
+            diff_NDump = np.diff(NDump_current)
+            setback_positions = np.where(diff_NDump < 0)[0]
+            
+            if len(setback_positions) == 0:
+                print("Case {}: No more setbacks found after {} iterations".format(case, iteration-1))
+                break
+                
+            # Work on the first (earliest) setback
+            first_setback_pos = setback_positions[0]
+            setback_value = NDump_current[first_setback_pos + 1]  # The value after the drop
+            
+            print("Case {}: Iteration {}, fixing setback at position {} (NDump {} -> {})".format(
+                case, iteration, first_setback_pos, NDump_current[first_setback_pos], setback_value))
+            
+            # Find where this setback value was previously reached
+            # We need to remove all data from the first occurrence of this value until the setback
+            previous_occurrence = np.where(NDump_current[:first_setback_pos + 1] == setback_value)[0]
+            
+            if len(previous_occurrence) > 0:
+                # Remove data from the first occurrence of the setback value up to (but not including) the setback position
+                remove_start = previous_occurrence[0]
+                remove_end = first_setback_pos + 1
+                
+                print("Case {}: Removing positions {} to {} (NDump {} to {})".format(
+                    case, remove_start, remove_end-1, NDump_current[remove_start], NDump_current[remove_end-1]))
+                
+                # Create mask to keep positions (everything except the range to remove)
+                keep_mask = np.ones(len(NDump_current), dtype=bool)
+                keep_mask[remove_start:remove_end] = False
+                
+                # Apply the mask to all arrays
+                for thing in data_hist_arrs:
+                    data[case][thing] = data[case][thing][keep_mask]
+                    
+            else:
+                # This shouldn't happen in normal restart scenarios, but handle it gracefully
+                print("Case {}: Warning - setback value {} not found in previous data, removing single position".format(case, setback_value))
+                keep_mask = np.ones(len(NDump_current), dtype=bool)
+                keep_mask[first_setback_pos] = False
+                
+                for thing in data_hist_arrs:
+                    data[case][thing] = data[case][thing][keep_mask]
+            
+            # Safety check to prevent infinite loops
+            if iteration > 100:
+                print("Case {}: Warning - stopped after 100 iterations to prevent infinite loop".format(case))
+                break
+                
+        final_length = len(data[case]['NDump'])
+        print("Case {}: Monotonicity processing complete. Length: {} -> {} (removed {} elements)".format(
+            case, original_length, final_length, original_length - final_length))
+        
+        if final_length > 0:
+            print("Case {}: Final NDump range: {} to {}".format(case, data[case]['NDump'][0], data[case]['NDump'][-1]))
     return data
 
 def cases_table(data, latex = False, cases = None):
@@ -10224,7 +10326,7 @@ class RprofHistory:
 
 
 
-class RprofSet(PPMtools):
+class RprofSet(PPMtools, DerivedMixin):
     '''
     RprofSet holds a set of .rprof files from a single run
     of PPMstar 2.0.
@@ -10589,6 +10691,13 @@ class RprofSet(PPMtools):
 
         dumpone = self.get_dumps()[0]
         lr_variables = self.get_dump(dumpone).get_lr_variables()
+        
+        # Check for derived quantities first (highest priority)
+        try:
+            return self._get_derived(var, fname, num_type=num_type, resolution=resolution)
+        except KeyError:
+            pass  # Not a derived quantity, continue with regular logic
+        
         # some variables (for example T9) are computable but are also available
         # as RProf variable (usually in newer runs); in this case make sure that the
         # get methods returns as default the RProf value
@@ -10629,8 +10738,9 @@ class RprofSet(PPMtools):
 
     def rprofgui(self,ifig=11,title=""):
         def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig,title=title):
+            from IPython.display import clear_output
+            clear_output(wait=True)  # Clear previous output to prevent duplication
             self.rp_plot([dump1,dump2],ything,logy=log10y,ifig=ifig,title=title)
-            pyl.show()
         rp_hst = self.get_history()
         dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
         dumpmean = int(2*(-dumpmin + dumpmax)/3.)
@@ -11463,9 +11573,10 @@ class MomsData():
 
         # initialize a few quantities
         self.__is_valid = False
+        self.__isMomsDataSet = True
         self.__messenger = Messenger(verbose=verbose)
 
-        # how many extra "ghost" indices are there for each dimension?
+        # how many extra "ghclassost" indices are there for each dimension?
         self.__ghost = 2
 
         # number of whatevers, probably won't change anytime soon
@@ -11587,7 +11698,7 @@ class MomsData():
         # self.var contains a shaped array that has no ghosts
         return self.var[varloc]
 
-class MomsDataSet:
+class MomsDataSet(DerivedMixin):
     '''
     MomsDataSet tracks a set of "dumps" of MomsData which are single "moments" datacubes
     from PPMStar 2.0
@@ -11612,6 +11723,7 @@ class MomsDataSet:
     def __init__(self, dir_name, init_dump_read=0, dumps_in_mem=2, var_list=[], rprofset=None, verbose=3):
 
         self._is_valid = False
+        self.__isMomsDataSet = True
         self._messenger = Messenger(verbose=verbose)
 
         # __find_dumps() will set the following variables,
@@ -12153,7 +12265,7 @@ class MomsDataSet:
         '''
 
         # check, do we already have this?
-        if not self._cgrid_exists:
+        if not hasattr(self, '_cgrid_exists') or not self._cgrid_exists:
 
             # Ok, we will always have a dump in memory so carry on!
             if isinstance(self._rprofset, RprofSet):
@@ -12262,7 +12374,7 @@ class MomsDataSet:
         '''
 
         # check if we already have this in memory or not
-        if not self._sgrid_exists:
+        if not hasattr(self, '_sgrid_exists') or not self._sgrid_exists:
 
             # ok we are good to go for the spherical coordinates
 
@@ -12300,10 +12412,10 @@ class MomsDataSet:
         '''
 
         # check if we already have this in memory or not
-        if not self._mollweide_exists:
+        if not hasattr(self, '_mollweide_exists') or not self._mollweide_exists:
 
             # ok we now check to see if spherical coordinates has been made or not
-            if not self._sgrid_exists:
+            if not hasattr(self, '_sgrid_exists') or not self._sgrid_exists:
                 self._get_sgrid()
 
             # we have a transform method, let's use it
@@ -12536,6 +12648,69 @@ class MomsDataSet:
 
         return list(self._dumps)
 
+    def list_rprof_quantities(self):
+        '''
+        Returns a comprehensive list of all quantities available for radial profiles.
+        
+        Returns
+        -------
+        quantities_info: dict
+            Dictionary containing:
+            - 'raw': list of raw quantities available from the data cubes
+            - 'derived': list of derived quantities computed from raw data
+            - 'all': combined list of all available quantities
+        '''
+        
+        # Get raw quantities from the variable location dictionary
+        raw_quantities = sorted(list(self._varloc.keys()))
+        
+        # Get derived quantities
+        from .derived import list_derived
+        derived_quantities = list_derived()
+        
+        # Combine all quantities
+        all_quantities = sorted(raw_quantities + derived_quantities)
+        
+        return {
+            'raw': raw_quantities,
+            'derived': derived_quantities,
+            'all': all_quantities
+        }
+
+    def print_rprof_quantities(self):
+        '''
+        Prints a nicely formatted list of all quantities available for radial profiles.
+        '''
+        
+        quantities = self.list_rprof_quantities()
+        
+        print("=== Available Quantities for Radial Profiles ===")
+        print()
+        
+        print(f"📊 Raw Quantities ({len(quantities['raw'])} available):")
+        print("   These are directly from the data cubes:")
+        for i, qty in enumerate(quantities['raw']):
+            if i % 8 == 0 and i > 0:
+                print()
+            print(f"   {qty:>4}", end="")
+        print()
+        print()
+        
+        print(f"🧮 Derived Quantities ({len(quantities['derived'])} available):")
+        print("   These are computed from raw data:")
+        for qty in quantities['derived']:
+            print(f"   {qty:>4} - computed from velocity components")
+        print()
+        
+        print(f"📋 Total: {len(quantities['all'])} quantities available")
+        print()
+        
+        print("💡 Usage:")
+        print("   quantity, radius = moms.get_rprof('ur')      # For derived ur")
+        print("   quantity, radius = moms.get_rprof('ux')      # For raw ux")
+        print("   quantity, radius = moms.get_rprof(0)         # For varloc 0")
+        print()
+
     def get_interpolation(self, varloc, igrid, fname=None, method='trilinear', logvar=False):
         '''
         Returns the interpolated array of values (with a particular method) of the var given by
@@ -12650,8 +12825,40 @@ class MomsDataSet:
             The radial coordinates in which var was averaged on
         '''
 
+        # First check if this is a derived quantity
+        if isinstance(varloc, str):
+            try:
+                # Check for derived quantities first (highest priority)
+                # Pass parameters to indicate this is for radial profile
+                if isinstance(radius, np.ndarray):
+                    # make sure nothing is too large
+                    if np.max(radius) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
+                        err = 'The input radius has a radius, {0:0.2f}, which is outside of the simulation box {1:0.2f}'\
+                              .format(np.max(radius),np.max(self.radial_axis))
+                        self._messenger.error(err)
+                        raise ValueError
+                    
+                    # Call derived quantity function for radial profile
+                    quantity = self._get_derived(varloc, fname=fname, _for_rprof=True, radius=radius, method=method, logvar=logvar)
+                    return quantity, radius
+                    
+                else:
+                    # Use self.radial_axis - ensure grid is set up first
+                    if not hasattr(self, '_cgrid_exists') or not self._cgrid_exists:
+                        self._get_cgrid()
+                    quantity = self._get_derived(varloc, fname=fname, _for_rprof=True, radius=self.radial_axis, method=method, logvar=logvar)
+                    return quantity, self.radial_axis
+                
+            except KeyError:
+                # Not a derived quantity, continue with normal processing
+                pass
+
         # are we using self.radial_axis?
         if isinstance(radius, np.ndarray):
+
+            # Ensure grid is set up before accessing radial_axis
+            if not hasattr(self, '_cgrid_exists') or not self._cgrid_exists:
+                self._get_cgrid()
 
             # make sure nothing is too large
             if np.max(radius) > (np.max(self.radial_axis) + np.mean(abs(np.diff(self.radial_axis)))):
@@ -12668,6 +12875,10 @@ class MomsDataSet:
             quantity = np.mean(quantity, axis=1)
 
         else:
+            # Ensure grid is set up before accessing radial_axis
+            if not hasattr(self, '_cgrid_exists') or not self._cgrid_exists:
+                self._get_cgrid()
+            
             # we basically just call interpolation over self.radius, trilinear is default
             # now, if we do have a derivative, quantity is a list
             quantity = self.get_spherical_interpolation(varloc, self.radial_axis, fname, method=method, logvar=logvar)
@@ -12741,7 +12952,7 @@ class MomsDataSet:
         '''
 
         # does this exist yet?
-        if not self._sgrid_exists:
+        if not hasattr(self, '_sgrid_exists') or not self._sgrid_exists:
             self._get_sgrid()
 
         # these are not used internally and so we can give them the real grid (except for radius!)
@@ -12770,7 +12981,7 @@ class MomsDataSet:
         '''
 
         # DOES this exist yet?
-        if not self._mollweide_exists:
+        if not hasattr(self, '_mollweide_exists') or not self._mollweide_exists:
             self._get_mgrid()
 
         # these are not used internally and so we can give them the real grid
@@ -13001,6 +13212,12 @@ class MomsDataSet:
             corresponding to 'fname' exists.
         '''
 
+        # Check for derived quantities first (highest priority)
+        try:
+            return self._get_derived(varloc, fname=fname)
+        except KeyError:
+            pass  # Not a derived quantity, continue with regular logic
+
         # if fname is not specified use current dump
         if fname == None:
             fname = self.what_dump_am_i
@@ -13230,7 +13447,7 @@ class MomsDataSet:
         
         def __processRad(self,rad):
             #Get utheta_r and uphi_r values and the skew/ kurtosis
-            message = f"Processing Radius: {rad:5.0f}\r"
+            message = "Processing Radius: {:5.0f}\r".format(rad)
             self._messenger.message(message)
             npoints = self.sphericalHarmonics_lmax(rad)[-1]
             ur_r = self.get_spherical_interpolation(ur, rad, npoints=npoints, plot_mollweide=True)[0]
@@ -13434,7 +13651,7 @@ class MomsDataSet:
                                                                'constant', constant_values=0)
                 sys.stdout.flush()
             except KeyboardInterrupt:
-                print(f"Stopping early at dump {dump_number}")
+                print("Stopping early at dump {}".format(dump_number))
                 break
             except Exception as err:
                 print("Skipping dump", dump_number)
@@ -13469,8 +13686,8 @@ class MomsDataSet:
                                 spectrum_with_m[j, l, m+lmax] = abs(ft[j,1,l,-m])**2
                 ####
                 # Save to a text file
-                tracked = f"{mass:05.2f}Msun"
-                #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
+                tracked = "{:05.2f}Msun".format(mass)
+                #np.savetxt("k-omega-diagrams/{}/{}-k-omega-{}-{}.txt".format(M, track, quantity, tracked), spectrum)
                 #spectrum = None
                 ft = None
             except Exception as err:
@@ -13503,8 +13720,8 @@ class MomsDataSet:
                                 spectrum_with_m[j, l, m+lmax] = abs(ft[j,1,l,-m])**2
                 ####
                 # Save to a text file
-                tracked = f"{radius:05.2f}Mm"
-                #np.savetxt(f"k-omega-diagrams/{M}/{track}-k-omega-{quantity}-{tracked}.txt", spectrum)
+                tracked = "{:05.2f}Mm".format(radius)
+                #np.savetxt("k-omega-diagrams/{}/{}-k-omega-{}-{}.txt".format(M, track, quantity, tracked), spectrum)
                 #spectrum = None
                 ft = None
             except Exception as err:
@@ -13568,8 +13785,8 @@ class MomsDataSet:
             # Add a colour bar
             cax = divider.append_axes('right', size='5%', pad=0.0)
             fig.colorbar(im, cax=cax, orientation='vertical')
-            pl.title(f"power spectral density")
-            pl.ylabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\ell/\\mu Hz}}$")
+            pl.title("power spectral density")
+            pl.ylabel(r"$\log_{10}\mathrm{m^2/s^2/\ell/\mu Hz}$")
             
             # Histogram on the left margin by summing along the frequency axis
             ax_spectrum = divider.append_axes("left", 1.2, pad=0.0, sharey=ax)
@@ -13582,7 +13799,7 @@ class MomsDataSet:
             ax_spectrum.set_ylabel("Frequency -- $\\mu Hz$")
             ax_spectrum.xaxis.tick_top()
             ax_spectrum.xaxis.set_label_position("top")
-            ax_spectrum.set_xlabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\\mu Hz}}$")
+            ax_spectrum.set_xlabel(r"$\log_{10}\mathrm{m^2/s^2/\mu Hz}$")
             
             # Histogram on the bottom margin by summiung along the wavenumber axis
             ax_wavenum = divider.append_axes("bottom", 1.2, pad=0.0, sharex=ax)
@@ -13597,7 +13814,7 @@ class MomsDataSet:
             ax_wavenum.set_xlabel("$\ell$")
             ax_wavenum.yaxis.tick_right()
             ax_wavenum.yaxis.set_label_position("right")
-            ax_wavenum.set_ylabel(f"$\log_{{10}}\mathrm{{m^2/s^2/\ell}}$")
+            ax_wavenum.set_ylabel(r"$\log_{10}\mathrm{m^2/s^2/\ell}$")
             
             pl.tight_layout()
 
@@ -13681,8 +13898,8 @@ class MomsDataSet:
                 
                 for index3,dump in enumerate(dumps):
                     # these lines print/update a progress monitor
-                    theta_str = "θ: {:3}%".format(int(((index1+1)/len(thetas))*100))
-                    phi_str = "φ: {:3}%".format(int(((index2+1)/len(phis))*100))
+                    theta_str = "theta: {:3}%".format(int(((index1+1)/len(thetas))*100))
+                    phi_str = "phi: {:3}%".format(int(((index2+1)/len(phis))*100))
                     dump_str = "t: {:3}%".format(int(((index3+1)/len(dumps))*100))
                     points_str = "points used: {}".format(total_points)
                     sys.stdout.write("\r"+points_str+"  |  "+theta_str+" "+phi_str+" "+dump_str)
@@ -14742,7 +14959,7 @@ class MomsDataSet2X(MomsDataSet):
         '''
 
         # check, do we already have this?
-        if not self._cgrid_exists:
+        if not hasattr(self, '_cgrid_exists') or not self._cgrid_exists:
 
             # we can construct the xc_array
             rprof = self._rprofset.get_dump(self._rprofset.get_dump_list()[0])
