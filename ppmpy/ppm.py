@@ -91,6 +91,7 @@ from matplotlib import colors
 import nugridpy.mesa as ms
 import os
 import re
+import tempfile
 import nugridpy.constants as nuconst
 import scipy.interpolate
 import scipy.stats
@@ -13541,7 +13542,13 @@ class MomsDataSet(DerivedMixin):
             m = self._rprofset.compute_m(dump_start) * 5.025e-07 # Convert from code units to solar masses
             radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
 
-        fname = 'k-omega.bin'
+        # Create a process-specific temporary file for thread safety
+        temp_file = tempfile.NamedTemporaryFile(suffix='.bin', delete=False, 
+                                               prefix='k-omega_{}_{}_{}_'.format(os.getpid(), varname, 
+                                                                                 hash(str(radius if radius else mass)) % 10000))
+        fname = temp_file.name
+        temp_file.close()  # Close the file handle but keep the file
+        
         extract_dumps = arange(dump_start, dump_stop+1)
         lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
         if lmax_crop is not None:
