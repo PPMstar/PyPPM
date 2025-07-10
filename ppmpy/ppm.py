@@ -13471,7 +13471,8 @@ class MomsDataSet(DerivedMixin):
 
 
     def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
-                        makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None, ut_direction=0):
+                        makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None, ut_direction=0,
+                        rprofs=True, time_step=None):
         """
         Plots/returns a k-omega diagram for a given radius/mass
         Adapted from William Thompson's k-omega.py script
@@ -13493,9 +13494,11 @@ class MomsDataSet(DerivedMixin):
         radius: float, optional
             Radius at which to calculate the k-omega diagram, in Mm
             Note that if no radius is specified, then a mass must be specified
+            When rprofs=False, radius must be specified (mass not supported)
         mass: float, optional
             Mass M(R) at which to calculate the k-omega diagram, in Msun
             Note that if no mass is specified, then a radius must be specified
+            Not supported when rprofs=False
         makefigure: bool, optional
             If True, a k-omega diagram is plotted
         returnvalues: bool, optional
@@ -13509,6 +13512,13 @@ class MomsDataSet(DerivedMixin):
             Direction in which to take the ut spectrum on the tangential plane (in degrees)
             0 corresponds to the conventional phi direction; 90 to the conventional theta direction
             Only applicable when varname='ut'
+        rprofs: bool, optional
+            Whether to use rprof data for mass-to-radius conversion and time step calculation
+            If False, radius must be specified and time_step should be provided
+            Default is True. If False, rprofset must be initialized without rprofset.
+        time_step: float, optional
+            Time step between dumps in seconds. Required when rprofs=False
+            If not provided when rprofs=False, assumes uniform spacing of 1 dump per second
 
 
         Returns
@@ -13527,8 +13537,30 @@ class MomsDataSet(DerivedMixin):
         radiusinput = radius
         massinput = mass
 
+        # Check for valid input combinations when rprofs=False
+        if not rprofs:
+            if massinput is not None:
+                self._messenger.error('Mass coordinate not supported when rprofs=False. Please provide radius instead.')
+                return None
+            if radiusinput is None:
+                self._messenger.error('When rprofs=False, radius must be specified.')
+                return None
+            if isinstance(self._rprofset, RprofSet):
+                self._messenger.error('rprofs=False requires MomsDataSet to be initialized without rprofset. '
+                                     'Current MomsDataSet was initialized with rprofset, which means the grid '
+                                     'was constructed using rprof data. Please initialize MomsDataSet without '
+                                     'providing rprofset parameter for consistent rprofs=False calculations.')
+                return None
+
         if (radius==None and mass==None) or (radius!=None and mass!=None):
-            raise ValueError('You must select wither a radius or a mass where to calculate the spectrum')
+            self._messenger.error('You must select either a radius or a mass where to calculate the spectrum')
+            return None
+
+        # Check rprofset requirements when rprofs=True and mass coordinate is used
+        if rprofs and massinput is not None:
+            if not isinstance(self._rprofset, RprofSet):
+                self._messenger.error('Mass coordinate requires rprofset for mass-to-radius conversion, but no rprofset is available')
+                return None
 
         if varname=='ut' and ut_direction==0:
             self._messenger.warning('ut_direction=0, this is equivalent to a ut_phi spectrum')
@@ -13737,7 +13769,17 @@ class MomsDataSet(DerivedMixin):
         del shcoeffs_by_radius_by_dump
         os.remove(fname)
 
-        time_step_s = np.median(np.diff(self._rprofset.get_history().get('time(mins)')[used_dumps])) * 60
+        # Calculate time step
+        if rprofs:
+            time_step_s = np.median(np.diff(self._rprofset.get_history().get('time(mins)')[used_dumps])) * 60
+        else:
+            if time_step is not None:
+                time_step_s = time_step
+            else:
+                # Fallback: assume uniform spacing of 1 second per dump
+                time_step_s = 45*60 # 45 minutes
+                self._messenger.warning('No time_step provided when rprofs=False. Assuming 45 minutes per dump.')
+        
         dump_numbers = used_dumps
         spectrum = array(spectrum)
         spectra_unnorm = spectrum
