@@ -267,7 +267,7 @@ def get_units(show=False):
 
     if show:
         for const in cunits.keys():
-            print("{:12s} {:12.0g}".format(const, cunits[const]))
+            print(f"{const:12s} {cunits[const]:12.0g}")
     
     return cunits
 
