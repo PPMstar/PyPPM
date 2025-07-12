@@ -35,8 +35,6 @@ Notes
    the same quantity repeatedly within a single call chain.
 """
 
-from __future__ import annotations
-
 from typing import Callable, Dict, List
 
 __all__ = [
