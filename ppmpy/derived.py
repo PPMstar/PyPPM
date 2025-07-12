@@ -278,9 +278,9 @@ def compute_utot_from_components(obj, fname, num_type='ndump', radius=None, lmax
         # MomsDataSet case - compute full 3D array
         
         # Get 3D velocity components
-        ux = obj._get('ux', fname)
-        uy = obj._get('uy', fname)
-        uz = obj._get('uz', fname)
+        ux = obj.get('ux', fname)
+        uy = obj.get('uy', fname)
+        uz = obj.get('uz', fname)
         
         # Compute total velocity magnitude
         utot_3d = np.sqrt(ux**2 + uy**2 + uz**2)
