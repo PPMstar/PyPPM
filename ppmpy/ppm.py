@@ -13213,11 +13213,12 @@ class MomsDataSet(DerivedMixin):
             corresponding to 'fname' exists.
         '''
 
-        # Check for derived quantities first (highest priority)
-        try:
-            return self._get_derived(varloc, fname=fname)
-        except KeyError:
-            pass  # Not a derived quantity, continue with regular logic
+        # Check for derived quantities first (highest priority) - but only for string names
+        if isinstance(varloc, str):
+            try:
+                return self._get_derived(varloc, fname=fname)
+            except KeyError:
+                pass  # Not a derived quantity, continue with regular logic
 
         # if fname is not specified use current dump
         if fname == None:
