@@ -11388,6 +11388,21 @@ class Rprof:
         # Return a copy.
         return list(self.__all_vars)
 
+    def get_available_quantities(self):
+        '''
+        Returns a list of all available quantities including low-resolution 
+        variables, high-resolution variables, and computable quantities.
+        This is the complete list of quantities that can be plotted or analyzed.
+        
+        Returns
+        -------
+        list
+            Combined list of lr_vars + hr_vars + computable_quantities
+        '''
+        
+        # Return a copy with all available quantities
+        return list(self.__lr_vars) + list(self.__hr_vars) + list(self.__computable_quantities)
+
     def get(self, var, resolution='l'):
         '''
         Returns variable var if it exists. The method first searches for
