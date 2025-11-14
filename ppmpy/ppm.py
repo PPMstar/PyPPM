@@ -10737,6 +10737,33 @@ class RprofSet(PPMtools, DerivedMixin):
             else:
                 return None
 
+    def get_available_quantities(self, dump=None):
+        '''
+        Returns a list of all available quantities including low-resolution 
+        variables, high-resolution variables, and computable quantities.
+        This is the complete list of quantities that can be plotted or analyzed.
+        
+        Parameters
+        ----------
+        dump : int, optional
+            Dump number to get variables from. If None, uses the first available dump.
+        
+        Returns
+        -------
+        list
+            Combined list of lr_vars + hr_vars + computable_quantities
+        '''
+        
+        if dump is None:
+            dump = self.__dumps[0]
+        
+        # Get variables from a specific dump and add computable quantities
+        rp = self.get_dump(dump)
+        if rp is not None:
+            return rp.get_lr_variables() + rp.get_hr_variables() + self.get_computable_quantities()
+        else:
+            return []
+
     def rprofgui(self,ifig=11,title=""):
         def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig,title=title):
             from IPython.display import clear_output
@@ -11502,17 +11529,21 @@ class Rprof:
     def get_available_quantities(self):
         '''
         Returns a list of all available quantities including low-resolution 
-        variables, high-resolution variables, and computable quantities.
-        This is the complete list of quantities that can be plotted or analyzed.
+        variables and high-resolution variables.
+        
+        Note: For individual Rprof objects, this returns only the variables 
+        stored in the file. Computable quantities are available through 
+        RprofSet.get_computable_quantities().
         
         Returns
         -------
         list
-            Combined list of lr_vars + hr_vars + computable_quantities
+            Combined list of lr_vars + hr_vars
         '''
         
         # Return a copy with all available quantities
-        return list(self.__lr_vars) + list(self.__hr_vars) + list(self.__computable_quantities)
+        # Note: Rprof doesn't inherit from DerivedMixin, so it doesn't have __computable_quantities
+        return list(self.__lr_vars) + list(self.__hr_vars)
 
     def get(self, var, resolution='l'):
         '''
