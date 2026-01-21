@@ -13952,6 +13952,9 @@ class MomsDataSet(DerivedMixin):
         Due to the scaling factor used to disperse the points around the sphere, a similar value is generated.
         When the value is not the same, the generated value will always be larger.
         
+        This function does not use any interpolation methods, instead it simply uses the nearest grid point
+        when it looks for a specific value. As a result, this method may return values that are near the given
+        radius but are not exactly at this value.
         """
 
         import sys
@@ -14007,6 +14010,64 @@ class MomsDataSet(DerivedMixin):
         sys.stdout.write("\b  |  run time: {:3.0f} minutes and {:2.0f} seconds".format((end_timer-start_timer)//60,(end_timer-start_timer)%60))
         return np.array(data).T
     
+    def get_var_at_point(self, var, radius, theta, phi, dump_init, dump_stop, dump_step=1):
+        """
+        This function returns the desired quantity at a given point in spherical polar coordinates for a specified dump range.
+        
+        Parameters
+        ----------
+        var : str
+            Variable name
+        radius : int
+            Radius value of desired point
+        theta : int
+            Polar angle of desired point
+        phi : int
+            Azimuthal angle of desired point
+        dump_init : int
+            First dump to get the data at
+        dump_stop : int
+            Last dump to get the data at
+        dump_step : int, optional
+            Number of dumps between each dump which is used for computation. Default is 1
+        Returns
+        -------
+        data : np.ndarray
+            Data values from the specified variable during the given dump range at the given point
+        
+        """
+
+        def find_nearest(array, value):
+            """returns index of value from the array that is nearest to the input value"""
+            return (np.abs(array - value)).argmin()
+
+        def get_var_data(var,dump,xx,yy,zz,rr,th,ph):
+            getvar = self.get(var,fname=dump)
+            xval = rr*np.sin(th)*np.cos(ph)
+            yval = rr*np.sin(th)*np.sin(ph)
+            zval = rr*np.cos(th)
+            xind = find_nearest(xx[0,0,:],xval)
+            yind = find_nearest(yy[0,:,0],yval)
+            zind = find_nearest(zz[:,0,0],zval)
+            return getvar[xind,yind,zind]
+
+        start_timer = time.time()
+        data = []
+        x,y,z = self.get_cgrid()
+
+        dumps = range(dump_init,dump_stop,dump_step)
+        
+        point_str = "point used: ({}, {}, {})".format(radius,theta,phi)
+        radius *= np.pi/180; theta *= np.pi/180; phi *= np.pi/180
+        
+        for index,dump in enumerate(dumps):
+            dump_str = "progress: {:3}% ".format(int(((index+1)/len(dumps))*100))
+            sys.stdout.write("\r"+point_str+"  |  "+dump_str)
+            data.append(get_var_data(var,dump,x,y,z,radius,theta,phi))
+
+        end_timer = time.time()
+        sys.stdout.write("\b  |  run time: {:3.0f} minutes and {:2.0f} seconds".format((end_timer-start_timer)//60,(end_timer-start_timer)%60))
+        return np.array(data)
     
     def get_power_spectrum(self, varloc, dump_start, dump_stop, dump_step=1, 
                             radius=None, mass=None, plot=0, momsarray=[]):
