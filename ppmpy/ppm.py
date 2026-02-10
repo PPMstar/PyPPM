@@ -1401,16 +1401,23 @@ class PPMtools:
 
 
     def compute_kappa(self, fname, num_type='ndump', boost=True, returnboost=False):
-        '''        
+        '''
         Returns the opacity kappa in cm2/g
-        
-        The opacity is computed by parsing the flags file for the opacity 
+
+        The opacity is computed by parsing the flags file for the opacity
         model parameters.
+
+        Supports multiple opacity methods (checked in priority order):
+        1. iskappafunctofradiusonly2: 8-parameter tanh-based formula
+           kappa(r) = a*r + b*(r-c)*tanh((r-c)*d) + e*tanh(f*(r-g)) + h
+        2. iskappafunctofradiusonly: 5-parameter polynomial + Gaussian
+        3. issimonkappa (newopac): 2D bilinear interpolation in logR and X
+        4. Old opacity module: 1D polynomial fit in logT
 
         Parameters
         ----------
         boost : bool
-              The opacity is divided by the radiative diffusivity boost factor 
+              The opacity is divided by the radiative diffusivity boost factor
               when boost=True.
         returnboost: bool
               The radiative conductivity boost factor (kkradfac) is also returned
@@ -1425,6 +1432,7 @@ class PPMtools:
         newopac = False
         is2019code = False
         iskappafunctofradiusonly = False
+        iskappafunctofradiusonly2 = False
         for line in ct:
             if '#define issimonkappa 1' in line and line[0]!='c':
                 newopac = True
@@ -1432,7 +1440,68 @@ class PPMtools:
                 is2019code = True
             if '#define iskappafunctofradiusonly 1' in line and line[0]!='c':
                 iskappafunctofradiusonly = True
-        if iskappafunctofradiusonly: # kappa is a function of radius only
+            if '#define iskappafunctofradiusonly2 1' in line and line[0]!='c':
+                iskappafunctofradiusonly2 = True
+        if iskappafunctofradiusonly2: # NEW: kappa as function of radius with tanh terms
+            # Formula: kappa(r) = a*r + b*(r-c)*tanh((r-c)*d) + e*tanh(f*(r-g)) + h
+            # Implemented by Praneet on Feb. 2, 2026 for O-C shell burning
+            # Parse 8 parameters (aa110 through aa117) from within the #if iskappafunctofradiusonly2 block
+            params = {}
+            in_block = False
+            for line in ct:
+                # Track when we enter the iskappafunctofradiusonly2 block
+                if '#if iskappafunctofradiusonly2' in line and line[0]!='c':
+                    in_block = True
+                    continue
+                # Exit when we hit the corresponding #endif
+                if in_block and '#endif' in line and line[0]!='c':
+                    in_block = False
+                    break
+                # Only read parameters when inside the block
+                if in_block:
+                    if '#define aa110' in line and line[0]!='c':
+                        params['a'] = float(line.strip().split()[-1])
+                    if '#define aa111' in line and line[0]!='c':
+                        params['b'] = float(line.strip().split()[-1])
+                    if '#define aa112' in line and line[0]!='c':
+                        params['c'] = float(line.strip().split()[-1])
+                    if '#define aa113' in line and line[0]!='c':
+                        params['d'] = float(line.strip().split()[-1])
+                    if '#define aa114' in line and line[0]!='c':
+                        params['e'] = float(line.strip().split()[-1])
+                    if '#define aa115' in line and line[0]!='c':
+                        params['f'] = float(line.strip().split()[-1])
+                    if '#define aa116' in line and line[0]!='c':
+                        params['g'] = float(line.strip().split()[-1])
+                    if '#define aa117' in line and line[0]!='c':
+                        params['h'] = float(line.strip().split()[-1])
+
+            # Check all parameters were found
+            required = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+            missing = [p for p in required if p not in params]
+            if missing:
+                err = f'Missing parameters for iskappafunctofradiusonly2: {missing}'
+                self.__messenger.error(err)
+                return None
+
+            # Get radius in Mm
+            R = self.get('R', fname, num_type=num_type, resolution='l')
+
+            # Compute kappa using the formula
+            a = params['a']
+            b = params['b']
+            c = params['c']
+            d = params['d']
+            e = params['e']
+            f = params['f']
+            g = params['g']
+            h = params['h']
+
+            kappa = (a*R +
+                     b*(R-c)*np.tanh((R-c)*d) +
+                     e*np.tanh(f*(R-g)) +
+                     h)
+        elif iskappafunctofradiusonly: # kappa is a function of radius only
             p4notdefined = True
             for line in ct:
                 if '#define aa110' in line and line[0]!='c' and p4notdefined: 
@@ -11380,7 +11449,7 @@ class Rprof:
                    eof = True
                    break
 
-            if footer_reached or eof or los_reached:
+            if footer_reached or eof:
                 break
 
             # Go to the table's body.
