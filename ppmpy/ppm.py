@@ -469,7 +469,7 @@ def time_evol_r_Hp_vars(data,runs,varss = ['|Ut|'], f_hps = [-1.0,1.0], key = "D
     else:
        return var_means_dict
 
-def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
+def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3, geometry='spherical'):
     '''Initialize Rprof data for several runs in one directory
     
     This function populates a data structure data with often used
@@ -517,6 +517,15 @@ def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
     verbose :: int
         verbosity as defined in Messenger class
 
+    geometry :: string
+        'spherical' (default) or 'cartesian'; passed to RprofSet to
+        control HR/LR classification of rprof tables. Use 'cartesian'
+        for plane-parallel runs and 'spherical' for stellar globe runs.
+        This affects how rprof tables are classified as high-resolution
+        (HR) vs low-resolution (LR): in spherical geometry HR tables
+        have n > Nx/2 rows, while in cartesian geometry HR tables have
+        n > Nx rows.
+
     Returns:
     --------
     data :: dictionary
@@ -544,7 +553,8 @@ def initialize_cases(data, dir, cases, nominal_heat=1, eos='g',verbose=3):
     for case in cases:
         data[case] = {}
         data[case]['path'] = dir+case+'/prfs'
-        data[case]['rp'] = RprofSet(data[case]['path'],verbose=verbose)
+        # PP 2026-03-14: pass geometry to RprofSet for correct HR/LR classification
+        data[case]['rp'] = RprofSet(data[case]['path'],verbose=verbose,geometry=geometry)
         data[case]['rph'] = data[case]['rp'].get_history()
         data[case]['NDump'] = data[case]['rph'].get('NDump')
         data[case]['time(mins)'] = data[case]['rph'].get('time(mins)')
@@ -1229,6 +1239,10 @@ class PPMtools:
         The optional parameter gauss_sigma can be used to specify the width of
         the heating Gaussian centered at 0. If False, then all the luminosity
         is assumed to be injected at the center R=0.
+
+        TODO: This formula assumes spherical gravity (g = G*m/r^2) and does
+        not work for plane-parallel (cartesian) geometry where g can be a
+        function of y.
         '''
 
         totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
@@ -1265,35 +1279,57 @@ class PPMtools:
 
     def compute_lum_conv(self, fname, num_type='ndump'):
         '''
-        Returns the convective luminosity (Fconv*4piR^2)
-        
+        Returns the convective luminosity.
+
+        For spherical geometry (stellar globe runs): Fconv*4*pi*R^2.
+        For cartesian geometry (plane-parallel runs): Fconv*L_box^2,
+        where L_box = Nx*delrad is the side length of the cubic domain.
+
         Includes both the kinetic energy term and the enthalpy term. Note that this
         is different from the standard definition of Fconv: may require clarification
         in the future.
 
         In units of the total luminosity of the star
         '''
-        
+
         totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
         R = self.get('R', fname, num_type=num_type, resolution='l')
         Fconv = self.get('RhoUrH', fname, num_type=num_type, resolution='l')
-        Lconv = Fconv*4*np.pi*R**2
-        
+        # PP 2026-03-14: for plane-parallel (cartesian) runs use Lbox^2
+        # instead of 4*pi*R^2 as the cross-sectional area
+        if self.__isRprofSet and self.get_geometry() == 'cartesian':
+            Lbox = self.get('Nx', fname, num_type=num_type) * \
+                   self.get('delrad', fname, num_type=num_type)
+            Lconv = Fconv*Lbox**2
+        else:
+            Lconv = Fconv*4*np.pi*R**2
+
         return Lconv/totallum
 
     def compute_lum_kin(self, fname, num_type='ndump'):
         '''
-        Returns the kinetic energy luminosity (Fkin*4piR^2)
-        
-        Note that this term is included in Lconv
-        In units of the total luminosity of the star
+        Returns the kinetic energy luminosity.
+
+        For spherical geometry (stellar globe runs): Fkin*4*pi*R^2.
+        For cartesian geometry (plane-parallel runs): Fkin*L_box^2,
+        where L_box = Nx*delrad is the side length of the cubic domain.
+
+        Note that this term is included in Lconv.
+        In units of the total luminosity of the star.
         '''
-        
+
         totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
         R = self.get('R', fname, num_type=num_type, resolution='l')
         Fkin = self.get('RhoUrUsq', fname, num_type=num_type, resolution='l')
-        Lkin = Fkin*4*np.pi*R**2
-        
+        # PP 2026-03-14: for plane-parallel (cartesian) runs use Lbox^2
+        # instead of 4*pi*R^2 as the cross-sectional area
+        if self.__isRprofSet and self.get_geometry() == 'cartesian':
+            Lbox = self.get('Nx', fname, num_type=num_type) * \
+                   self.get('delrad', fname, num_type=num_type)
+            Lkin = Fkin*Lbox**2
+        else:
+            Lkin = Fkin*4*np.pi*R**2
+
         return Lkin/totallum
 
     def compute_lum_tot(self, fname,  num_type='ndump'):
@@ -1311,23 +1347,34 @@ class PPMtools:
 
     def compute_lum_rad(self, fname, num_type='ndump'):
         '''
-        Returns the radiative luminosity (Frad*4piR^2)
-        
-        In units of the total luminosity of the star
+        Returns the radiative luminosity.
+
+        For spherical geometry (stellar globe runs): Frad*4*pi*R^2.
+        For cartesian geometry (plane-parallel runs): Frad*L_box^2,
+        where L_box = Nx*delrad is the side length of the cubic domain.
+
+        In units of the total luminosity of the star.
         '''
-        
+
         # do all calculations in cgs units
         totallum = self.get('totallum', fname, num_type=num_type, resolution='l')
         totallum = totallum*1.e43
-        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')    
+        T = 1e9*self.get('T9', fname, num_type=num_type, resolution='l')
         R = 1e8*self.get('R', fname, num_type=num_type, resolution='l')
         dTdR = cdiff(T)/(cdiff(R) + 1e-100)
 
         Krad = self.compute_Krad(fname)
 
         Frad = -Krad*dTdR
-        Lrad = Frad*4*np.pi*R**2
-        
+        # PP 2026-03-14: for plane-parallel (cartesian) runs use Lbox^2
+        # instead of 4*pi*R^2 as the cross-sectional area (in cgs)
+        if self.__isRprofSet and self.get_geometry() == 'cartesian':
+            Lbox = self.get('Nx', fname, num_type=num_type) * \
+                   self.get('delrad', fname, num_type=num_type)
+            Lrad = Frad*(1e8*Lbox)**2
+        else:
+            Lrad = Frad*4*np.pi*R**2
+
         return Lrad/totallum
 
     def compute_mu(self, fname, num_type='ndump', resolution='l'):
@@ -1770,6 +1817,15 @@ class PPMtools:
             return N2,N2_T,N2_mu
 
     def compute_m(self, fname, num_type='ndump'):
+        '''
+        Returns the mass profile as a function of radius.
+
+        For spherical geometry (stellar globe runs): dm = 4*pi*r^2*dr*rho
+        (spherical shell volume element).
+        For cartesian geometry (plane-parallel runs): dm = L_box^2*dr*rho,
+        where L_box = Nx*delrad is the side length of the cubic domain
+        (mass per unit column with cross-sectional area L_box^2).
+        '''
         if self.__isyprofile:
             r = self.get00('Y', fname, num_type=num_type, resolution='l')
             rho = self.get('Rho', fname, num_type=num_type, resolution='l')
@@ -1783,8 +1839,17 @@ class PPMtools:
 
         minner = self.get_minner()
 
+        # PP 2026-03-14: for plane-parallel (cartesian) runs use Lbox^2*dr
+        # instead of 4*pi*r^2*dr as the volume element
+        is_cartesian = self.__isRprofSet and self.get_geometry() == 'cartesian'
+
         if minner==0 and rinner==0: # core setup
-            dm = -4.*np.pi*r**2*cdiff(r)*rho
+            if is_cartesian:
+                Lbox = self.get('Nx', fname, num_type=num_type) * \
+                       self.get('delrad', fname, num_type=num_type)
+                dm = -Lbox**2*cdiff(r)*rho
+            else:
+                dm = -4.*np.pi*r**2*cdiff(r)*rho
             m = np.cumsum(dm)
             # We store everything from the surface to the core.
             m = m[-1] - m
@@ -1792,11 +1857,18 @@ class PPMtools:
             rho_int = rho[::-1]
             r_int = r[::-1]
             rho_int[r_int<rinner] = 0
-            dm = 4.*np.pi*r_int**2*cdiff(r_int)*rho_int
+            if is_cartesian:
+                Lbox = self.get('Nx', fname, num_type=num_type) * \
+                       self.get('delrad', fname, num_type=num_type)
+                dm = Lbox**2*cdiff(r_int)*rho_int
+            else:
+                dm = 4.*np.pi*r_int**2*cdiff(r_int)*rho_int
             m = np.cumsum(dm) + minner
             m = m[::-1]
         else:
-             self.__messenger.error('Error in compute_m, inconsistent minner and rinner values')
+            # TODO: cartesian runs with minner=0 and rinner>0 fall through
+            # to this error branch. Add a cartesian branch here if needed.
+            self.__messenger.error('Error in compute_m, inconsistent minner and rinner values')
 
         return m
 
@@ -2781,9 +2853,11 @@ class PPMtools:
         else:
             dr = r_cell_top - np.roll(r_cell_top, -1)
             dr[-1] = dr[-2] + (dr[-2] - dr[-3])
-            # We do not know the horizontal dimensions of the Cartesian domain,
-            # so we assume the horizontal area is unity.
-            dV = dr
+            # PP 2026-03-14: use Lbox^2 as the horizontal cross-sectional
+            # area for cartesian (plane-parallel) volume elements
+            Lbox = self.get('Nx', cycles[0]) * \
+                   self.get('delrad', cycles[0])
+            dV = Lbox**2*dr
 
         t = np.zeros(len(cycles))
         burn_rate = np.zeros(len(cycles))
@@ -2860,11 +2934,11 @@ class PPMtools:
                 mir[i] += (4./3.)*np.pi*(rt[i]**3 - r_jph**3)*f0 + \
                           np.pi*(rt[i]**4 - r_jph**4)*s
             else:
-                # We again assume that the horizontal area is unity in
-                # Cartesian geometry.
-                V_j = r_jmh - r_jph
-                f0 = f_j - 0.5*s*(r_jmh**2 - r_jph**2)/V_j
-                mir[i] += (rt[i] - r_jph)*f0 + 0.5*s*(rt[i]**2 - r_jph**2)
+                # PP 2026-03-14: sub-cell interpolation with Lbox^2
+                # cross-sectional area for cartesian geometry
+                V_j = Lbox**2*(r_jmh - r_jph)
+                f0 = f_j - 0.5*s*(r_jmh**2 - r_jph**2)/(r_jmh - r_jph)
+                mir[i] += Lbox**2*((rt[i] - r_jph)*f0 + 0.5*s*(rt[i]**2 - r_jph**2))
 
             if burn_func is not None:
                 # We have to use the minus sign, because rhodot < 0.
@@ -10923,10 +10997,16 @@ class RprofSet(PPMtools, DerivedMixin):
 
         # Plot detailing
         pl.legend()
-        if self.astrounit['on']:
-            xxlabel = xthing+' '+self.astrounit[self.quantity]
+        # PP 2026-03-14: label x-axis as 'y' for plane-parallel runs
+        # where the vertical coordinate is stored as 'R' in rprof files
+        if self.get_geometry() == 'cartesian' and xthing == 'R':
+            xlabel_str = 'y'
         else:
-            xxlabel =xthing
+            xlabel_str = xthing
+        if self.astrounit['on']:
+            xxlabel = xlabel_str+' '+self.astrounit[self.quantity]
+        else:
+            xxlabel = xlabel_str
         pl.xlabel(xxlabel)
 
         if logy == False:
