@@ -11907,6 +11907,382 @@ class MomsData():
         # self.var contains a shaped array that has no ghosts
         return self.var[varloc]
 
+
+# =============================================================================
+# Visible k-omega helpers (disk-integrated power spectrum along a line of sight)
+#
+# PP 2026-06-15: promoted into ppmpy from the production driver
+# visible_komega_mpi.py (H-core-M25/analysis_fullstar-2), which carries the
+# corrected visibility-kernel normalization audited in
+# README-visible-komega-audit.md:
+#     M'_{l,0} = 0.5 * sqrt(2l+1) * h_l        (4pi-norm complex SH)
+#     V_lm     = conj(M_lm) * 4*pi
+# The visible diagram contracts the SH coefficients coherently over m against
+# V_lm (delta_F_l = sum_m c_lm * V_lm) before taking |.|^2, in contrast to the
+# incoherent per-l power used by MomsDataSet.k_omega_diagram.
+# =============================================================================
+
+class _NullLock:
+    """Context manager that does nothing — drop-in for a real threading.Lock."""
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+
+
+def compute_disk_integration_factors(lmax):
+    """
+    Lambert-cosine disk-integration factors for the visible-hemisphere kernel.
+
+    Parameters
+    ----------
+    lmax: int
+        Maximum spherical harmonic degree.
+
+    Returns
+    -------
+    H: np.ndarray
+        H_l = 2*pi * sqrt((2l+1)/(4pi)) * h_l, for the pyshtools 4pi-norm
+        complex spherical harmonics.
+    h: np.ndarray
+        h_l = integral_0^1 mu * P_l(mu) dmu (Lambert cosine kernel). Known
+        values: h_0=1/2, h_1=1/3, h_2=1/8, h_3=0, h_4=-1/48, h_5=0.
+    """
+    x, w = np.polynomial.legendre.leggauss(500)
+    x01 = 0.5 * (x + 1)
+    w01 = 0.5 * w
+    h = np.zeros(lmax + 1)
+    for l in range(lmax + 1):
+        coeffs = np.zeros(l + 1)
+        coeffs[-1] = 1.0
+        Pl = np.polynomial.legendre.legval(x01, coeffs)
+        h[l] = np.sum(w01 * x01 * Pl)
+    ells = np.arange(lmax + 1)
+    H = 2 * np.pi * np.sqrt((2 * ells + 1) / (4 * np.pi)) * h
+    return H, h
+
+
+def compute_V_lm_analytical(lmax, los_direction):
+    """
+    Analytical visibility kernel V_lm for a given line of sight.
+
+    The Lambert-kernel coefficients in the LOS frame are M'_{l,0} =
+    0.5*sqrt(2l+1)*h_l (pyshtools 4pi-norm complex convention); these are
+    rotated into the simulation frame and the visibility kernel is
+    V_lm = conj(M_lm) * 4*pi. See README-visible-komega-audit.md for the
+    derivation and the normalization fix.
+
+    Parameters
+    ----------
+    lmax: int
+        Maximum spherical harmonic degree.
+    los_direction: array-like of length 3
+        Line-of-sight direction (need not be normalized).
+
+    Returns
+    -------
+    V_lm: np.ndarray
+        Complex array of shape (2, lmax+1, lmax+1) (pyshtools coeff layout).
+    """
+    n_los = np.array(los_direction, dtype=float)
+    n_los /= np.linalg.norm(n_los)
+
+    alpha_deg = np.degrees(np.arctan2(n_los[1], n_los[0]))
+    # Clip guards against arccos(1 + eps) -> nan for los ~ (0, 0, 1).
+    beta_deg = np.degrees(np.arccos(np.clip(n_los[2], -1.0, 1.0)))
+
+    _, h = compute_disk_integration_factors(lmax)
+
+    coeffs_los = np.zeros((2, lmax + 1, lmax + 1), dtype=complex)
+    for l in range(lmax + 1):
+        coeffs_los[0, l, 0] = 0.5 * np.sqrt(2 * l + 1) * h[l]
+
+    sh_los = pyshtools.SHCoeffs.from_array(coeffs_los, normalization='4pi', csphase=1)
+    sh_orig = sh_los.rotate(alpha=0, beta=-beta_deg, gamma=-alpha_deg, degrees=True)
+    M_lm = sh_orig.coeffs
+
+    V_lm = np.conj(M_lm) * (4.0 * np.pi)
+    return V_lm
+
+
+def make_los_vectors():
+    """
+    The 8 default lines of sight derived from los1 = (1, 1, 1):
+
+        los1 = (1, 1, 1)
+        los2 = los1 x (0, 0, 1)   = ( 1, -1,  0)
+        los3 = los1 x los2        = (-1, -1,  2)
+        los4 = los1 + los2 + los3 = ( 1, -1,  3)
+        los5..8 = -los1..-los4
+
+    Returns
+    -------
+    list of np.ndarray
+        The 8 (un-normalized) line-of-sight vectors.
+    """
+    los1 = np.array([1., 1., 1.])
+    los2 = np.cross(los1, np.array([0., 0., 1.]))
+    los3 = np.cross(los1, los2)
+    los4 = los1 + los2 + los3
+    return [los1, los2, los3, los4, -los1, -los2, -los3, -los4]
+
+
+def make_los_vectors_fortran(xxlos=0.3, yylos=0.3, zzlos=0.3):
+    """
+    Reproduce the 8 LOS unit vectors built inside the PPMstar Fortran
+    (PPM2F-12-12-21-O2.F lines 9594-9631), so that the python LOS index aligns
+    with the rprof lum1..lum8 columns. xxlos/yylos/zzlos default to the M424
+    flags-file values (0.3, 0.3, 0.3), giving los1 = (1,1,1)/sqrt(3).
+
+    Parameters
+    ----------
+    xxlos, yylos, zzlos: float
+        Components of the primary line of sight (as in the flags file).
+
+    Returns
+    -------
+    list of np.ndarray
+        The 8 (unit) line-of-sight vectors.
+    """
+    rrlos = np.sqrt(xxlos*xxlos + yylos*yylos + zzlos*zzlos)
+    los = np.zeros((8, 3))
+    if rrlos == 0.0:
+        los[0] = (1.0, 0.0, 0.0)
+    else:
+        los[0] = (xxlos / rrlos, yylos / rrlos, zzlos / rrlos)
+    if (xxlos == 0.0) and (yylos == 0.0) and (zzlos != 0.0):
+        los[1] = (zzlos / abs(zzlos), 0.0, 0.0)
+    else:
+        rrlos = np.sqrt(los[0, 0]**2 + los[0, 1]**2)
+        los[1] = (-los[0, 1] / rrlos, los[0, 0] / rrlos, 0.0)
+    los[2, 0] =  los[0, 1] * los[1, 2] - los[0, 2] * los[1, 1]
+    los[2, 1] = -los[0, 0] * los[1, 2] + los[0, 2] * los[1, 0]
+    los[2, 2] =  los[0, 0] * los[1, 1] - los[0, 1] * los[1, 0]
+    los[3] = los[0] + los[1] + los[2]
+    los[3] /= np.linalg.norm(los[3])
+    los[4:] = -los[:4]
+    return [los[i].copy() for i in range(8)]
+
+
+def _visible_komega_power_unit(varname):
+    """
+    LaTeX string for the (base) power unit of a visible-komega spectrum, given
+    the variable. The full spectral density carries an extra /ell/microHz.
+    """
+    unit_map = {
+        'rel_lum-1': r'\mathcal{L}^2',
+        'abs_lum':   r'(\mathrm{erg\,s^{-1}\,cm^{-2}})^2',
+        'ur':        r'\mathrm{m^2/s^2}',
+        '|ur|':      r'\mathrm{m^2/s^2}',
+        'utot':      r'\mathrm{m^2/s^2}',
+        'ut':        r'\mathrm{m^2/s^2}',
+        'ut_phi':    r'\mathrm{m^2/s^2}',
+        'ut_theta':  r'\mathrm{m^2/s^2}',
+    }
+    return unit_map.get(varname, r'\mathrm{m^2/s^2}')
+
+
+def _plot_visible_komega_ax(ax, ell, freq, spec, title, vmin, vmax, fmax):
+    """Render a single visible k-omega panel onto a matplotlib axis."""
+    freq_max = fmax if fmax else np.max(freq)
+    im = ax.pcolormesh(ell, freq, np.log10(spec),
+                       cmap='magma', vmin=vmin, vmax=vmax,
+                       shading='nearest', rasterized=True)
+    ax.set_xlabel(r'$\ell$')
+    ax.set_ylabel(r'$f$ ($\mu$Hz)')
+    ax.set_xlim(1, ell.max())
+    ax.set_ylim(1, freq_max)
+    ax.set_facecolor('black')
+    ax.set_title(title, fontsize=10)
+    return im
+
+
+def _plot_visible_komega_marginal(fig, ax, ell, freq, spec, title, vmin, vmax, fmax, unit):
+    """
+    Render a visible k-omega panel with marginals onto ``ax``: a left panel of
+    power summed over all ell for each frequency, and a bottom panel of power
+    summed over all frequencies for each ell. ``unit`` is the LaTeX power unit
+    (see :func:`_visible_komega_power_unit`).
+    """
+    freq_max = fmax if fmax else np.max(freq)
+    divider = make_axes_locatable(ax)
+
+    # Main panel.
+    im = ax.pcolormesh(ell, freq, np.log10(np.maximum(spec, 1e-30)),
+                       cmap='magma', vmin=vmin, vmax=vmax,
+                       shading='nearest', rasterized=True)
+    ax.set_xlim(1, ell.max())
+    ax.set_ylim(1, freq_max)
+    ax.set_facecolor('black')
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    ax.set_title(title, fontsize=11)
+
+    cax = divider.append_axes('right', size='4%', pad=0.05)
+    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+    cbar.set_label(r'$\log_{{10}}\ ({0}\,\ell^{{-1}}\,\mu\mathrm{{Hz}}^{{-1}})$'.format(unit))
+
+    # Left marginal: power summed over all ell, vs frequency  -> [unit / microHz].
+    ax_spectrum = divider.append_axes("left", 1.3, pad=0.0, sharey=ax)
+    ax_spectrum.plot(np.log10(np.maximum(np.sum(spec, axis=1), 1e-30)), freq, 'k-')
+    ax_spectrum.set_ylim(1, freq_max)
+    ax_spectrum.set_ylabel(r'$f$ ($\mu$Hz)')
+    ax_spectrum.xaxis.tick_top()
+    ax_spectrum.xaxis.set_label_position("top")
+    ax_spectrum.set_xlabel(r'$\log_{{10}}\ ({0}\,\mu\mathrm{{Hz}}^{{-1}})$'.format(unit), fontsize=9)
+
+    # Bottom marginal: power summed over all frequencies (x delta-f), vs ell -> [unit / ell].
+    deltafreq = float(np.mean(np.diff(freq)))
+    ax_wavenum = divider.append_axes("bottom", 1.3, pad=0.0, sharex=ax)
+    ax_wavenum.plot(ell, np.log10(np.maximum(np.sum(spec, axis=0) * deltafreq, 1e-30)), 'k-')
+    ax_wavenum.set_xlim(1, ell.max())
+    ax_wavenum.set_xlabel(r'$\ell$')
+    ax_wavenum.yaxis.tick_right()
+    ax_wavenum.yaxis.set_label_position("right")
+    ax_wavenum.set_ylabel(r'$\log_{{10}}\ ({0}\,\ell^{{-1}})$'.format(unit), fontsize=9)
+    return im
+
+
+def plot_visible_komega_single(ell, freq, spec, los_vec, los_idx, outpath=None,
+                               vmin=-5, vmax=2, fmax=None, varname='', ifig=None):
+    """
+    Plot a single-line-of-sight visible k-omega diagram, with marginal panels
+    (left: power summed over all ell for each frequency; bottom: power summed
+    over all frequencies for each ell).
+
+    Parameters
+    ----------
+    ell: np.ndarray
+        Spherical harmonic degrees (x axis).
+    freq: np.ndarray
+        Temporal frequencies in microHz (y axis).
+    spec: np.ndarray
+        Power spectrum, shape (len(freq), len(ell)).
+    los_vec: array-like
+        The line-of-sight vector (for the title).
+    los_idx: int
+        Line-of-sight index (1-based, for the title).
+    outpath: str, optional
+        If given, save the figure to this path.
+    vmin, vmax: float
+        log10 colour-scale limits.
+    fmax: float, optional
+        Maximum frequency (microHz) to display.
+    varname: str, optional
+        Variable name, used to label the colour-bar power units.
+    ifig: int, optional
+        Figure number to use (interactive sessions).
+    """
+    fig = pl.figure(ifig, figsize=(9, 7)) if ifig is not None else pl.figure(figsize=(9, 7))
+    ax = fig.gca()
+    title = r"Visible k$-\omega$ — LOS{} = {}".format(los_idx, tuple(np.round(los_vec).astype(int)))
+    _plot_visible_komega_marginal(fig, ax, ell, freq, spec, title, vmin, vmax, fmax,
+                                  _visible_komega_power_unit(varname))
+    fig.tight_layout()
+    if outpath is not None:
+        fig.savefig(outpath, dpi=150, bbox_inches='tight')
+    return fig
+
+
+def plot_visible_komega_panel(ell, freq, spec_list, los_list, outpath=None,
+                              run_id='', varname='', radius=None,
+                              vmin=-5, vmax=2, fmax=None, ifig=None):
+    """
+    Plot a 2x4 panel of visible k-omega diagrams (one per line of sight).
+
+    Parameters
+    ----------
+    ell: np.ndarray
+        Spherical harmonic degrees (x axis).
+    freq: np.ndarray
+        Temporal frequencies in microHz (y axis).
+    spec_list: list of np.ndarray
+        One power spectrum per line of sight, each (len(freq), len(ell)).
+    los_list: list of array-like
+        The line-of-sight vectors.
+    outpath: str, optional
+        If given, save the figure to this path.
+    run_id, varname: str
+        Labels for the figure title.
+    radius: float, optional
+        Radius (Mm) for the figure title.
+    vmin, vmax, fmax: float
+        Colour-scale and frequency limits (see plot_visible_komega_single).
+    ifig: int, optional
+        Figure number to use (interactive sessions).
+    """
+    n = len(spec_list)
+    ncol = 4
+    nrow = int(np.ceil(n / ncol))
+    if ifig is not None:
+        fig = pl.figure(ifig, figsize=(5 * ncol, 4.5 * nrow))
+        axes = fig.subplots(nrow, ncol, sharex=True, sharey=True)
+    else:
+        fig, axes = pl.subplots(nrow, ncol, figsize=(5 * ncol, 4.5 * nrow),
+                                sharex=True, sharey=True)
+    axes = np.atleast_1d(axes).flatten()
+    im = None
+    for idx, (spec, los) in enumerate(zip(spec_list, los_list)):
+        title = "LOS{} = {}".format(idx + 1, tuple(np.round(los).astype(int)))
+        im = _plot_visible_komega_ax(axes[idx], ell, freq, spec, title, vmin, vmax, fmax)
+    for idx in range(n, len(axes)):
+        axes[idx].set_visible(False)
+    rad_str = '' if radius is None else ' @ {:.0f} Mm'.format(radius)
+    fig.suptitle(r"Visible k$-\omega$ diagrams — {} — {}{}".format(run_id, varname, rad_str),
+                 fontsize=12)
+    fig.subplots_adjust(right=0.92, top=0.93, hspace=0.25, wspace=0.1)
+    cax = fig.add_axes([0.94, 0.1, 0.015, 0.8])
+    cbar = fig.colorbar(im, cax=cax, orientation='vertical')
+    cbar.set_label(r'$\log_{{10}}\ ({0}\,\ell^{{-1}}\,\mu\mathrm{{Hz}}^{{-1}})$'.format(
+        _visible_komega_power_unit(varname)))
+    if outpath is not None:
+        fig.savefig(outpath, dpi=150, bbox_inches='tight')
+    return fig
+
+
+def plot_visible_komega_los_averaged(ell, freq, spec_avg, outpath=None,
+                                     run_id='', varname='', radius=None,
+                                     vmin=-5, vmax=2, fmax=None, ifig=None):
+    """
+    Plot the line-of-sight-averaged visible k-omega diagram (mean of the
+    per-LOS power spectra), with marginal panels matching the regular k-omega
+    diagram: a left panel of power summed over all ell for each frequency, and
+    a bottom panel of power summed over all frequencies for each ell.
+
+    Power units follow the variable (see :func:`_visible_komega_power_unit`):
+    e.g. L^2/ell/microHz for 'rel_lum-1', m^2/s^2/ell/microHz for velocities.
+
+    Parameters
+    ----------
+    ell: np.ndarray
+        Spherical harmonic degrees (x axis).
+    freq: np.ndarray
+        Temporal frequencies in microHz (y axis).
+    spec_avg: np.ndarray
+        LOS-averaged power spectrum, shape (len(freq), len(ell)).
+    outpath: str, optional
+        If given, save the figure to this path.
+    run_id, varname: str
+        Labels for the figure title and units.
+    radius: float, optional
+        Radius (Mm) for the figure title.
+    vmin, vmax, fmax: float
+        Colour-scale and frequency limits (see plot_visible_komega_single).
+    ifig: int, optional
+        Figure number to use (interactive sessions).
+    """
+    fig = pl.figure(ifig, figsize=(9, 7)) if ifig is not None else pl.figure(figsize=(9, 7))
+    ax = fig.gca()
+    rad_str = '' if radius is None else ' @ {:.0f} Mm'.format(radius)
+    title = r"Visible k$-\omega$ — LOS-averaged — {} — {}{}".format(run_id, varname, rad_str)
+    _plot_visible_komega_marginal(fig, ax, ell, freq, spec_avg, title, vmin, vmax, fmax,
+                                  _visible_komega_power_unit(varname))
+    fig.tight_layout()
+    if outpath is not None:
+        fig.savefig(outpath, dpi=150, bbox_inches='tight')
+    return fig
+
+
 class MomsDataSet(DerivedMixin):
     '''
     MomsDataSet tracks a set of "dumps" of MomsData which are single "moments" datacubes
@@ -11967,6 +12343,11 @@ class MomsDataSet(DerivedMixin):
         # initialize the dictionaries
         if not self._set_dictionaries(var_list):
             return
+
+        # PP 2026-06-15: remember the var_list so parallel backends (e.g.
+        # visible_k_omega_diagram per_thread_moms) can re-instantiate an
+        # equivalent MomsDataSet per worker thread.
+        self._var_list = list(var_list)
 
         # get the initial dump momsdata
         self._get_dump(init_dump_read)
@@ -13679,7 +14060,114 @@ class MomsDataSet(DerivedMixin):
         return (radii, plot_val)
 
 
-    def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None, 
+    def _process_dump_to_shcoeffs(self, varname, radius, dump_number, lmax,
+                                  ut_direction=0, window_value=1.0,
+                                  moms=None, io_lock=None):
+        """
+        Interpolate ``varname`` onto the spherical-harmonics grid at ``radius``
+        for a single dump, expand it in complex spherical harmonics, apply the
+        window factor, and return the (2, lmax+1, lmax+1) coefficient slab.
+
+        This is the single, shared per-dump pipeline used by both
+        :meth:`k_omega_diagram` and :meth:`visible_k_omega_diagram`.
+
+        Parameters
+        ----------
+        varname: str
+            Variable to expand. Recognised composites: 'ur', '|ur|', 'utot',
+            'ut_phi', 'ut_theta', 'ut', 'rel_lum-1', 'abs_lum'. Any other string
+            is passed straight to :meth:`sphericalHarmonics_format`.
+        radius: float
+            Radius (Mm) of the sphere to interpolate onto.
+        dump_number: int
+            Dump to read.
+        lmax: int
+            Maximum spherical harmonic degree (also the SHExpandDHC lmax_calc).
+        ut_direction: float
+            Direction angle (degrees) for the tangential 'ut' projection.
+        window_value: float
+            Scalar window weight to multiply the coefficients by (e.g. one Hann
+            sample). Use 1.0 for an unwindowed expansion.
+        moms: MomsDataSet, optional
+            Object used for the (cache-mutating) data reads; defaults to ``self``.
+            A per-thread instance is passed in the threaded backend.
+        io_lock: threading.Lock, optional
+            Lock held around the data reads when ``moms`` is shared across
+            threads. ``None`` means no locking (serial or per-thread-moms).
+
+        Returns
+        -------
+        np.ndarray
+            Complex (2, lmax+1, lmax+1) windowed SH coefficients.
+        """
+        if moms is None:
+            moms = self
+        lock = io_lock if io_lock is not None else _NullLock()
+
+        # ---- Data reads (mutate the moms cache; serialized when shared) ----
+        with lock:
+            if varname in ('ur', 'utot', 'ut', 'ut_theta'):
+                ux, theta_grid, phi_grid = moms.sphericalHarmonics_format(
+                    'ux', radius, dump_number, lmax=lmax, get_theta_phi_grids=True)
+                uy = moms.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+                uz = moms.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
+            elif varname == 'ut_phi':
+                ux, theta_grid, phi_grid = moms.sphericalHarmonics_format(
+                    'ux', radius, dump_number, lmax=lmax, get_theta_phi_grids=True)
+                uy = moms.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
+            elif varname in ('rel_lum-1', 'abs_lum'):
+                T9, theta_grid, phi_grid = moms.sphericalHarmonics_format(
+                    'T9', radius, dump_number, lmax=lmax, get_theta_phi_grids=True)
+            else:
+                # '|ur|' and any generic moms quantity
+                quantity_values, theta_grid, phi_grid = moms.sphericalHarmonics_format(
+                    varname, radius, dump_number, lmax=lmax, get_theta_phi_grids=True)
+
+        # ---- Derived-field assembly (pure numpy; outside the lock) ----
+        if varname == 'ur':
+            theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+            x_hat = np.sin(theta) * np.cos(phi)
+            y_hat = np.sin(theta) * np.sin(phi)
+            z_hat = np.cos(theta)
+            quantity_values = x_hat * ux + y_hat * uy + z_hat * uz
+        elif varname == 'utot':
+            quantity_values = np.sqrt(ux**2 + uy**2 + uz**2)
+        elif varname == 'ut_phi':
+            theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+            quantity_values = -np.sin(phi) * ux + np.cos(phi) * uy
+        elif varname == 'ut_theta':
+            theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+            quantity_values = (np.cos(theta) * np.cos(phi) * ux
+                               + np.cos(theta) * np.sin(phi) * uy
+                               - np.sin(theta) * uz)
+        elif varname == 'ut':
+            theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
+            alpha = np.deg2rad(ut_direction)
+            hat_x = np.cos(alpha) * (-np.sin(phi)) + np.sin(alpha) * np.cos(theta) * np.cos(phi)
+            hat_y = np.cos(alpha) * np.cos(phi) + np.sin(alpha) * np.cos(theta) * np.sin(phi)
+            hat_z = -np.sin(alpha) * np.sin(theta)
+            quantity_values = hat_x * ux + hat_y * uy + hat_z * uz
+        elif varname == 'rel_lum-1':
+            L_base = np.mean(T9**4)
+            quantity_values = ((T9**4) / L_base - 1)
+        elif varname == 'abs_lum':
+            sigma = 5.670367e-8
+            quantity_values = sigma * (T9 * 1e9)**4
+
+        # ---- Spherical harmonic expansion (pyshtools C code releases GIL) ----
+        coeffs_vec = pyshtools.expand.SHExpandDHC(
+            quantity_values, sampling=2, lmax_calc=lmax)
+        coeffs_vec = coeffs_vec * window_value
+
+        # Pad to (2, lmax+1, lmax+1) (no-op when shapes already match).
+        coeffs_vec = np.pad(
+            coeffs_vec,
+            ((0, 0), (0, lmax + 1 - shape(coeffs_vec)[1]),
+             (0, lmax + 1 - shape(coeffs_vec)[2])),
+            'constant', constant_values=0)
+        return coeffs_vec
+
+    def k_omega_diagram(self, dump_start, dump_stop, varname='ur', lmax_crop=None, radius=None, mass=None,
                         makefigure=True, returnvalues=True, vmin=-5, vmax=2, fmax=None, ut_direction=0,
                         rprofs=True, time_step=None):
         """
@@ -13810,93 +14298,12 @@ class MomsDataSet(DerivedMixin):
                     r = self._rprofset.get('R', fname=dump_number)
                     m = self._rprofset.compute_m(dump_number) * 5.025e-07 # Convert from code units to solar masses
                     radius = scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput)
-                # For each radius/mass, compute the power spectral density up to lmax_crop
-                # get ur
-                #lmax, N, npoints = self.sphericalHarmonics_lmax(radius)
-                #if lmax_crop is not None:
-                #    lmax = lmax_crop
-                if varname=='ur':
-                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
-                                                                              lmax=lmax, get_theta_phi_grids=True)
-                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
-                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
-                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
-                    x = radius*np.sin(theta)*np.cos(phi)
-                    y = radius*np.sin(theta)*np.sin(phi)
-                    z = radius*np.cos(theta)
-                    r_len = radius
-                    x /= r_len
-                    y /= r_len
-                    z /= r_len
-                    #x, y, z are now the x,y,z components of the r hat unit vector for each element on the grid
-                    ur = zeros_like(uz)
-                    ur = x*ux + y*uy + z*uz
-                    quantity_values, theta_grid, phi_grid = ur, theta_grid, phi_grid
-                elif varname=='|ur|':
-                    ur, theta_grid, phi_grid = self.sphericalHarmonics_format('|ur|', radius, dump_number, 
-                                                                              lmax=lmax, get_theta_phi_grids=True)
-                    quantity_values, theta_grid, phi_grid = ur, theta_grid, phi_grid
-                elif varname=='utot':
-                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
-                                                                              lmax=lmax, get_theta_phi_grids=True)
-                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
-                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
-                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
-                    utot = np.sqrt(ux**2 + uy**2 + uz**2)
-                    quantity_values, theta_grid, phi_grid = utot, theta_grid, phi_grid
-                elif varname=='ut_phi':
-                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number, 
-                                                                              lmax=lmax, get_theta_phi_grids=True)
-                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
-                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
-                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
-                    phi_hat_x = -np.sin(phi)
-                    phi_hat_y = np.cos(phi)
-                    phi_hat_z = 0.
-                    ut_phi = phi_hat_x*ux + phi_hat_y*uy + phi_hat_z*uz
-                    quantity_values, theta_grid, phi_grid = ut_phi, theta_grid, phi_grid
-                elif varname=='ut_theta':
-                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number,
-                                                                              lmax=lmax, get_theta_phi_grids=True)
-                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
-                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
-                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
-                    theta_hat_x = np.cos(theta)*np.cos(phi)
-                    theta_hat_y = np.cos(theta)*np.sin(phi)
-                    theta_hat_z = -np.sin(theta)
-                    ut_theta =  theta_hat_x*ux + theta_hat_y*uy + theta_hat_z*uz
-                    quantity_values, theta_grid, phi_grid = ut_theta, theta_grid, phi_grid
-                elif varname=='ut':
-                    ux, theta_grid, phi_grid = self.sphericalHarmonics_format('ux', radius, dump_number,
-                                                                              lmax=lmax, get_theta_phi_grids=True)
-                    uy = self.sphericalHarmonics_format('uy', radius, dump_number, lmax=lmax)
-                    uz = self.sphericalHarmonics_format('uz', radius, dump_number, lmax=lmax)
-                    theta, phi = np.meshgrid(theta_grid, phi_grid, indexing='ij', sparse=False)
-                    theta_hat_x = np.cos(theta)*np.cos(phi)
-                    theta_hat_y = np.cos(theta)*np.sin(phi)
-                    theta_hat_z = -np.sin(theta)
-                    phi_hat_x = -np.sin(phi)
-                    phi_hat_y = np.cos(phi)
-                    phi_hat_z = 0.
-                    alpha = np.deg2rad(ut_direction)
-                    hat_x = np.cos(alpha)*phi_hat_x + np.sin(alpha)*theta_hat_x
-                    hat_y = np.cos(alpha)*phi_hat_y + np.sin(alpha)*theta_hat_y
-                    hat_z = np.cos(alpha)*phi_hat_z + np.sin(alpha)*theta_hat_z
-                    ut = hat_x*ux + hat_y*uy + hat_z*uz
-                    quantity_values, theta_grid, phi_grid = ut, theta_grid, phi_grid
-                else:
-                    quantity_values, theta_grid, phi_grid = self.sphericalHarmonics_format(varname, radius, dump_number,
-                                                                                           lmax=lmax, get_theta_phi_grids=True)
-                if lmax_crop is not None:
-                    coeffs_vec = pyshtools.shtools.SHExpandDHC(quantity_values, sampling=2, 
-                                                               lmax_calc=lmax_crop)*window[dump_i]
-                else:
-                    coeffs_vec = pyshtools.shtools.SHExpandDHC(quantity_values, sampling=2)*window[dump_i]
-                # Pad out the data and store it into the mmap'd array
-                shcoeffs_by_radius_by_dump[0,dump_i,] = np.pad(coeffs_vec, 
-                                                               ((0,0),(0,lmax+1-shape(coeffs_vec)[1]),
-                                                                (0,lmax+1-shape(coeffs_vec)[2])), 
-                                                               'constant', constant_values=0)
+                # PP 2026-06-15: variable extraction + SH expansion now lives in
+                # the shared _process_dump_to_shcoeffs helper (also used by
+                # visible_k_omega_diagram). Behaviour is unchanged.
+                shcoeffs_by_radius_by_dump[0, dump_i, ] = self._process_dump_to_shcoeffs(
+                    varname, radius, dump_number, lmax,
+                    ut_direction=ut_direction, window_value=window[dump_i])
                 sys.stdout.flush()
             except KeyboardInterrupt:
                 print("Stopping early at dump {}".format(dump_number))
@@ -14081,7 +14488,374 @@ class MomsDataSet(DerivedMixin):
         else:
             return
 
-        
+
+    def visible_k_omega_diagram(self, dump_start, dump_stop, varname='rel_lum-1',
+                                lmax_crop=None, radius=None, mass=None,
+                                los_list=None, los_convention='cross',
+                                n_threads=1, per_thread_moms=False,
+                                use_mpi=False, mapping='rr', reduce_strategy='full',
+                                makefigure=True, returnvalues=True, panel=True,
+                                vmin=-5, vmax=2, fmax=None, ut_direction=0,
+                                rprofs=True, time_step=None,
+                                save_coeffs=False, outdir=None, run_id=None):
+        """
+        Compute (and optionally plot) the *visible* k-omega diagram: the
+        disk-integrated power spectrum P_vis(ell, f) seen along one or more
+        lines of sight (LOS).
+
+        Unlike :meth:`k_omega_diagram` (which sums power over m incoherently),
+        the visible diagram contracts the per-dump spherical harmonic
+        coefficients coherently over m against a Lambert-cosine visibility
+        kernel V_lm, i.e. delta_F_l = sum_m c_lm * V_lm, before taking |.|^2
+        and Fourier transforming in time. The algorithm and the corrected
+        kernel normalization are documented in the project audit
+        (README-visible-komega-audit.md); see :func:`compute_V_lm_analytical`.
+
+        The same physics runs serially (default), multithreaded across dumps
+        (``n_threads`` > 1), or under MPI across dumps (``use_mpi=True``, which
+        lazily imports mpi4py), so the function is usable unchanged from a
+        notebook or an HPC script.
+
+        Parameters
+        ----------
+        dump_start, dump_stop: int
+            Inclusive range of dumps used for the time series.
+        varname: str, optional
+            Variable whose visible spectrum is computed. Default 'rel_lum-1'
+            (relative bolometric luminosity fluctuation from T9). Other options:
+            'ur', '|ur|', 'utot', 'ut_phi', 'ut_theta', 'ut', 'abs_lum', or any
+            available moms quantity.
+        lmax_crop: int, optional
+            Impose a maximum ell; if None, :meth:`sphericalHarmonics_lmax` sets it.
+        radius: float, optional
+            Target radius in Mm (mutually exclusive with ``mass``).
+        mass: float, optional
+            Target enclosed mass in Msun (requires an rprofset for the
+            mass->radius conversion).
+        los_list: list of array-like, optional
+            Custom lines of sight. If None, the 8 default LOS from
+            :func:`make_los_vectors` are used (or the Fortran-aligned set if
+            ``los_convention='fortran'``).
+        los_convention: {'cross', 'fortran'}, optional
+            Which default LOS set to build when ``los_list`` is None.
+        n_threads: int, optional
+            Threads per process for Phase 1. 1 (default) runs a simple serial
+            loop. >1 uses a ThreadPoolExecutor over dumps.
+        per_thread_moms: bool, optional
+            If True, each worker thread instantiates its own MomsDataSet (real
+            parallel reads, more memory). If False (default), a shared
+            MomsDataSet is used with a lock around the cache-mutating reads.
+        use_mpi: bool, optional
+            If True, distribute dumps across MPI ranks (mpi4py imported lazily).
+            Each rank may additionally use ``n_threads``.
+        mapping: {'rr', 'chunk'}, optional
+            Dump-to-rank assignment when ``use_mpi=True``.
+        reduce_strategy: {'full', 'per-los'}, optional
+            'full' reduces the whole SH array to rank 0 (allows saving the
+            coefficients); 'per-los' reduces only the small per-LOS delta_F
+            stacks (use for very large lmax/n_dumps where the full array would
+            exceed the MPI 32-bit count limit).
+        makefigure: bool, optional
+            If True, produce the panel (or single-LOS) figure.
+        returnvalues: bool, optional
+            If True, return a results dict (see Returns).
+        panel: bool, optional
+            If True (and more than one LOS), draw the combined panel figure.
+        vmin, vmax: float, optional
+            log10 colour-scale limits for the plots.
+        fmax: float, optional
+            Maximum frequency (microHz) to display.
+        ut_direction: float, optional
+            Direction angle (degrees) for the tangential 'ut' projection.
+        rprofs: bool, optional
+            If True, derive the time step from the rprof history; otherwise use
+            ``time_step`` (seconds) or a 45 min fallback.
+        time_step: float, optional
+            Time between dumps in seconds (used only when ``rprofs=False``).
+        save_coeffs: bool, optional
+            If True (and ``reduce_strategy='full'``), write the raw windowed SH
+            coefficients (.bin + .meta.pkl) to ``outdir`` for later re-plotting.
+        outdir: str, optional
+            Directory for on-disk artifacts (per-LOS .npz and .png, the
+            LOS-averaged .npz and .png, panel .png, and the coefficient .bin).
+            Created if needed. If None, nothing is written to disk.
+        run_id: str, optional
+            Label for filenames/titles; defaults to the dataset's run id.
+
+        Returns
+        -------
+        dict or None
+            When ``returnvalues`` is True, a dict with keys: 'ell' (degrees),
+            'freq' (microHz), 'spec_list' (one (n_freq, n_ell) array per LOS),
+            'spec_avg' (the LOS-averaged (n_freq, n_ell) spectrum), 'los_list',
+            'lmax', 'time_step_s', 'radius', 'varname', 'used_dumps', 'n_dumps'.
+            On non-root MPI ranks, returns None.
+        """
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        # ---- MPI setup (lazy import so notebooks need no mpi4py) ----
+        if use_mpi:
+            from mpi4py import MPI
+            comm = MPI.COMM_WORLD
+            rank = comm.Get_rank()
+            size = comm.Get_size()
+        else:
+            comm, rank, size = None, 0, 1
+        is_root = (rank == 0)
+
+        radiusinput = radius
+        massinput = mass
+
+        # ---- input validation ----
+        if (radius is None and mass is None) or (radius is not None and mass is not None):
+            self._messenger.error('You must select either a radius or a mass where to calculate the spectrum')
+            return None
+        if massinput is not None and not isinstance(self._rprofset, RprofSet):
+            self._messenger.error('Mass coordinate requires rprofset for mass-to-radius conversion, '
+                                  'but no rprofset is available')
+            return None
+        if varname == 'ut' and ut_direction == 0:
+            self._messenger.warning('ut_direction=0, this is equivalent to a ut_phi spectrum')
+        if save_coeffs and reduce_strategy == 'per-los':
+            self._messenger.warning('save_coeffs requires reduce_strategy="full"; coefficients '
+                                    'are not assembled with per-los reduction and will not be saved.')
+
+        # ---- representative radius (for lmax, labels) ----
+        def _radius_for(dump_number):
+            if radiusinput is not None:
+                return float(radiusinput)
+            r = self._rprofset.get('R', fname=dump_number)
+            m = self._rprofset.compute_m(dump_number) * 5.025e-07  # code units -> Msun
+            return float(scipy.interpolate.interp1d(m, r, fill_value="extrapolate")(massinput))
+
+        rep_radius = _radius_for(dump_start)
+        lmax, N, npoints = self.sphericalHarmonics_lmax(rep_radius)
+        if lmax_crop is not None:
+            lmax = int(lmax_crop)
+
+        # ---- lines of sight ----
+        if los_list is None:
+            los_list = (make_los_vectors_fortran() if los_convention == 'fortran'
+                        else make_los_vectors())
+        los_list = [np.asarray(l, dtype=float) for l in los_list]
+
+        # ---- dump layout + window (energy-conserving Hann, length n_dumps) ----
+        all_dumps = np.arange(dump_start, dump_stop + 1)
+        n_dumps = len(all_dumps)
+        window = scipy.signal.windows.hann(n_dumps, sym=False) * np.sqrt(8 / 3)
+
+        if use_mpi:
+            if mapping == 'chunk':
+                my_indices = np.array_split(np.arange(n_dumps), size)[rank]
+            else:
+                my_indices = np.where((np.arange(n_dumps) % size) == rank)[0]
+        else:
+            my_indices = np.arange(n_dumps)
+        my_dumps = all_dumps[my_indices]
+
+        # ---- moms factory for the data reads ----
+        init_dump = int(my_dumps[0]) if len(my_dumps) else int(dump_start)
+        if per_thread_moms:
+            tls = threading.local()
+
+            def get_moms():
+                if not hasattr(tls, 'moms'):
+                    tls.moms = MomsDataSet(self._dir_name, init_dump_read=init_dump,
+                                           dumps_in_mem=1, var_list=self._var_list,
+                                           rprofset=self._rprofset, verbose=0)
+                return tls.moms
+            io_lock = None
+        else:
+            def get_moms():
+                return self
+            io_lock = threading.Lock()
+
+        # ---- per-dump task ----
+        def _task(global_i, dump_number):
+            rad = _radius_for(dump_number)
+            coeffs = self._process_dump_to_shcoeffs(
+                varname, rad, int(dump_number), lmax,
+                ut_direction=ut_direction, window_value=window[global_i],
+                moms=get_moms(), io_lock=io_lock)
+            return int(global_i), int(dump_number), coeffs
+
+        # Full-length buffer so an MPI SUM reconstructs the full time axis;
+        # un-owned / failed slots stay zero (their window weight is irrelevant).
+        my_coeffs = np.zeros((n_dumps, 2, lmax + 1, lmax + 1), dtype=np.csingle)
+        used_dumps_local = []
+
+        # ---- Phase 1: SH expansion across dumps ----
+        if n_threads and n_threads > 1:
+            with ThreadPoolExecutor(max_workers=n_threads) as ex:
+                futures = [ex.submit(_task, int(gi), int(dn))
+                           for gi, dn in zip(my_indices, my_dumps)]
+                completed = as_completed(futures)
+                if is_root:
+                    completed = tqdm(completed, total=len(futures),
+                                     desc='visible k-omega phase 1', ncols=80)
+                for fut in completed:
+                    try:
+                        gi, dn, coeffs = fut.result()
+                        my_coeffs[gi] = coeffs
+                        used_dumps_local.append(dn)
+                    except Exception as exc:
+                        print('Skipping dump (thread):', exc)
+        else:
+            pairs = list(zip(my_indices, my_dumps))
+            if is_root:
+                pairs = tqdm(pairs, desc='visible k-omega phase 1', ncols=80)
+            for gi, dn in pairs:
+                try:
+                    gi, dn, coeffs = _task(int(gi), int(dn))
+                    my_coeffs[gi] = coeffs
+                    used_dumps_local.append(dn)
+                except KeyboardInterrupt:
+                    print('Stopping early at dump', dn)
+                    break
+                except Exception:
+                    print('Skipping dump', dn)
+                    continue
+
+        # ---- reduce across ranks (or pass through) ----
+        if use_mpi:
+            all_used_lists = comm.gather(used_dumps_local, root=0)
+            if reduce_strategy == 'per-los':
+                local_stack = np.zeros((len(los_list), n_dumps, lmax + 1), dtype=np.complex128)
+                for i, los in enumerate(los_list):
+                    V_lm = compute_V_lm_analytical(lmax, los)
+                    local_stack[i] = np.sum(my_coeffs * V_lm[np.newaxis, :, :, :], axis=(1, 3))
+                comm.Barrier()
+                global_stack = np.zeros_like(local_stack) if is_root else None
+                comm.Reduce(local_stack, global_stack, op=MPI.SUM, root=0)
+                delta_F_stack = global_stack
+                global_coeffs = None
+            else:
+                comm.Barrier()
+                global_coeffs = np.zeros_like(my_coeffs) if is_root else None
+                comm.Reduce(my_coeffs, global_coeffs, op=MPI.SUM, root=0)
+                delta_F_stack = None
+        else:
+            all_used_lists = [used_dumps_local]
+            global_coeffs = my_coeffs
+            delta_F_stack = None
+
+        # Non-root MPI ranks have nothing left to do.
+        if use_mpi and not is_root:
+            return None
+
+        # ---- assemble used dumps + time step ----
+        used_dumps = sorted({d for sub in all_used_lists for d in sub})
+        if len(used_dumps) == 0:
+            self._messenger.error('No dumps were successfully processed.')
+            return None
+
+        if rprofs:
+            history = self._rprofset.get_history()
+            dump_to_time = dict(zip(history.get('NDump'), history.get('time(mins)')))
+            dump_times = np.array([dump_to_time[d] for d in used_dumps if d in dump_to_time])
+            time_step_s = float(np.median(np.diff(dump_times)) * 60)
+        elif time_step is not None:
+            time_step_s = float(time_step)
+        else:
+            time_step_s = 45 * 60
+            self._messenger.warning('No time_step provided when rprofs=False. Assuming 45 minutes per dump.')
+
+        # ---- coherent m-contraction with V_lm (if not already done) ----
+        if delta_F_stack is None:
+            delta_F_stack = np.zeros((len(los_list), n_dumps, lmax + 1), dtype=np.complex128)
+            for i, los in enumerate(los_list):
+                V_lm = compute_V_lm_analytical(lmax, los)
+                delta_F_stack[i] = np.sum(global_coeffs * V_lm[np.newaxis, :, :, :], axis=(1, 3))
+
+        # ---- temporal FFT + normalization (per audit: denominator = n_dumps) ----
+        sampling_factor = time_step_s / n_dumps * 1e12 * 1e-6   # Mm^2 -> m^2, Hz -> microHz
+        temporal_freqs = np.fft.fftfreq(n_dumps, time_step_s)
+        temporal_mask = np.argsort(temporal_freqs)
+        freq_axis = temporal_freqs[temporal_mask] * 1e6         # microHz
+        ell = np.arange(0, lmax + 1)
+
+        spec_list = []
+        for i in range(len(los_list)):
+            ft = np.fft.fft(delta_F_stack[i], axis=0)           # full n_dumps length
+            vspec = np.abs(ft) ** 2 * sampling_factor
+            spec_list.append(vspec[temporal_mask, :])           # (n_freq, n_ell)
+
+        # LOS-averaged spectrum (mean over the lines of sight).
+        spec_avg = np.mean(np.stack(spec_list, axis=0), axis=0)
+
+        if run_id is None:
+            run_id = getattr(self, '_run_id', '') or ''
+
+        # ---- on-disk artifacts ----
+        if outdir is not None:
+            os.makedirs(outdir, exist_ok=True)
+            tag = '{}-{}-{:.0f}Mm'.format(run_id, varname, rep_radius)
+
+            if save_coeffs and global_coeffs is not None:
+                coeffs_path = os.path.join(outdir, 'coeffs-{}.bin'.format(tag))
+                mmap = np.memmap(coeffs_path, dtype='csingle', mode='w+', shape=global_coeffs.shape)
+                mmap[:] = global_coeffs
+                del mmap
+                meta = {'dump_start': dump_start, 'dump_stop': dump_stop,
+                        'used_dumps': used_dumps, 'lmax': lmax,
+                        'time_step_s': time_step_s, 'radius': radiusinput,
+                        'mass': massinput, 'varname': varname, 'n_dumps': n_dumps}
+                with open(coeffs_path + '.meta.pkl', 'wb') as f:
+                    pickle.dump(meta, f)
+
+            for i, los in enumerate(los_list):
+                np.savez_compressed(
+                    os.path.join(outdir, 'spec-{}-los{}.npz'.format(tag, i + 1)),
+                    ell=ell, freq=freq_axis, spec=spec_list[i], los=los,
+                    lmax=lmax, time_step_s=time_step_s, n_dumps=n_dumps,
+                    varname=varname, radius=rep_radius, run_id=run_id)
+                fig = plot_visible_komega_single(
+                    ell, freq_axis, spec_list[i], los, i + 1,
+                    outpath=os.path.join(outdir, 'visible-komega-{}-los{}.png'.format(tag, i + 1)),
+                    vmin=vmin, vmax=vmax, fmax=fmax, varname=varname)
+                pl.close(fig)
+
+            # LOS-averaged spectrum + plot
+            np.savez_compressed(
+                os.path.join(outdir, 'spec-{}-losavg.npz'.format(tag)),
+                ell=ell, freq=freq_axis, spec=spec_avg, n_los=len(los_list),
+                lmax=lmax, time_step_s=time_step_s, n_dumps=n_dumps,
+                varname=varname, radius=rep_radius, run_id=run_id)
+            if len(los_list) > 1:
+                fig = plot_visible_komega_los_averaged(
+                    ell, freq_axis, spec_avg, run_id=run_id, varname=varname,
+                    radius=rep_radius, vmin=vmin, vmax=vmax, fmax=fmax,
+                    outpath=os.path.join(outdir, 'visible-komega-{}-losavg.png'.format(tag)))
+                pl.close(fig)
+
+        # ---- interactive figure(s) ----
+        if makefigure:
+            tag = '{}-{}-{:.0f}Mm'.format(run_id, varname, rep_radius)
+            panel_out = (os.path.join(outdir, 'visible-komega-{}-panel.png'.format(tag))
+                         if outdir is not None else None)
+            if len(los_list) == 1:
+                plot_visible_komega_single(ell, freq_axis, spec_list[0], los_list[0], 1,
+                                           outpath=panel_out, vmin=vmin, vmax=vmax, fmax=fmax,
+                                           varname=varname)
+            else:
+                if panel:
+                    plot_visible_komega_panel(ell, freq_axis, spec_list, los_list,
+                                              outpath=panel_out, run_id=run_id, varname=varname,
+                                              radius=rep_radius, vmin=vmin, vmax=vmax, fmax=fmax)
+                # LOS-averaged diagram (the single summary panel)
+                plot_visible_komega_los_averaged(ell, freq_axis, spec_avg, run_id=run_id,
+                                                 varname=varname, radius=rep_radius,
+                                                 vmin=vmin, vmax=vmax, fmax=fmax)
+
+        if returnvalues:
+            return {'ell': ell, 'freq': freq_axis, 'spec_list': spec_list,
+                    'spec_avg': spec_avg, 'los_list': los_list, 'lmax': lmax,
+                    'time_step_s': time_step_s, 'radius': rep_radius, 'varname': varname,
+                    'used_dumps': used_dumps, 'n_dumps': n_dumps}
+        return None
+
+
     def spherically_distribute(self, var, num_points, radius, dump_init, dump_stop, dump_step=1):
         """
         This function spherically distributes a specified number of points around a sphere at the desired radius.
