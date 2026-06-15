@@ -10908,21 +10908,34 @@ class RprofSet(PPMtools, DerivedMixin):
             return []
 
     def rprofgui(self,ifig=11,title=""):
-        def w_plot(dump1,dump2,ything,log10y=False,ifig=ifig,title=title):
-            from IPython.display import clear_output
-            clear_output(wait=True)  # Clear previous output to prevent duplication
-            self.rp_plot([dump1,dump2],ything,logy=log10y,ifig=ifig,title=title)
+        # PP 2026-04-09: replaced interact() + clear_output() with explicit
+        # widgets.Output() pattern to fix ipympl backend rendering in callbacks
         rp_hst = self.get_history()
         dumpmin, dumpmax = rp_hst.get('NDump')[0],rp_hst.get('NDump')[-1]
         dumpmean = int(2*(-dumpmin + dumpmax)/3.)
         things_list = self.get_dump(dumpmin).get_lr_variables()+\
                           self.get_dump(dumpmin).get_hr_variables()+\
                     self.get_computable_quantities()
-        interact(w_plot,dump1=widgets.IntSlider(min=dumpmin,\
-                max=dumpmax,step=1,value=int(dumpmin+0.05*(dumpmean-dumpmin))),\
-                     dump2=widgets.IntSlider(min=dumpmin,\
-                max=dumpmax,step=1,value=int(dumpmax-0.05*(dumpmax-dumpmean))),\
-                     ything=things_list,ifig=fixed(ifig))
+        dump1 = widgets.IntSlider(min=dumpmin,\
+                max=dumpmax,step=1,value=int(dumpmin+0.05*(dumpmean-dumpmin)),\
+                description='dump1')
+        dump2 = widgets.IntSlider(min=dumpmin,\
+                max=dumpmax,step=1,value=int(dumpmax-0.05*(dumpmax-dumpmean)),\
+                description='dump2')
+        ything = widgets.Dropdown(options=things_list,description='ything')
+        log10y = widgets.Checkbox(value=False,description='log10y',indent=False)
+        out = widgets.Output()
+        def w_plot(*args):
+            with out:
+                out.clear_output(wait=True)
+                self.rp_plot([dump1.value,dump2.value],ything.value,
+                             logy=log10y.value,ifig=ifig,title=title)
+                pl.show()
+        for w in [dump1, dump2, ything, log10y]:
+            w.observe(w_plot, names='value')
+        controls = widgets.VBox([dump1, dump2, ything, log10y])
+        display(widgets.VBox([controls, out]))
+        w_plot()
 
     def rp_plot(self, dump, ything, xthing='R', num_type='NDump', ifig=11, runlabel=None,\
                 xxlim=None, yylim=None, logy=False,newfig=True,idn=0,title=None):
