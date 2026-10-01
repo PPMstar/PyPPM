@@ -24,8 +24,18 @@ cd docs && make html        # output in docs/build/html
 cd docs && make gh-pages     # WARNING: commits + pushes local repo to remote master, switches branches
 ```
 
-There is no test runner. To sanity-check a change, import the package and exercise
-it against a data directory, e.g. `python -c "from ppmpy import ppm; ..."`.
+Most of ppmpy has no tests; sanity-check changes by importing the package and
+exercising it against a data directory, e.g. `python -c "from ppmpy import ppm; ..."`.
+`ppmpy.synspec` has a pytest suite (`tests/synspec`, run from the checkout; the
+conftest puts the checkout first on `sys.path`):
+
+```bash
+apptainer exec --bind /home <python-3.9 SIF> python -m pytest tests/synspec -q -p no:cacheprovider
+```
+
+Tests marked `m424` compare with the M424 production products on Trillium scratch
+and skip when those are absent; `tests/synspec/legacy/` holds frozen copies of the
+original project sources used as the reference.
 
 ## Architecture
 
@@ -92,6 +102,15 @@ RProf data, the reader uses it instead of computing it.
   `compare_lums_with_rprof(moms, ...)` for the moms-derived side, plus plots.
   Kept separate from `ppm.py`: it imports only numpy/scipy at load time and
   imports `ppm`, matplotlib and tqdm inside the functions that need them.
+- `ppmpy/synspec/` — synthetic line profiles from moms data and their variability
+  (M424 -> FASTWIND -> disc integration pipeline, being moved here in milestones):
+  `conventions` (c, Doppler and frame conventions, line-of-sight sets), `spectral`
+  (LineSet, VelocityGrid y = c ln(lambda/lambda_ref)), `io` (atomic npz, '_meta'
+  provenance, npz memmaps), `diagnostics` (EW, moments, FWHM, broadening kernels and
+  fits), `lpv` (residual spectra, zero-crossing tracker, systematics), `spectrum`
+  (temporal power spectra, FFT or direct DFT), `plotting` (matplotlib imported inside
+  functions). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
+  defaults reproduce the M424 products bit for bit, verified by the tests.
 - `Messenger` (in `ppm.py`) — centralised verbosity-controlled output; reader
   classes take a `verbose` int (0=silent … 3=all) and route messages through it.
 

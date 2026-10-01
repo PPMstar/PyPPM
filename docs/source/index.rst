@@ -26,6 +26,14 @@ Documentation:
 
    ppmpy.ppm
    ppmpy.spectra
+   ppmpy.synspec
+   ppmpy.synspec.conventions
+   ppmpy.synspec.spectral
+   ppmpy.synspec.io
+   ppmpy.synspec.diagnostics
+   ppmpy.synspec.lpv
+   ppmpy.synspec.spectrum
+   ppmpy.synspec.plotting
 
 * :ref:`genindex`
 * :ref:`modindex`
