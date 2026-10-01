@@ -25,6 +25,7 @@ Documentation:
    :toctree: _autosummary
 
    ppmpy.ppm
+   ppmpy.spectra
 
 * :ref:`genindex`
 * :ref:`modindex`

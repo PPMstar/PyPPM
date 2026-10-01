@@ -85,6 +85,13 @@ RProf data, the reader uses it instead of computing it.
   `rprofile`), imported into `ppm.py` as `bprof`.
 - `ppmpy/ppmsetup.py` — setup/EOS/unit-conversion helpers (`UnitConvert`, `eosPS`,
   `EOSgasrad`, MESA-profile burning-coefficient extraction).
+- `ppmpy/spectra.py` — line-of-sight `lums` spectra (disk-integrated light-curve
+  power spectra): `lums_temporal_spectrum` (polynomial detrend, Hann window,
+  mean-pad, FFT, sqrt(8/3)(1e-6 dt/N)|X|^2), `lums_spectra_rprof(rprofset, ...)`
+  for rprof `lum1..lum8`, `lums_spectra_moms(moms, ...)` and
+  `compare_lums_with_rprof(moms, ...)` for the moms-derived side, plus plots.
+  Kept separate from `ppm.py`: it imports only numpy/scipy at load time and
+  imports `ppm`, matplotlib and tqdm inside the functions that need them.
 - `Messenger` (in `ppm.py`) — centralised verbosity-controlled output; reader
   classes take a `verbose` int (0=silent … 3=all) and route messages through it.
 
