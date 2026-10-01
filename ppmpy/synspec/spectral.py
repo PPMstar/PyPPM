@@ -139,7 +139,7 @@ def doppler_lambda(lam, v):
     return np.asarray(lam) * (1.0 - np.asarray(v) / C_KMS)
 
 
-def interp_rows(L, F, g):
+def interp_rows(L, F, g, row0=0):
     """
     Linear interpolation of every row (L[i], F[i]) onto the common abscissa g;
     constant beyond the ends of each row.
@@ -157,14 +157,29 @@ def interp_rows(L, F, g):
         (n, k) abscissae and values.
     g: np.ndarray
         (m,) common abscissa.
+    row0: int or array-like of int
+        Positions of the rows in a larger block, which set their offsets (and
+        hence the rounding): row i gets the offset (row0 + i) * 1e5 for an int,
+        or row0[i] * 1e5 for a strictly increasing integer array (n,). A row's
+        result depends only on its own data and offset, so rows interpolated
+        with the offsets of their positions in a block equal, bit for bit, the
+        same rows of ``interp_rows`` on the whole block. Default 0 (the legacy
+        call).
 
     Returns
     -------
     np.ndarray
         (n, m) float64.
     """
+    # PP 2026-10-01: row0 added (offsets of a sub-block or of selected rows; ppmpy.synspec.library)
     n, k = L.shape
-    off = (np.arange(n) * 1.0e5)[:, None]
+    if np.ndim(row0) == 0:
+        pos = np.arange(int(row0), int(row0) + n)
+    else:
+        pos = np.asarray(row0)
+        if pos.shape != (n,) or pos.dtype.kind not in "iu" or (n > 1 and not np.all(np.diff(pos) > 0)):
+            raise ValueError("row0 must be an int or a strictly increasing integer array of length {}".format(n))
+    off = (pos * 1.0e5)[:, None]
     Lf = (L.astype(np.float64) + off).ravel()
     q = (g[None, :] + off).ravel()
     i = np.searchsorted(Lf, q)

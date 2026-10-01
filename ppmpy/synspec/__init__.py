@@ -19,6 +19,12 @@ diagnostics  equivalent width, centroid, width, FWHM, depth; broadening kernels 
 lpv          residual spectra, zero-crossing tracker, gap filling, lag correlation
 spectrum     temporal power spectra (padded FFT or direct DFT)
 plotting     symmetric-log norms, dynamic spectra, profile bundles, power spectra
+fwresults    FASTWIND OUT/OUT_IMU readers, merge and streaming combine, ProfileStore, per-point checks
+sphere       equal-area sphere grid, local unit vectors, line-of-sight projections and velocities
+parallel     process pools for laptops and nodes (fork or spawn), stall watchdog, rank split
+library      T_eff' flux library (streamed), interpolation nodes, wavelength-rounding correction
+disc         DiscFlux (FFT disc integration), exact per-point sums, nearest-bin and brute-force references
+dumps        per-dump driver for all dumps (restartable, rank split), time-series collection
 
 Every module imports only numpy and scipy at load time (plotting imports matplotlib
 inside its functions); nothing here imports ppmpy.ppm at module level.

@@ -34,6 +34,12 @@ Documentation:
    ppmpy.synspec.lpv
    ppmpy.synspec.spectrum
    ppmpy.synspec.plotting
+   ppmpy.synspec.fwresults
+   ppmpy.synspec.sphere
+   ppmpy.synspec.parallel
+   ppmpy.synspec.library
+   ppmpy.synspec.disc
+   ppmpy.synspec.dumps
 
 * :ref:`genindex`
 * :ref:`modindex`
