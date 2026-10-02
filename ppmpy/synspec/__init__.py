@@ -28,8 +28,10 @@ dumps        per-dump driver for all dumps (restartable, rank split), time-serie
 validate     validation routines V1-V6, hold-out, brute force, EW conservation, run_validation, reports
 testing      synthetic toy runs (library, sphere, profiles) and selftest() (no data needed)
 moms         moms block reader, sampling on the sphere (MomsDataSet or low-memory slab backend), per-dump samples
+fastwind     FASTWIND runner (standard library only; host python): install check, INDAT editor, single models,
+             restartable batches, archives, pformalsol reruns; python -m ppmpy.synspec.fastwind {check,one,run,...}
 
-Every module imports only numpy and scipy at load time (plotting imports matplotlib
+Every module imports only numpy and scipy at load time (fastwind: the standard library only) (plotting imports matplotlib
 inside its functions); nothing here imports ppmpy.ppm at module level.
 """
 API_VERSION = 1

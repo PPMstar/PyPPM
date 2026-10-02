@@ -1,0 +1,11 @@
+M424_T34312                                    CATALOG
+T  T   0   100                                 OPTNEUPDATE,HE_ONE,ITSTART,ITMORE
+0.                                             OPTMIXED
+34312.0,     4.25000,    6.2100                TEFF, LOG G, RSTAR
+120.,  0.6                                     RMAX, TMIN
+1.0e-10,  0.1,  2500.00,   1.00000,  0.1       MDOT, VMIN(START), VINF, BETA, VDIV
+0.100000,  2.00000                             YHE, IHE(START)
+F T F T T                                      OPTMOD,OPTTLUCY,MEGAS,ACCEL,OPTCMF
+10., 1.0, T  T                                 VTURB,METALLICITY,LINES,LINES_IN_MODEL
+T F 1 2                                        ENATCOR, EXPANSION,SET_FIRST, SET_STEP
+1., 0.1, 0.2                                   CLF, VCLSTART, VCLMAX

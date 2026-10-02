@@ -10,6 +10,9 @@ m424      regression against the M424 production products; skipped when they are
           Locations default to the Trillium paths and can be changed with PPMPY_SYNSPEC_M424_RUN,
           PPMPY_SYNSPEC_M424_DISC (see M424 below).
 slow      takes more than ~30 s.
+fastwind  runs the real FASTWIND (ppmpy.synspec.fastwind); skipped when the install (PPMPY_FASTWIND_ROOT, default
+          /scratch/ppathak/FW_10.6.4.1) or /cvmfs (the binaries' ELF interpreter) is absent. In the container bind
+          /cvmfs too: apptainer exec --bind /home,/scratch,/cvmfs SIF python -m pytest ...
 """
 import os
 import sys
@@ -29,6 +32,7 @@ M424 = dict(
 def pytest_configure(config):
     config.addinivalue_line("markers", "m424: regression against the M424 production products (skipped if absent)")
     config.addinivalue_line("markers", "slow: takes more than ~30 s")
+    config.addinivalue_line("markers", "fastwind: runs the real FASTWIND (skipped if the install or /cvmfs is absent)")
 
 
 def m424_path(kind, *parts):

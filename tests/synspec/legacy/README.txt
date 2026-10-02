@@ -125,3 +125,7 @@ fw_sphere_extract.py                one-dump moms sampling (points.npz, points.t
                                     moms.sample_moms_sphere + write_points_table with its stored products, and the toy
                                     tests execute its sampling lines (from "T9 = m.get_spherical_interpolation" to
                                     "ur_kms = m.get_spherical_interpolation") on a MomsDataSet of a synthetic dump
+
+Added for the FASTWIND runner tests (M6, 2026-10-02), from the project's committed versions before their migration
+(project commit c14658a): fw_sphere_point.sh, fw_sphere_task.sh, fastwind_run.sh, fw_imu_run.sh (the shell runner the
+ppmpy.synspec.fastwind runner reproduces) and fastwind/INDAT_*.DAT (the project's INDAT templates, for the awk test).

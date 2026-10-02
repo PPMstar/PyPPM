@@ -1,0 +1,123 @@
+  T(TAUROSS=2/3) =    38261.7401673188     
+  T(TAUROSS=2/3) =    38000.8581051145     
+  T(TAUROSS=2/3) =    38079.7364152548     
+  T(TAUROSS=2/3) =    38173.2877040438     
+  T(TAUROSS=2/3) =    38162.3539759336     
+  T(TAUROSS=2/3) =    38161.6074330115     
+             FINAL ITERATION NO .            7  FOR HYDRO MODEL
+  T(TAUROSS=2/3) =    38161.7927515841     
+                +     ITERATION NO 0     +
+                +  ITERATION NO            1   +
+  T(TAUROSS=2/3) =    39054.5612472572     
+                +  ITERATION NO            2   +
+                +  ITERATION NO            3   +
+  T(TAUROSS=2/3) =    39608.8615805810     
+                +  ITERATION NO            4   +
+                +  ITERATION NO            5   +
+  T(TAUROSS=2/3) =    39809.0858253881     
+                +  ITERATION NO            6   +
+                +  ITERATION NO            7   +
+  T(TAUROSS=2/3) =    39817.3260924765     
+                +  ITERATION NO            8   +
+                +  ITERATION NO            9   +
+  T(TAUROSS=2/3) =    39763.6345611935     
+                +  ITERATION NO           10   +
+                +  ITERATION NO           11   +
+  T(TAUROSS=2/3) =    39716.4681503546     
+                +  ITERATION NO           12   +
+                +  ITERATION NO           13   +
+  T(TAUROSS=2/3) =    39691.4417637385     
+                +  ITERATION NO           14   +
+                +  ITERATION NO           15   +
+  T(TAUROSS=2/3) =    39681.3040268974     
+                +  ITERATION NO           16   +
+                +  ITERATION NO           17   +
+  T(TAUROSS=2/3) =    39578.7152063329     
+                +  ITERATION NO           18   +
+                +  ITERATION NO           19   +
+                +  ITERATION NO           20   +
+                +  ITERATION NO           21   +
+                +  ITERATION NO           22   +
+                +  ITERATION NO           23   +
+  T(TAUROSS=2/3) =    39629.1256758912     
+                +  ITERATION NO           24   +
+                +  ITERATION NO           25   +
+  T(TAUROSS=2/3) =    39611.8771874485     
+                +  ITERATION NO           26   +
+                +  ITERATION NO           27   +
+  T(TAUROSS=2/3) =    39600.2960496500     
+                +  ITERATION NO           28   +
+                +  ITERATION NO           29   +
+  T(TAUROSS=2/3) =    39595.0442461021     
+                +  ITERATION NO           30   +
+                +  ITERATION NO           31   +
+  T(TAUROSS=2/3) =    39593.2432898814     
+                +  ITERATION NO           32   +
+                +  ITERATION NO           33   +
+  T(TAUROSS=2/3) =    39592.6741212014     
+                +  ITERATION NO           34   +
+                +  ITERATION NO           35   +
+  T(TAUROSS=2/3) =    39592.2990713809     
+                +  ITERATION NO           36   +
+                +  ITERATION NO           37   +
+  T(TAUROSS=2/3) =    39591.9057916117     
+                +  ITERATION NO           38   +
+                +  ITERATION NO           39   +
+  T(TAUROSS=2/3) =    39591.5118031113     
+                +  ITERATION NO           40   +
+                +  ITERATION NO           41   +
+  TEMPERATURE CONVERGED
+  T(TAUROSS=2/3) =    39591.1272317698     
+                +  ITERATION NO           42   +
+                +  ITERATION NO           43   +
+                +  ITERATION NO           44   +
+                +  ITERATION NO           45   +
+                +  ITERATION NO           46   +
+                +  ITERATION NO           47   +
+                +  ITERATION NO           48   +
+                +  ITERATION NO           49   +
+                +  ITERATION NO           50   +
+                +  ITERATION NO           51   +
+                +  ITERATION NO           52   +
+                +  ITERATION NO           53   +
+                +  ITERATION NO           54   +
+                +  ITERATION NO           55   +
+                +  ITERATION NO           56   +
+                +  ITERATION NO           57   +
+                +  ITERATION NO           58   +
+                +  ITERATION NO           59   +
+  TOTAL NUMBER OF APPLIED T CORRECTION(S)           19
+  Maximum relative correction in the last TC   2.821046806113102E-003
+  CPU time:    145.328628000000     
+  ALL LEVELS OK!!!
+! ESTO ES EL ACABOSE !
+ 
+  ATOM // Z(MAIN ION) // N(J,K)/N(H)
+
+H   /  0  /0.6147E-03  0.9994E+00
+
+HE  /  1  /0.1938E-08  0.8639E-04  0.9991E-01
+ 
+  CHANGE IN ELECTRON DENSITY =   0.000000000000000E+000
+ 
+ 
+  MAXIMUM CHANGE IN OCCUPATION NUMBERS =   4.862776847858186E-014
+ 
+ 
+ 
+  MAXIMUM CHANGE IN OCCUPATION NUMBERS =   4.440892098500626E-016
+ 
+ 
+  CORR. MAX:   2.734645348544174E-003
+  LOG MEANERR(1:LWION) =   -4.61783944470346      : ALMOST_CONVERGED
+ 
+  CORR. MAX FOR OPA_EFF_RAT:   0.000000000000000E+000
+ 
+  TOTAL NUMBER OF APPLIED T CORRECTION(S)           19
+  Maximum relative correction in the last TC   2.821046806113102E-003
+ 
+ 
+  CPU time:    145.328628000000     
+ 
+  ALL LEVELS OK!!!
+! ESTO ES EL ACABOSE !

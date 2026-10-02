@@ -118,7 +118,12 @@ RProf data, the reader uses it instead of computing it.
   `fft='lazy'` ~2.8 GB, `dtype='float32'`), `disc.integrate_imu_nearest`,
   `dumps.imu_integrator`, `fwresults.locate_points`/`extract_points`. M5: `moms` (block reader,
   `sample_moms_sphere` with backend 'slab' (~6 s, 0.3 GB per dump, bit-identical to
-  the 'momsdataset' backend: ~50 s, 18 GB), `write_points_table`, `sample_moms_dumps`). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
+  the 'momsdataset' backend: ~50 s, 18 GB), `write_points_table`, `sample_moms_dumps`). M6: `fastwind/`
+  (stdlib only, runs under the host python without numpy; FASTWIND itself is never
+  shipped): `FastwindInstall` (check, stage), `Indat` (byte-identical to the old awk
+  edit), `FormalInput`, log/CONVERG/MAXTCORR convergence, `run_model`, `rerun_formal`,
+  `batch.run_models` (task k of K, packing child, SIGUSR1 stop/restart), `archive`, CLI
+  `python3 -m ppmpy.synspec.fastwind`, and a fake FASTWIND for tests (`fake`). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
   defaults reproduce the M424 products bit for bit, verified by the tests.
 - `Messenger` (in `ppm.py`) — centralised verbosity-controlled output; reader
   classes take a `verbose` int (0=silent … 3=all) and route messages through it.
