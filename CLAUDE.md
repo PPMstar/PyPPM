@@ -113,7 +113,10 @@ RProf data, the reader uses it instead of computing it.
   ProfileStore), `sphere`, `parallel` (fork/spawn pools, watchdog), `library` (flux
   library, nodes), `disc` (DiscFlux, exact sums), `dumps` (all-dump driver, collect). M3: `validate`
   (V1-V6, hold-out, brute force, EW conservation, `run_validation`), `testing` (toy
-  runs; `python -m ppmpy.synspec.testing` runs `selftest()`, < 1 min, no data). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
+  runs; `python -m ppmpy.synspec.testing` runs `selftest()`, < 1 min, no data). M4: intensity method:
+  `library.build_imu_library`/`ImuLibrary`, `disc.DiscImu` (default = legacy, 9 GB;
+  `fft='lazy'` ~2.8 GB, `dtype='float32'`), `disc.integrate_imu_nearest`,
+  `dumps.imu_integrator`, `fwresults.locate_points`/`extract_points`. Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
   defaults reproduce the M424 products bit for bit, verified by the tests.
 - `Messenger` (in `ppm.py`) — centralised verbosity-controlled output; reader
   classes take a `verbose` int (0=silent … 3=all) and route messages through it.

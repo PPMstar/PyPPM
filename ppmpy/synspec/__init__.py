@@ -22,8 +22,8 @@ plotting     symmetric-log norms, dynamic spectra, profile bundles, power spectr
 fwresults    FASTWIND OUT/OUT_IMU readers, merge and streaming combine, ProfileStore, per-point checks
 sphere       equal-area sphere grid, local unit vectors, line-of-sight projections and velocities
 parallel     process pools for laptops and nodes (fork or spawn), stall watchdog, rank split
-library      T_eff' flux library (streamed), interpolation nodes, wavelength-rounding correction
-disc         DiscFlux (FFT disc integration), exact per-point sums, nearest-bin and brute-force references
+library      T_eff' flux library (streamed), interpolation nodes, wavelength-rounding correction; I(mu) library
+disc         DiscFlux and DiscImu (FFT disc integration; low-memory modes), exact per-point sums, references
 dumps        per-dump driver for all dumps (restartable, rank split), time-series collection
 validate     validation routines V1-V6, hold-out, brute force, EW conservation, run_validation, reports
 testing      synthetic toy runs (library, sphere, profiles) and selftest() (no data needed)

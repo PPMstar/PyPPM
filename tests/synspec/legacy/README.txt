@@ -76,3 +76,43 @@ fw_disc_holdout.py                  run as a whole script (Pool -> builtin map; 
                                     synthetic run; its holdout.npz is compared bit for bit with validate.v2_holdout
                                     (serial, fork, spawn; library file or built in the pass)
 fw_disc.py                          DiscImu (V1 of the intensity method on M424, slow), and the module both scripts import
+
+Added for test_imulib.py (M4, 2026-10-02):
+fw_imu_library.py                   intensity library (select representatives, build imu_library_dT10.npz, flux check);
+                                    the tests execute its lines (located by text) on synthetic raw/runs directories in
+                                    tmp: candidates + selection (from "edges, tmean, count = flib" to "assert not
+                                    missing"), representatives.txt (from "sel = os.path.join(a.out" to its log line),
+                                    the build (from "mdir_of = {b: os.path.join(RUNS" to "os.replace(out[:-4]") and the
+                                    flux check (line 105, "mf = np.linspace", and from "sf = np.sqrt(1.0 - mf ** 2)" to
+                                    "fn = np.trapz("), and compare library.find_candidates, select_representatives,
+                                    Representatives.write, build_imu_library (+ ImuLibrary.save(meta=False): same file
+                                    bytes) and flux_from_rays bit for bit
+Used by test_imulib.py (no new copies):
+fw_disc.py                          read_imu, r_outer, flux_from_p, imu_from_rays (bitwise against library.r_outer,
+                                    flux_from_p, imu_from_rays), and Y, LREF, LINES, interp_rows for the build lines
+
+Added for test_discimu.py (M4, 2026-10-02):
+fw_disc_imu.py                      the first intensity method (dump 3200, nearest 10 K bin of the intensity library,
+                                    disc_los8_imu.npz, the uniform-star check); run as a whole script (fw_disc.RUN,
+                                    SAMPLES patched to tmp; --lib a toy intensity library on the M424 grid; the
+                                    representatives' directory "/scratch/ppathak/fastwind_imu/runs" replaced by a tmp
+                                    directory holding toy OUT / OUT_IMU files) on a toy star; its disc_los8_imu.npz is
+                                    compared bit for bit with disc.integrate_imu_nearest (+ save_disc_los)
+Used by test_discimu.py (no new copies):
+fw_disc.py                          DiscImu (constructed from a toy library file on the M424 grid; set-up arrays and
+                                    calls compared bit for bit with disc.DiscImu), read_imu / interp_rows / mu_vlos /
+                                    diagnostics through fw_disc_imu.py
+
+Added for test_fwresults.py (M4, 2026-10-02):
+fw_imu_extract.sh                   extraction of selected model directories from the per-point archives (GNU tar -x
+                                    of './P<idx>' per line of a parts file, xargs -P); run as a script (bash, in the
+                                    container) on synthetic parts with ledgers, given the parts file that
+                                    fwresults.locate_points yields, and its output tree (names, bytes, modes, mtimes)
+                                    compared with fwresults.extract_points
+Used by test_dumps.py (M4, 2026-10-02; no new copies):
+fw_disc_dumps.py, fw_disc.py        process() with a.method = 'imu' and INT = the frozen fw_disc.DiscImu of a toy
+                                    intensity library on the M424 grid; its per-dump files are compared byte for byte
+                                    with dumps.run_disc_dumps(dumps.imu_integrator, ...) (serial, fork, spawn, batched)
+Used by test_validate.py (M4, 2026-10-02; no new copies):
+fw_disc.py                          DiscImu on a toy intensity library: validate.v1_exact gives the same arrays with it
+                                    as with disc.DiscImu

@@ -1,7 +1,9 @@
 """
 FASTWIND results on the numpy side: the OUT / OUT_IMU readers, the merge of the packed per-point
 results of a sphere run into one profile file, the streaming combine of the per-task files, a
-zero-copy store of the merged profiles, per-point equivalent widths and run statistics.
+zero-copy store of the merged profiles, per-point equivalent widths and run statistics, and the
+location (:func:`locate_points`, from the ledgers) and extraction (:func:`extract_points`) of the
+packed directories of chosen points (e.g. the representatives of the intensity library).
 
 Layout of a per-point run (M424: ``/scratch/ppathak/fastwind_sphere/d3200_r4050_N1236544``)
 -----------------------------------------------------------------------------------------
@@ -9,6 +11,9 @@ Layout of a per-point run (M424: ``/scratch/ppathak/fastwind_sphere/d3200_r4050_
     Packed results, one directory ``P<idx>/`` per point with ``meta.txt``
     (``idx teff status niter T_tau23 t_pnlte t_formal``), ``OUT.<LINE>_<suffix>`` (one per line)
     and, optionally, the model files. A point's files are contiguous in a part.
+``results/<tag>/part_*.idx``
+    The ledger of a part (:data:`LEDGER_SUFFIX`): the meta.txt lines of its points, written after the
+    archive is complete (:func:`read_ledger`, :func:`locate_points`).
 ``merged/<tag>.npz``
     :func:`merge_task` of one tag (in parallel: :func:`merge_tasks`).
 ``profiles.npz``, ``missing.txt``
@@ -62,10 +67,15 @@ Validation
   version with memory maps 66 s, VmHWM 2.5 GB of mostly file pages; current version with explicit reads
   11 s with a warm page cache, peak RSS 0.18 GB, of which 0.17 GB anonymous).
 * :func:`ew_per_point` reproduces the M424 ``ew.npz`` bit for bit.
+* :func:`locate_points` finds the 98 M424 models of the intensity library in exactly the parts of the
+  coverage search (parts_needed.txt); :func:`extract_points` writes the files of the frozen
+  fw_imu_extract.sh (GNU tar) on synthetic parts (hard links included) and those it wrote for M424 points,
+  byte for byte.
 
 PP 2026-10-01: ported from the project scripts fw_sphere_merge.py (merge, --combine), fw_disc.py
 (read_imu, library inputs), fig_fw_sphere_ew.py (ew.npz) and the OUT readers of fw_itmore_check.py /
 fig_fastwind_*.py; see the provenance comments per function.
+PP 2026-10-02: locate_points / extract_points replace fw_imu_extract.sh and its coverage search.
 """
 import contextlib
 import glob
@@ -1746,3 +1756,470 @@ def check_indat_premise(results_dir, tags=None, max_parts=None, template=None, f
 def _indat_part_indexed(item):
     i, a = item
     return i, _indat_part(a)
+
+
+# ----------------------------------------------------------------------------------------------
+# locating and extracting packed points (the .idx ledgers; replaces fw_imu_extract.sh)
+# ----------------------------------------------------------------------------------------------
+LEDGER_SUFFIX = ".idx"
+"""The ledger of a part: ``part_X.idx`` next to ``part_X.tar.gz``, the ``meta.txt`` lines of the part's points
+(``idx teff status niter T_tau23 t_pnlte t_formal``; fw_sphere_task.sh writes it after the archive is complete)."""
+
+POINT_DIR = "P{idx:06d}"
+"""Directory of a point in the archives and after extraction (fw_sphere_point.sh: ``printf P%06d``)."""
+
+PFORMALSOL_FILES = ("meta.txt", "INDAT.DAT", "MODEL", "NLTE_POP", "LTE_POP", "ENION", "TAU_ROS", "FLUXCONT",
+                    "CLUMPING_OUTPUT", "CONT_FORMAL", "CONT_FORMAL_ALL")
+"""The files of a saved model that a pformalsol rerun needs (fw_imu_run.sh links the model files and copies
+INDAT.DAT), with meta.txt: ``members`` of :func:`extract_points` for the intensity library (the OUT files are not
+needed; ~6.6 MB of the ~6.7 MB per M424 point)."""
+
+_PDIR_RE = re.compile(r"^P(\d+)$")
+
+
+def _strip_dot(name):
+    """A member name without leading './' (tar's ./P001762/meta.txt -> P001762/meta.txt)."""
+    while name.startswith("./"):
+        name = name[2:]
+    return name
+
+
+def read_ledger(path):
+    """
+    The records of one ledger (``part_*.idx``): list of (idx int, status str or None), in file order.
+
+    Raises
+    ------
+    ValueError
+        A line whose first field is not an integer (file and line number in the message).
+    """
+    # PP 2026-10-02: new (fw_sphere_task.sh:60 writes the ledger: cat $STAGE/*/meta.txt)
+    out = []
+    with open(path) as f:
+        for n, line in enumerate(f, 1):
+            p = line.split()
+            if not p:
+                continue
+            try:
+                idx = int(p[0])
+            except ValueError:
+                raise ValueError("{}:{}: not a meta.txt line: {!r}".format(path, n, line.rstrip())) from None
+            out.append((idx, p[2] if len(p) > 2 else None))
+    return out
+
+
+def locate_points(results_dir, idx, tags=None, status=None, missing="raise", log=None):
+    """
+    The parts holding the packed results of points, from the ``.idx`` ledgers (no archive is opened).
+
+    Parameters
+    ----------
+    results_dir: str or os.PathLike
+        ``RUN_DIR/results`` (tag directories with ``part_*.tar.gz`` and their ``part_*.idx``).
+    idx: int or iterable of int
+        Point indices.
+    tags: None, str or sequence of str
+        Tag directories to search: None = every subdirectory that holds parts (sorted); a str is a glob pattern
+        (``'task_00[0-3]?'``); a sequence lists the tags, in the order of preference.
+    status: None, str or sequence of str
+        None (default): per point the first record with status 'ok' (in tag order, then part order, then ledger
+        order: the record whose model files were kept), else its first record of any status (a failed point:
+        meta.txt and logs only). A status or several: only records with one of them count (e.g. 'ok').
+    missing: {'raise', 'ignore'}
+        Points without a (matching) record: KeyError (default), or left out of the result.
+    log: callable, optional
+        Receives a summary line.
+
+    Returns
+    -------
+    dict
+        part path (str) -> sorted list of int: every located point in exactly one part; parts in tag order, then
+        sorted part order (the order of :func:`merge_task`).
+
+    Raises
+    ------
+    KeyError
+        Points not found (``missing='raise'``; up to 20 listed).
+    ValueError
+        A malformed ledger, or a bad ``missing``.
+
+    Warns
+    -----
+    UserWarning
+        Parts without a ledger (an archive renamed into place but its ledger never written: a packer killed in
+        between; fw_sphere_task.sh then recomputes and repacks its points elsewhere) are not searched; ledgers without
+        their archive are ignored.
+
+    Notes
+    -----
+    Reads only the ledgers: M424 (41 tags, ~1500 parts, 1.24 million records) ~2-3 s with a warm cache.
+
+    Validation
+    ----------
+    Synthetic runs (tests/synspec/test_fwresults.py: retries in other tags, failed then ok records, parts without
+    ledgers, malformed ledgers); M424: the 98 points of /scratch/ppathak/fastwind_imu/raw are located in exactly the
+    parts of the coverage search (parts_needed.txt).
+    """
+    # PP 2026-10-02: new; replaces the ad-hoc coverage search (/scratch/ppathak/fastwind_imu/parts_needed.txt)
+    if missing not in ("raise", "ignore"):
+        raise ValueError("missing must be 'raise' or 'ignore', got {!r}".format(missing))
+    results_dir = os.fspath(results_dir)
+    if isinstance(idx, (int, np.integer)):
+        idx = [idx]
+    want = set()
+    for i in idx:
+        try:
+            ok = int(i) == i and i >= 0
+        except (TypeError, ValueError, OverflowError):
+            ok = False
+        if not ok:
+            raise ValueError("point indices must be non-negative integers, got {!r}".format(i))
+        want.add(int(i))
+    if isinstance(status, str):
+        status = (status,)
+    status = None if status is None else frozenset(str(s) for s in status)
+    best = {}                                    # idx -> (rank, part); rank 0 = ok record, 1 = other status
+    order = []
+    no_ledger, orphans, nrec = [], [], 0
+    for tag in _indat_tags(results_dir, tags):
+        tdir = os.path.join(results_dir, tag)
+        parts = _indat_parts(results_dir, tag)
+        have = set(parts)
+        for led in sorted(glob.glob(os.path.join(glob.escape(tdir), "part_*" + LEDGER_SUFFIX))):
+            if led[:-len(LEDGER_SUFFIX)] + ".tar.gz" not in have:
+                orphans.append(led)
+        for part in parts:
+            order.append(part)
+            led = part[:-len(".tar.gz")] + LEDGER_SUFFIX
+            if not os.path.exists(led):
+                no_ledger.append(part)
+                continue
+            for i, st in read_ledger(led):
+                nrec += 1
+                if i not in want or (status is not None and st not in status):
+                    continue
+                rank = 0 if (status is not None or st == "ok") else 1
+                old = best.get(i)
+                if old is None or rank < old[0]:
+                    best[i] = (rank, part)
+    if no_ledger:
+        warnings.warn("{} parts have no ledger ({}) and were not searched, e.g. {}".format(
+            len(no_ledger), LEDGER_SUFFIX, no_ledger[:3]), UserWarning, stacklevel=2)
+    if orphans:
+        warnings.warn("{} ledgers have no archive and were ignored, e.g. {}".format(len(orphans), orphans[:3]),
+                      UserWarning, stacklevel=2)
+    lost = sorted(want - set(best))
+    if lost and missing == "raise":
+        raise KeyError("{} of {} points have no {}record in the ledgers of {}: {}{}".format(
+            len(lost), len(want), "" if status is None else "{} ".format("/".join(sorted(status))), results_dir,
+            lost[:20], " ..." if len(lost) > 20 else ""))
+    groups = {}
+    for i, (_, part) in best.items():
+        groups.setdefault(part, []).append(i)
+    out = {p: sorted(groups[p]) for p in order if p in groups}
+    if log is not None:
+        nfail = sum(1 for r, _ in best.values() if r)
+        log("located {} of {} points in {} parts ({} ledger records read{}{})".format(
+            len(best), len(want), len(out), nrec, "; {} without an ok record".format(nfail) if nfail else "",
+            "; {} missing".format(len(lost)) if lost else ""))
+    return out
+
+
+def _umask():
+    """The process's umask (set and restored; extraction applies it to file modes, as tar does)."""
+    m = os.umask(0o022)
+    os.umask(m)
+    return m
+
+
+def _safe_parts(rest, name, part):
+    """The components of a member's path below its point directory; ValueError for absolute names, '..' or empty
+    components."""
+    parts_ = rest.split("/")
+    if os.path.isabs(rest) or ".." in parts_ or "" in parts_:
+        raise ValueError("unsafe member {!r} in {}".format(name, part))
+    return parts_
+
+
+def _extract_part(args):
+    """Stream one part once and extract the wanted points (an :func:`extract_points` task): each point's files into a
+    staging directory in dest, renamed to dest/P<idx> when the point's group ends; stops reading once every wanted
+    point is done (``stop_early``), else reads to the end and raises when a finished point's directory appears again
+    (a group that is not contiguous)."""
+    import fnmatch
+    import shutil
+    import tempfile
+    import time
+    part, wanted, dest, members, check_names, overwrite = args[:6]
+    stop_early = bool(args[6]) if len(args) > 6 else True
+    t0 = time.time()
+    want = set(int(i) for i in wanted)
+    filt = getattr(tarfile, "data_filter", None) if check_names else None
+    ferr = getattr(tarfile, "FilterError", ValueError)
+    umask = _umask()
+    staging = tempfile.mkdtemp(prefix=".extract_", dir=dest)
+    done, kept, nfile, nlink, nbytes, other = [], [], 0, 0, 0, 0
+    cur = None                                   # (idx, directory name) of the wanted point being extracted
+    stopped = False
+
+    def finish(pid, pname):
+        src = os.path.join(staging, pname)
+        meta = os.path.join(src, "meta.txt")
+        if not os.path.exists(meta):
+            raise RuntimeError("{}: point {} has no meta.txt".format(part, pname))
+        with open(meta) as fh:
+            f = fh.read().split()
+        if not f or f[0] != str(pid):
+            raise RuntimeError("{}: {}/meta.txt holds idx {!r}, expected {}".format(part, pname, f[0] if f else None,
+                                                                                   pid))
+        target = os.path.join(dest, pname)
+        if os.path.lexists(target):
+            if not overwrite:
+                kept.append(pid)                 # appeared meanwhile (another extraction): keep it
+                shutil.rmtree(src)
+                return
+            if os.path.isdir(target) and not os.path.islink(target):
+                shutil.rmtree(target)
+            else:
+                os.remove(target)
+        os.rename(src, target)
+        done.append(pid)
+
+    def wanted_member(rest):
+        return members is None or rest == "meta.txt" or any(fnmatch.fnmatchcase(rest, p) for p in members)
+
+    def check(m):
+        if filt is not None:
+            try:
+                filt(m, staging)
+            except ferr as e:
+                raise ValueError("unsafe member {!r} in {}: {}".format(m.name, part, e)) from e
+
+    try:
+        with tarfile.open(part, mode="r|*") as tf:
+            for m in tf:
+                name = _strip_dot(m.name)
+                top, _, rest = name.partition("/")
+                ended = cur is not None and top != cur[1]
+                if ended:
+                    finish(*cur)
+                    cur = None
+                mt = _PDIR_RE.match(top)
+                pid = int(mt.group(1)) if mt else None
+                if pid is not None and pid in want and (pid in done or pid in kept):
+                    # PP 2026-10-02: reviewer: a second group of a finished point was dropped silently, leaving an
+                    # incomplete model directory; the points placed from this part now are removed (its layout is
+                    # not the one assumed)
+                    for q in done:
+                        shutil.rmtree(os.path.join(dest, POINT_DIR.format(idx=q)), ignore_errors=True)
+                    raise RuntimeError("{}: point {} appears again after its files ended (member {!r}): not the layout "
+                                       "of fw_sphere_task.sh (each point's files contiguous); the points of this part "
+                                       "placed now ({}) were removed; extract it with tar".format(part, top, m.name,
+                                                                                               sorted(done)))
+                if ended and stop_early and want.issubset(done + kept):
+                    stopped = True
+                    break
+                if pid is None or pid not in want:
+                    continue
+                if top != POINT_DIR.format(idx=pid):
+                    # PP 2026-10-02: reviewer: an unpadded name (P7) never counted as present, so every restart
+                    # re-read the part
+                    raise ValueError("{}: the directory {!r} of point {} is not named {!r} (fw_sphere_point.sh: "
+                                     "P%06d)".format(part, top, pid, POINT_DIR.format(idx=pid)))
+                if cur is None:
+                    cur = (pid, top)
+                if not rest or m.isdir():
+                    continue
+                if m.islnk():
+                    # PP 2026-10-02: reviewer: hard links were skipped (tar extracts them): linked to the target
+                    # already extracted in the same point directory, as tar does
+                    if not wanted_member(rest):
+                        continue
+                    parts_ = _safe_parts(rest, m.name, part)
+                    ltop, _, lrest = _strip_dot(m.linkname).partition("/")
+                    if ltop != top or not lrest:
+                        raise ValueError("hard link {!r} -> {!r} in {} leaves its point directory".format(
+                            m.name, m.linkname, part))
+                    lparts = _safe_parts(lrest, m.linkname, part)
+                    check(m)
+                    if lparts == parts_:
+                        continue
+                    src = os.path.join(staging, top, *lparts)
+                    if not os.path.isfile(src):
+                        raise RuntimeError("{}: hard link {!r} -> {!r}: its target was not extracted (excluded by "
+                                           "members?)".format(part, m.name, m.linkname))
+                    target = os.path.join(staging, top, *parts_)
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    if os.path.lexists(target):
+                        os.remove(target)
+                    try:
+                        os.link(src, target)
+                    except OSError:
+                        shutil.copy2(src, target)
+                    nfile += 1
+                    nlink += 1
+                    continue
+                if not m.isfile():
+                    other += 1                   # symbolic links, devices: never extracted
+                    continue
+                if not wanted_member(rest):
+                    continue
+                parts_ = _safe_parts(rest, m.name, part)
+                check(m)
+                target = os.path.join(staging, top, *parts_)
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                if os.path.lexists(target):
+                    os.remove(target)            # a repeated member: replaced (also when it was a hard link)
+                with tf.extractfile(m) as src, open(target, "wb") as out:
+                    shutil.copyfileobj(src, out, 1 << 20)
+                os.chmod(target, ((m.mode & 0o777) | 0o600) & ~umask)
+                os.utime(target, (m.mtime, m.mtime))
+                nfile += 1
+                nbytes += m.size
+        if cur is not None:
+            finish(*cur)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return dict(part=part, wanted=sorted(want), extracted=sorted(done), kept=sorted(kept),
+                not_found=sorted(want - set(done) - set(kept)), files=nfile, hard_links=nlink, bytes=nbytes,
+                skipped_members=other, stopped_early=stopped, wall=time.time() - t0, pid=os.getpid())
+
+
+def extract_points(results_dir, idx, dest, members=None, nproc=2, tags=None, status=None, overwrite=False,
+                   check_names=True, start_method=None, timeout=3600.0, stop_early=True, log=None):
+    """
+    Extract the packed directories ``P<idx>/`` of points into ``dest`` (port of fw_imu_extract.sh): the parts are
+    found from the ledgers (:func:`locate_points`), each needed part is streamed once, only the wanted points'
+    files are written, and the reading of a part stops once all its wanted points are out.
+
+    Parameters
+    ----------
+    results_dir: str or os.PathLike
+        ``RUN_DIR/results``.
+    idx: int or iterable of int
+        Point indices (all must be located; KeyError otherwise, before anything is extracted).
+    dest: str or os.PathLike
+        Output directory (created): ``dest/P<idx>/`` per point (:data:`POINT_DIR`; M424
+        /scratch/ppathak/fastwind_imu/raw), as ``tar -x`` of the legacy script.
+    members: sequence of str, optional
+        File-name patterns (fnmatch, relative to the point directory) to extract, e.g. :data:`PFORMALSOL_FILES`
+        (the model files a pformalsol rerun needs); meta.txt is always extracted. Default all files.
+    nproc: int
+        Worker processes, one part per task in a fresh process each (``maxtasksperchild=1``: a part takes 20-60 s
+        of CPU, so many parts in one process would pass a 3600 s ``ulimit -t``); a single part is read in this
+        process. Login node: <= 8.
+    tags, status:
+        :func:`locate_points`.
+    overwrite: bool
+        Replace existing ``dest/P<idx>`` (removed, then the new one renamed into place). Default: points whose
+        directory exists are skipped (restartable), and parts all of whose points exist are not read.
+    check_names: bool
+        Validate members with ``tarfile.data_filter`` where Python has it (3.9.17+; 'data' filter: no absolute
+        names, no '..', no links out of the directory); in any case only regular files and hard links with plain
+        relative names are written (names with '..' raise ValueError). A hard link is made, as tar does, to its
+        target in the same point directory, which must have been extracted before it (ValueError for a link that
+        leaves the point directory, RuntimeError for a target excluded by ``members``; a copy where the file
+        system has no hard links); symbolic links and devices are skipped (counted in 'skipped_members').
+    start_method, timeout:
+        :func:`ppmpy.synspec.parallel.make_pool`, :func:`ppmpy.synspec.parallel.imap_watchdog` (raise
+        :class:`~ppmpy.synspec.parallel.PoolStalled` when no part finishes for this long [s]; points already moved
+        into place stay).
+    stop_early: bool
+        Stop reading a part once all its wanted points are out (default). This relies on the layout of the
+        per-point runs: each point's files are contiguous in its part (fw_sphere_task.sh packs a staging directory
+        with tar -czf). False reads every part to its end and raises RuntimeError if a finished point's directory
+        appears again (the point directories placed from that part in this call are removed first); M424 parts
+        then take 20-60 s each. A part with other wanted points after such a point raises likewise.
+    log: callable, optional
+        One line per part.
+
+    Returns
+    -------
+    dict
+        dest; extracted (idx written now), present (skipped: existed before), kept (appeared during the run, not
+        replaced), parts (per-part summaries: part, wanted, extracted, files (hard links included), hard_links,
+        bytes, skipped_members, stopped_early, wall, pid), wall [s].
+
+    Raises
+    ------
+    KeyError
+        Points not in the ledgers.
+    RuntimeError
+        A part does not hold a point its ledger lists (raised after the other parts are done), or a point directory
+        without meta.txt or with another point's, a hard link whose target was not extracted, a point whose files
+        are not contiguous (``stop_early=False``) (raised at once; the pool's other parts are stopped, their points
+        already in place stay).
+    ValueError
+        Unsafe member names or hard links, a wanted point whose directory in the archive is not named
+        :data:`POINT_DIR` (e.g. 'P7': it could never be recognised as present on a restart).
+
+    Notes
+    -----
+    Atomic per point: the files go to a hidden staging directory in dest (``.extract_*``, removed at the end of the
+    part, also on errors) and the point directory is renamed into place when its last file is written, so an
+    interrupted run never leaves a partial ``P<idx>``; a worker killed by a signal (or terminated with the pool after
+    another part failed) can leave its staging directory behind (hidden, never read; remove it by hand). File modes
+    as tar (the archive's permission bits under the umask, owner rw added), mtimes from the archive. Memory: ~1 MB
+    per process (copy buffer); disk: the extracted files (M424 ~6.7 MB per point, 6.6 MB with
+    :data:`PFORMALSOL_FILES`). Time: decompression up to the last wanted point of each part (M424 parts: 2.5-3.4 GB,
+    20-60 s to stream whole). Measured (M424, 3 points in 3 parts, 3 workers, login node, 2026-10-02): 19 s, the parts
+    read for 1.8, 3.0 and 18 s up to their point.
+
+    Validation
+    ----------
+    Synthetic parts (tests/synspec/test_fwresults.py): the same files (names, bytes, modes, mtimes) as the frozen
+    fw_imu_extract.sh (GNU tar, run in the same umask) given the parts file of the ledgers, hard links included (the
+    same inode as their target, as tar); serial = fork = spawn; members, restarts, overwrite, early stop, failures
+    (missing points, wrong meta.txt, unsafe names, hard links out of the point or to a target not extracted, a point
+    in two groups, unpadded directory names). M424 (slow): 3
+    points equal the directories of /scratch/ppathak/fastwind_imu/raw that fw_imu_extract.sh wrote (names, bytes,
+    mtimes).
+    """
+    # PP 2026-10-02: new; replaces fw_imu_extract.sh (tar -xzf <part> -C OUT ./P... per line of the parts file, xargs
+    # -P NPAR) and the coverage search that wrote its parts file
+    import time
+    from . import parallel as par
+    T0 = time.time()
+    dest = os.fspath(dest)
+    if members is not None:
+        members = (members,) if isinstance(members, str) else tuple(str(p) for p in members)
+    loc = locate_points(results_dir, idx, tags=tags, status=status, missing="raise")
+    os.makedirs(dest, exist_ok=True)
+    present, tasks = [], []
+    for part, ii in loc.items():
+        todo = []
+        for i in ii:
+            if not overwrite and os.path.lexists(os.path.join(dest, POINT_DIR.format(idx=i))):
+                present.append(i)
+            else:
+                todo.append(i)
+        if todo:
+            tasks.append((part, todo, dest, members, bool(check_names), bool(overwrite), bool(stop_early)))
+    res = []
+
+    def _log(r):
+        if log is not None:
+            log("{}: {} of {} points, {} files ({:.1f} MB){}; {:.1f} s".format(
+                os.path.relpath(r["part"], os.fspath(results_dir)), len(r["extracted"]), len(r["wanted"]),
+                r["files"], r["bytes"] / 1e6, ", stopped early" if r["stopped_early"] else "", r["wall"]))
+
+    if len(tasks) == 1:
+        res.append(_extract_part(tasks[0]))
+        _log(res[-1])
+    elif tasks:
+        par.login_node_warning(min(int(nproc), len(tasks)))
+        with par.make_pool(min(int(nproc), len(tasks)), maxtasksperchild=1, start_method=start_method) as pool:
+            for r in par.imap_watchdog(pool, _extract_part, tasks, timeout=timeout):
+                res.append(r)
+                _log(r)
+    lost = [(r["part"], r["not_found"]) for r in res if r["not_found"]]
+    if lost:
+        raise RuntimeError("{} parts do not hold points their ledgers list: {}".format(len(lost), lost[:5]))
+    order = {t[0]: k for k, t in enumerate(tasks)}
+    res.sort(key=lambda r: order[r["part"]])
+    out = dict(dest=dest, extracted=sorted(i for r in res for i in r["extracted"]), present=sorted(present),
+               kept=sorted(i for r in res for i in r["kept"]), parts=res, wall=time.time() - T0)
+    if log is not None:
+        log("extracted {} points from {} parts into {} ({} present before); {:.1f} s".format(
+            len(out["extracted"]), len(res), dest, len(present), out["wall"]))
+    return out

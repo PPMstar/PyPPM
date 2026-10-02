@@ -13,9 +13,14 @@
   conservation, LPV ratios).
 * Brute force (naive per-point loop, DiscFlux, parallel paths), EW conservation, T_eff' ranges, run_validation and
   the LPV comparison (also of the recorded M424 values).
+* The intensity method (toy intensity libraries): v1_exact with disc.DiscImu equals the frozen DiscImu's arrays;
+  brute_force_imu against a naive loop and DiscImu (every mode, extrapolated pairs, masks), serial = fork = spawn,
+  its grid and pairs checks; brute_force_imu_check's faults (profiles, velocity moments, clipped counts, stored
+  products), per-line integrators; run_validation with DiscImu.
 * M424 regressions (marker m424; slow where noted): validate.npz (V1 flux, V3-V6; V1 imu with the frozen DiscImu),
   holdout.npz, teff_ranges_all_dumps.npy, the brute force against the stored flux products, EW conservation and the
-  LPV residual rms of the production time series.
+  LPV residual rms of the production time series; V1 imu with ppmpy's DiscImu (validate.npz bit for bit) and the
+  intensity brute force (subset; all points of dump 4800 against the stored imu products).
 
 PPMPY_SYNSPEC_M424_SAMPLES (default /scratch/ppathak/fastwind_sphere/samples_r4050_N1236544) locates the per-dump
 samples, PPMPY_SYNSPEC_M424_R3 (default the project's analysis/r3_out.npz) the 2026-09-29 review output (optional).
@@ -138,7 +143,8 @@ def test_checkresult_verdicts():
     c = va.CheckResult("a", 5.0, 1.0, passed=True)                 # explicit verdict kept
     assert c.passed is True
     with pytest.raises(ValueError):
-        va.CheckResult("a", 1.0, unit="km/s")
+        va.CheckResult("a", 1.0, unit="m/s")
+    assert va.CheckResult("a", 1.0, unit="km/s").unit == "km/s" and va.CheckResult("a", 0, 0, unit="count").passed
     with pytest.raises(ValueError, match="NaN"):
         va.CheckResult("a", 1.0, np.nan)                           # informational is None, not NaN
     c = va.CheckResult("a", np.inf, np.inf)
@@ -1136,6 +1142,417 @@ def test_teff_ranges_and_select(tmp_path):
 
 
 # ----------------------------------------------------------------------------------------------
+# the intensity method: v1_exact with disc.DiscImu, brute_force_imu, brute_force_imu_check
+# ----------------------------------------------------------------------------------------------
+IMU_SMALL = VelocityGrid(dv=2.0, vmax=600.0, vshift=150.0)
+
+
+def _toy_imu(grid, nl=3, nb=9, K=6, seed=0, empty=(2, 6), short=((4, 1, 4), (7, 0, 3), (0, 2, 2)), dT=120.0,
+             t0=37500.0):
+    """A toy intensity library (members of imu_library_dT10.npz): nb bins of width dT from t0, empty bins served by the
+    nearest filled one, K rays s = p / R_max (rows with nnode < K: NaN beyond, garbage intensities there), float32
+    intensities with limb darkening and a line whose depth, width and centre change with T_eff' and mu, a continuum
+    slope across the grid."""
+    rng = np.random.default_rng(seed)
+    y = grid.y
+    edges = t0 + dT * np.arange(nb + 1)
+    filled = np.array([b for b in range(nb) if b not in empty])
+    src = np.array([filled[np.argmin(np.abs(filled - b))] for b in range(nb)])
+    teff_rep = (edges[:-1] + rng.uniform(0.2, 0.8, nb) * dT)[src]
+    nnode = np.full((nb, nl), K, np.int64)
+    for b, j, n in short:
+        if b < nb and j < nl:
+            nnode[b, j] = n
+    nnode = nnode[src]
+    s = np.full((nb, nl, K), np.nan)
+    Il = np.full((nb, nl, K, y.size), 7.0, np.float32)
+    Ic = np.full((nb, nl, K, y.size), 7.0, np.float32)
+    for b in filled:
+        x = (teff_rep[b] - t0) / (nb * dT)
+        for j in range(nl):
+            n = nnode[b, j]
+            s[b, j, :n] = np.concatenate([[0.0], np.sort(rng.uniform(0.05, 0.98, n - 2)), [1.0]])
+            for k in range(n):
+                mu = np.sqrt(1.0 - s[b, j, k] ** 2)
+                ic = (1.0 + 0.3 * x + 0.1 * j) * (1.0 - 0.5 * (1.0 - mu)) * (1.0 + 0.05 * y / grid.vmax)
+                sg = (25.0, 60.0, 15.0)[j % 3] * (1.0 + 0.1 * mu)
+                d = (0.3 + 0.1 * j) * (1.0 + 0.2 * x) * (0.6 + 0.4 * mu) * np.exp(
+                    -0.5 * ((y - (5.0 * j + 3.0 * x + 2.0 * mu)) / sg) ** 2)
+                Ic[b, j, k] = ic
+                Il[b, j, k] = ic * (1.0 - d)
+    count = np.where(np.isin(np.arange(nb), filled), 20.0, 0.0)
+    return dict(edges=edges, tmean=0.5 * (edges[:-1] + edges[1:]), count=count, src=src,
+                idx_rep=(1000 + np.arange(nb))[src], teff_rep=teff_rep, rmax=np.ones((nb, nl)), nnode=nnode,
+                s=s[src], Ic=Ic[src], Il=Il[src])
+
+
+def _imu_naive(lib, grid, mu, v, teff, pairs=None):
+    """Per-point Python loop of the intensity method (nodes = representatives, clamped T_eff' pairs or the given ones,
+    rays linear in s, shifts rounded and clipped, edge values beyond the grid, weight mu): F, F0 (nl, ny), vmean,
+    vsig (nl,)."""
+    u = np.unique(lib["src"])
+    t = lib["teff_rep"][u]
+    S, NN = lib["s"][u], lib["nnode"][u]
+    Il, Ic = lib["Il"][u].astype(np.float64), lib["Ic"][u].astype(np.float64)
+    nl, ny = S.shape[1], grid.ny
+    vis = np.where(mu > 0)[0]
+    if pairs is None:
+        k0 = np.clip(np.searchsorted(t, teff, side="right") - 1, 0, t.size - 2)
+        k1, a = k0 + 1, np.clip((teff - t[k0]) / (t[k0 + 1] - t[k0]), 0.0, 1.0)
+    else:
+        k0, k1, a = pairs
+    sh = np.clip(np.rint(-C_KMS * np.log(1.0 - v / C_KMS) / grid.dv).astype(int), -grid.nshift, grid.nshift)
+    ic = int(np.argmin(np.abs(grid.y)))
+    F, F0, vm, sd = np.zeros((nl, ny)), np.zeros((nl, ny)), np.zeros(nl), np.zeros(nl)
+    for j in range(nl):
+        num, den, n0, d0 = np.zeros(ny), np.zeros(ny), np.zeros(ny), np.zeros(ny)
+        wv = np.zeros(vis.size)
+        for q, i in enumerate(vis):
+            si = np.sqrt(max(1.0 - mu[i] ** 2, 0.0))
+            rl, rc = np.zeros(ny), np.zeros(ny)
+            for node, w in ((k0[i], 1.0 - a[i]), (k1[i], a[i])):
+                n = NN[node, j]
+                sn = S[node, j, :n]
+                kk = min(max(np.searchsorted(sn, si, side="right") - 1, 0), n - 2)
+                tt = min(max((si - sn[kk]) / (sn[kk + 1] - sn[kk]), 0.0), 1.0)
+                rl += w * ((1 - tt) * Il[node, j, kk] + tt * Il[node, j, kk + 1])
+                rc += w * ((1 - tt) * Ic[node, j, kk] + tt * Ic[node, j, kk + 1])
+            idx = np.clip(np.arange(ny) + sh[i], 0, ny - 1)
+            num += mu[i] * rl[idx]
+            den += mu[i] * rc[idx]
+            n0 += mu[i] * rl
+            d0 += mu[i] * rc
+            wv[q] = mu[i] * rc[ic]
+        F[j], F0[j] = num / den, n0 / d0
+        vm[j] = np.sum(wv * v[vis]) / wv.sum()
+        sd[j] = np.sqrt(np.sum(wv * (v[vis] - vm[j]) ** 2) / wv.sum())
+    return F, F0, vm, sd
+
+
+def _imu_star(N, t, seed=1, vsig=50.0):
+    """theta, phi of N points and a sample (teff partly beyond the nodes t, a few fast points: clipped shifts)."""
+    rng = np.random.default_rng(seed)
+    theta, phi = sph.fibonacci_sphere(N)
+    smp = dict(teff=rng.uniform(t[0] - 60.0, t[-1] + 60.0, N), ur=vsig * rng.standard_normal(N),
+               uth=vsig * rng.standard_normal(N), uph=vsig * rng.standard_normal(N), t_s=1.0)
+    smp["ur"][:6] = [700.0, -800.0, 500.0, -650.0, 1000.0, 450.0]
+    return theta, phi, smp
+
+
+@pytest.fixture(scope="module")
+def imu_toy(tmp_path_factory):
+    """Toy intensity library on the M424 grid (3 lines, as the frozen DiscImu needs), saved uncompressed, with a star
+    of 2500 points, its 'matmul' projections onto the Thompson et al. (2024) lines of sight and 3 dumps of samples."""
+    d = tmp_path_factory.mktemp("imu_validate")
+    lib = _toy_imu(VelocityGrid(), dT=150.0, t0=37600.0)
+    path = str(d / "imu.npz")
+    np.savez(path, **lib)
+    t = lib["teff_rep"][np.unique(lib["src"])]
+    theta, phi, smp = _imu_star(2500, t)
+    sdir = d / "samples"
+    sdir.mkdir()
+    for dump in (0, 1, 2):
+        _, _, sd = _imu_star(2500, t, seed=10 + dump)
+        np.savez(str(sdir / "d{:04d}.npz".format(dump)), **{k: np.asarray(v, np.float32) for k, v in sd.items()
+                                                              if k != "t_s"}, t_s=2835.0 * dump)
+    return dict(lib=lib, path=path, dir=str(d), samples=str(sdir), theta=theta, phi=phi, smp=smp, t=t,
+                proj=sph.project_los(theta, phi, "thompson2024"))
+
+
+def test_v1_exact_discimu_matches_frozen(imu_toy):
+    """v1_exact accepts disc.DiscImu (directly and through dumps.imu_integrator with lref): the same arrays, bit for
+    bit, as with the frozen fw_disc.DiscImu (grid and lref given) against any reference; against the brute force of
+    its own sum V1 is at rounding and passes."""
+    from ppmpy.synspec import dumps as dm
+    fd = _legacy_fw_disc()
+    MU, TN, PN = imu_toy["proj"]
+    smp = imu_toy["smp"]
+    legacy = fd.DiscImu(imu_toy["path"])
+    ours = disc.DiscImu(imu_toy["path"])
+    viaf = dm.imu_integrator(imu_toy["path"], lref=LINESET)
+    b = va.brute_force_imu(imu_toy["path"], smp, MU, TN, PN, VelocityGrid())
+    rng = np.random.default_rng(3)
+    exact = dict(F=b["F"] + 1e-6 * rng.standard_normal(b["F"].shape), F0=b["F0"])
+    r_leg = va.v1_exact(legacy, exact, smp, MU, TN, PN, label="imu", lref=LINESET, grid=VelocityGrid())
+    for integ, kw in ((ours, dict(lref=LINESET)), (viaf, {})):
+        r = va.v1_exact(integ, exact, smp, MU, TN, PN, label="imu", **kw)
+        assert list(r.arrays) == ["V1_imu_F", "V1_imu_F0", "V1_imu_dEW"]
+        for k in r.arrays:
+            np.testing.assert_array_equal(r.arrays[k], r_leg.arrays[k], err_msg=k)
+        for k in ("F", "F0"):
+            np.testing.assert_array_equal(r.data["V1_imu"][k], r_leg.data["V1_imu"][k])
+        assert r["V1_imu"].details["lines"] == LINES
+    assert r["V1_imu"].value > 1e-6 and r["V1_imu_dEW"].value > 0
+    good = va.v1_exact(viaf, b, smp, MU, TN, PN, label="imu")
+    assert good.passed() and good["V1_imu"].value < 1e-12
+
+
+def _flip_v(integ):
+    class _Flip:
+        method = "imu"
+
+        def __init__(self, base):
+            self.base, self.t, self.grid, self.nl = base, base.t, base.grid, base.nl
+
+        def pairs(self, teff):
+            return self.base.pairs(teff)
+
+        def __call__(self, mu, v, k0, k1, a, novel=True):
+            return self.base(mu, -v, k0, k1, a, novel=novel)
+    return _Flip(integ)
+
+
+def _swap_weights(integ):
+    class _Swap(type(_flip_v(integ))):
+        def __call__(self, mu, v, k0, k1, a, novel=True):
+            return self.base(mu, v, k0, k1, 1.0 - a, novel=novel)
+    return _Swap(integ)
+
+
+def test_brute_force_imu_naive_and_discimu():
+    """brute_force_imu on another grid with 2 lines (empty bins, nnode < K rows with garbage beyond, T_eff' beyond the
+    nodes, clipped shifts, the disc centre): a naive per-point loop to rounding (another summation order: <= 6e-15
+    here), DiscImu in every mode to rounding (float32:
+    its precision), the clipped counts and velocity moments too; extrapolated pairs (weights < 0 and > 1, non-adjacent
+    nodes) likewise; masks hide points, line subsets leave the other lines NaN."""
+    grid = IMU_SMALL
+    lib = _toy_imu(grid, nl=2, nb=7, K=7, seed=3, empty=(2, 5), short=((4, 1, 4), (6, 0, 3), (0, 1, 2)))
+    t = lib["teff_rep"][np.unique(lib["src"])]
+    theta, phi, smp = _imu_star(1200, t, seed=4, vsig=40.0)
+    smp["ur"][:6] = [200.0, -310.0, 151.0, -149.2, 600.0, 90.0]
+    MU, TN, PN = sph.project_los(theta, phi, np.array([[0.0, 0.0, 1.0], [0.6, 0.0, 0.8]]))
+    MU[0, 7] = 1.0                                                  # a point at the disc centre: s = 0
+    b = va.brute_force_imu(lib, smp, MU, TN, PN, grid)
+    for k in range(2):
+        v = sph.los_velocity(smp["ur"], smp["uth"], smp["uph"], MU[k], TN[k], PN[k])
+        ref = _imu_naive(lib, grid, MU[k], v, smp["teff"])
+        for x, y in zip((b["F"][k], b["F0"][k], b["vmean_w"][k], b["sigma_w"][k]), ref):
+            assert np.abs(x - y).max() <= 2e-14 * max(1.0, np.abs(y).max()), np.abs(x - y).max()
+        for kw, tol in ((dict(), 2e-14), (dict(fft="lazy"), 2e-14), (dict(dtype="float32"), 2e-7),
+                        (dict(fft="lazy", dtype="float32"), 2e-6)):
+            D = disc.DiscImu(lib, grid, **kw)
+            F, F0, vm, sd, ncl = D(MU[k], v, *D.pairs(smp["teff"]))
+            assert np.abs(F - b["F"][k]).max() <= tol and np.abs(F0 - b["F0"][k]).max() <= max(tol, 2e-14), kw
+            np.testing.assert_allclose(vm, b["vmean_w"][k], rtol=0, atol=1e-11)
+            np.testing.assert_allclose(sd, b["sigma_w"][k], rtol=1e-11)
+            assert ncl == b["n_clip"][k] and ncl >= 3
+    # extrapolated pairs (as v3_tails): weights < 0 and > 1, non-adjacent nodes
+    D = disc.DiscImu(lib, grid)
+    k0, k1, a = D.pairs(smp["teff"])
+    k0, k1, a = k0.copy(), k1.copy(), a.astype(float)
+    lo, hi = smp["teff"] < t[0], smp["teff"] > t[-1]
+    k0[lo], k1[lo], a[lo] = 0, 2, (smp["teff"][lo] - t[0]) / (t[2] - t[0])
+    k0[hi], k1[hi], a[hi] = t.size - 3, t.size - 1, (smp["teff"][hi] - t[-3]) / (t[-1] - t[-3])
+    assert a.min() < 0 and a.max() > 1
+    be = va.brute_force_imu(lib, smp, MU, TN, PN, grid, pairs=(k0, k1, a))
+    v = sph.los_velocity(smp["ur"], smp["uth"], smp["uph"], MU[1], TN[1], PN[1])
+    ref = _imu_naive(lib, grid, MU[1], v, smp["teff"], pairs=(k0, k1, a))
+    assert np.abs(be["F"][1] - ref[0]).max() <= 2e-14 and np.abs(be["F0"][1] - ref[1]).max() <= 2e-14
+    F, F0 = D(MU[1], v, k0, k1, a)[:2]
+    assert np.abs(F - be["F"][1]).max() <= 2e-14 and np.abs(F0 - be["F0"][1]).max() <= 2e-14
+    # a mask hides points; lines
+    mask = np.zeros(smp["teff"].size, bool)
+    mask[::3] = True
+    bm = va.brute_force_imu(lib, smp, MU, TN, PN, grid, mask=mask, lines=[1])
+    assert np.all(np.isnan(bm["F"][:, 0])) and np.all(np.isnan(bm["vmean_w"][:, 0]))
+    Fm = D(np.where(mask, MU[0], 0.0), sph.los_velocity(smp["ur"], smp["uth"], smp["uph"], MU[0], TN[0], PN[0]),
+           *D.pairs(smp["teff"]))[0]
+    assert np.abs(Fm[1] - bm["F"][0, 1]).max() <= 2e-14 and np.abs(Fm[1] - b["F"][0, 1]).max() > 1e-6
+    with pytest.raises(ValueError, match="grid points"):
+        va.brute_force_imu(lib, smp, MU, TN, PN, VelocityGrid())
+    with pytest.raises(ValueError, match="node indices"):
+        va.brute_force_imu(lib, smp, MU, TN, PN, grid, pairs=(k0, k1 + 1, a))
+    # reviewer: integer node indices; dict grids; a library that records its grid refuses other points of the same
+    # ny (shifts and clipping would be wrong silently), takes it as the default, and is free in vshift
+    with pytest.raises(ValueError, match="integer node indices"):
+        va.brute_force_imu(lib, smp, MU, TN, PN, grid, pairs=(k0.astype(float), k1, a))
+    bd = va.brute_force_imu(lib, smp, MU[:1], TN[:1], PN[:1], grid.to_dict())
+    np.testing.assert_array_equal(bd["F"], b["F"][:1])
+    rec = dict(lib, _meta=np.array(json.dumps(dict(params=dict(grid=grid.to_dict())))))
+    other = VelocityGrid(dv=1.0, vmax=300.0, vshift=150.0)
+    assert other.ny == grid.ny
+    with pytest.raises(ValueError, match="differs from the intensity library's recorded grid"):
+        va.brute_force_imu(rec, smp, MU, TN, PN, other)
+    assert va.brute_force_imu(lib, smp, MU[:1], TN[:1], PN[:1], other)["F"].shape == b["F"][:1].shape   # legacy: ny
+    for g in (None, VelocityGrid(dv=2.0, vmax=600.0, vshift=150.0)):
+        np.testing.assert_array_equal(va.brute_force_imu(rec, smp, MU[:1], TN[:1], PN[:1], g)["F"], b["F"][:1])
+    with pytest.raises(TypeError, match="VelocityGrid or a dict"):
+        va.brute_force_imu(lib, smp, MU, TN, PN, grid.y)
+
+
+@pytest.mark.parametrize("method", ["fork", "spawn"])
+def test_brute_force_imu_parallel(imu_toy, method):
+    """Worker processes ('fork': the library inherited; 'spawn': opened from its file) give the serial bits."""
+    MU, TN, PN = imu_toy["proj"]
+    ref = va.brute_force_imu(imu_toy["path"], imu_toy["smp"], MU[:3], TN[:3], PN[:3], VelocityGrid(), chunk=97)
+    got = va.brute_force_imu(imu_toy["path"], imu_toy["smp"], MU[:3], TN[:3], PN[:3], VelocityGrid(), chunk=97,
+                             nproc=2, start_method=method, timeout=300)
+    for k in ref:
+        np.testing.assert_array_equal(got[k], ref[k], err_msg=k)
+
+
+def test_brute_force_imu_check(imu_toy, tmp_path):
+    """brute_force_imu_check passes for DiscImu (subsets, and all points against stored products of
+    dumps.run_disc_dumps) and fails for a flipped velocity sign, swapped T_eff' weights and stored products with the
+    lines of sight mixed up; the integrator of another library, stored products with a subset and a missing library
+    are refused."""
+    from ppmpy.synspec import dumps as dm
+    MU, TN, PN = imu_toy["proj"]
+    D = dm.imu_integrator(imu_toy["path"], lref=LINESET)
+    r = va.brute_force_imu_check(D, imu_toy["samples"], MU, TN, PN, dumps=[0, 1], nsub=700, seed=5, log=print)
+    assert r.passed() and r["brute_imu_vs_integrator"].value < 1e-13
+    assert r.names() == ["brute_imu_vs_integrator", "brute_imu_moments", "brute_imu_n_clip"]
+    assert r["brute_imu_moments"].value < 1e-11 and r["brute_imu_moments"].unit == "km/s"
+    assert r["brute_imu_n_clip"].value == 0 and r["brute_imu_n_clip"].unit == "count"
+    assert r.arrays["brute_imu_moments"].shape == (2, 3) and r.arrays["brute_imu_n_clip"].shape == (2, 8)
+    assert r["brute_imu_vs_integrator"].details["n_clip_equal"] and r.arrays["brute_imu_integ"].shape == (2, 3)
+    assert r["brute_imu_vs_integrator"].details["lines"] == LINES
+    # the subsets are different points per dump and fewer than all
+    for bad in (_flip_v(D), _swap_weights(D)):
+        rb = va.brute_force_imu_check(bad, imu_toy["samples"], MU, TN, PN, library=imu_toy["path"], dumps=[0],
+                                      nsub=700, seed=5)
+        assert not rb.passed() and rb["brute_imu_vs_integrator"].value > 1e-6, type(bad).__name__
+    # all points vs stored products of a run
+    s = dm.run_disc_dumps([0, 1], imu_toy["samples"], str(tmp_path), "imu", dm.imu_integrator, (imu_toy["path"],),
+                          imu_toy["theta"], imu_toy["phi"], "thompson2024", lref=LINESET)
+    assert s["done"] == [0, 1]
+    r = va.brute_force_imu_check(D, imu_toy["samples"], MU, TN, PN, dumps=[0, 1], nsub=None,
+                                 stored=(str(tmp_path), "imu"))
+    assert r.passed() and r["brute_imu_vs_stored"].value <= 6e-8 and r["brute_imu_vs_integrator"].value < 1e-13
+    assert r.names() == ["brute_imu_vs_integrator", "brute_imu_moments", "brute_imu_n_clip", "brute_imu_vs_stored",
+                         "brute_imu_moments_vs_stored", "brute_imu_n_clip_vs_stored"]
+    assert r["brute_imu_moments_vs_stored"].value < 1e-11 and r["brute_imu_n_clip_vs_stored"].value == 0
+
+    def mixed(d):
+        with np.load(dm.dump_path(str(tmp_path), "imu", d)) as z:
+            return np.roll(z["F"], 1, axis=0), np.roll(z["F0"], 1, axis=0)
+    r = va.brute_force_imu_check(D, imu_toy["samples"], MU, TN, PN, dumps=[0], nsub=None, stored=mixed)
+    assert not r["brute_imu_vs_stored"].passed and r["brute_imu_vs_integrator"].passed
+    assert "brute_imu_moments_vs_stored" not in r.names()                           # (F, F0) only: not compared
+
+    # stored products with right profiles but altered moments or counts (mapping form; reviewer: not compared)
+    def altered(key, delta):
+        def get(d):
+            with np.load(dm.dump_path(str(tmp_path), "imu", d)) as z:
+                out = {k: z[k] for k in ("F", "F0", "vmean_w", "sigma_w", "n_clip")}
+            out[key] = out[key] + delta
+            return out
+        return get
+    for key, delta, bad in (("vmean_w", 1e-6, "brute_imu_moments_vs_stored"),
+                            ("sigma_w", -2e-7, "brute_imu_moments_vs_stored"),
+                            ("n_clip", 1, "brute_imu_n_clip_vs_stored")):
+        r = va.brute_force_imu_check(D, imu_toy["samples"], MU, TN, PN, dumps=[0], nsub=None,
+                                     stored=altered(key, delta))
+        assert [c.name for c in r.checks if not c.passed] == [bad], key
+        assert r[bad].value == pytest.approx(abs(delta), rel=1e-3)
+
+    def partial(d):
+        with np.load(dm.dump_path(str(tmp_path), "imu", d)) as z:
+            return dict(F=z["F"], F0=z["F0"], n_clip=z["n_clip"]) if d == 0 else (z["F"], z["F0"])
+    with pytest.raises(ValueError, match="clipped counts for 1 of 2 dumps"):
+        va.brute_force_imu_check(D, imu_toy["samples"], MU, TN, PN, dumps=[0, 1], nsub=None, stored=partial)
+    with pytest.raises(ValueError, match="must return"):
+        va.brute_force_imu_check(D, imu_toy["samples"], MU, TN, PN, dumps=[0], nsub=None,
+                                 stored=lambda d: (1, 2, 3))
+    with pytest.raises(ValueError, match="nsub=None"):
+        va.brute_force_imu_check(D, imu_toy["samples"], MU, TN, PN, dumps=[0], stored=mixed)
+    other = dict(imu_toy["lib"], teff_rep=imu_toy["lib"]["teff_rep"] + 5.0)
+    with pytest.raises(ValueError, match="representatives"):
+        va.brute_force_imu_check(D, imu_toy["samples"], MU, TN, PN, library=other, dumps=[0])
+    with pytest.raises(ValueError, match="library is required"):
+        va.brute_force_imu_check(disc.DiscImu(imu_toy["lib"]), imu_toy["samples"], MU, TN, PN, dumps=[0])
+
+
+def _bad_moments(integ):
+    class _Moments(type(_flip_v(integ))):
+        def __call__(self, mu, v, k0, k1, a, novel=True):
+            F, F0, vm, sd, nc = self.base(mu, v, k0, k1, a, novel=novel)
+            return F, F0, vm + 5.0, 2.0 * sd, nc
+    return _Moments(integ)
+
+
+def _bad_n_clip(integ):
+    class _Clip(type(_flip_v(integ))):
+        def __call__(self, mu, v, k0, k1, a, novel=True):
+            F, F0, vm, sd, nc = self.base(mu, v, k0, k1, a, novel=novel)
+            return F, F0, vm, sd, nc + 1
+    return _Clip(integ)
+
+
+def test_brute_force_imu_check_moments_and_counts(imu_toy):
+    """The velocity moments and the clipped counts decide checks of their own (reviewer: an integrator with right
+    profiles but vmean_w + 5 km/s and 2 sigma_w passed): such an integrator fails exactly brute_imu_moments, one with
+    wrong clipped counts exactly brute_imu_n_clip (the profile check keeps a finite value); the tolerances come from
+    DEFAULT_TOLERANCES / tolerances."""
+    from ppmpy.synspec import dumps as dm
+    MU, TN, PN = imu_toy["proj"]
+    D = dm.imu_integrator(imu_toy["path"], lref=LINESET)
+    kw = dict(library=imu_toy["path"], dumps=[0], nsub=700, seed=5, lref=LINESET)
+    r = va.brute_force_imu_check(_bad_moments(D), imu_toy["samples"], MU, TN, PN, **kw)
+    assert [c.name for c in r.checks if not c.passed] == ["brute_imu_moments"]
+    assert r["brute_imu_moments"].value >= 5.0 and r["brute_imu_vs_integrator"].value < 1e-13
+    assert r["brute_imu_moments"].details["lines"] == LINES
+    r = va.brute_force_imu_check(_bad_n_clip(D), imu_toy["samples"], MU, TN, PN, **kw)
+    assert [c.name for c in r.checks if not c.passed] == ["brute_imu_n_clip"]
+    assert r["brute_imu_n_clip"].value == 1 and np.isfinite(r["brute_imu_vs_integrator"].value)
+    assert not r["brute_imu_vs_integrator"].details["n_clip_equal"]
+    r = va.brute_force_imu_check(_bad_n_clip(D), imu_toy["samples"], MU, TN, PN, tolerances=dict(brute_n_clip=1), **kw)
+    assert r.passed() and va.DEFAULT_TOLERANCES["brute_moments"] == 1e-9 and va.DEFAULT_TOLERANCES["brute_n_clip"] == 0
+
+
+def test_brute_force_imu_check_per_line(imu_toy, tmp_path):
+    """A per-line integrator (DiscImu(lines=(1,)), a low-memory mode) is compared on its built line only (reviewer: it
+    always failed with NaN): the brute force computes that line, per_line holds it (no NaN), the other lines are
+    reported as not computed, the arrays keep (nd, nl) with NaN for them; against stored products of a full run too;
+    compare_lpv relates the per-line values to the LPV of their lines (line_index)."""
+    from ppmpy.synspec import dumps as dm
+    MU, TN, PN = imu_toy["proj"]
+    for kw in (dict(), dict(fft="lazy")):
+        D1 = dm.imu_integrator(imu_toy["path"], lines=["HEII4200"], lref=LINESET, **kw)
+        r = va.brute_force_imu_check(D1, imu_toy["samples"], MU, TN, PN, dumps=[0], nsub=700, seed=5)
+        assert r.passed(), r.table()
+        c = r["brute_imu_vs_integrator"]
+        assert c.details["lines"] == ["HEII4200"] and c.details["line_index"] == [1]
+        assert c.details["not_computed"] == ["HEI4026", "HEI4922"] and np.all(np.isfinite(c.details["per_line"]))
+        assert c.details["per_line"].shape == (1,) and c.value < 1e-13 and r.meta["lines"] == [1]
+        a = r.arrays["brute_imu_integ"]
+        assert a.shape == (1, 3) and np.all(np.isnan(a[:, [0, 2]])) and np.all(np.isfinite(a[:, 1]))
+        assert np.all(np.isnan(r.data["brute_imu"][0]["F"][:, [0, 2]]))         # the brute force: line 1 only
+    s = dm.run_disc_dumps([0], imu_toy["samples"], str(tmp_path), "imu", dm.imu_integrator, (imu_toy["path"],),
+                          imu_toy["theta"], imu_toy["phi"], "thompson2024", lref=LINESET)
+    assert s["done"] == [0]
+    r = va.brute_force_imu_check(D1, imu_toy["samples"], MU, TN, PN, dumps=[0], nsub=None,
+                                 stored=(str(tmp_path), "imu"))
+    assert r.passed() and r["brute_imu_vs_stored"].details["per_line"].shape == (1,)
+    lpv = dict(rms=np.array([1e-3, 2e-3, 4e-3]), ew_rms=np.ones(3), ew_rel_rms=np.ones(3))
+    va.compare_lpv(r, lpv)
+    c = r["brute_imu_vs_integrator"]
+    assert c.details["lpv_scale"].tolist() == [2e-3] and c.details["lpv_warn"] is False
+    assert "lpv_ratio" not in r["brute_imu_moments"].details and "lpv_ratio" not in r["brute_imu_n_clip"].details
+
+
+def test_run_validation_imu(imu_toy):
+    """run_validation with disc.DiscImu: V1, V3 and the intensity brute force run (library from the integrator's
+    file), the flux-only checks are skipped; the flux brute force is never run for it, nor the intensity one for a
+    flux integrator (its skipped list is unchanged)."""
+    from ppmpy.synspec import dumps as dm
+    MU, TN, PN = imu_toy["proj"]
+    D = dm.imu_integrator(imu_toy["path"], lref=LINESET)
+    smp0 = os.path.join(imu_toy["samples"], "d0000.npz")
+    b = va.brute_force_imu(imu_toy["path"], smp0, MU, TN, PN, VelocityGrid())
+    r = va.run_validation(D, MU, TN, PN, sample=smp0, exact=b, samples=imu_toy["samples"], v3_dumps=[1],
+                          brute_dumps=[2], brute_kw=dict(nsub=600), label="imu", dumps=[1],
+                          tolerances=dict(V3=1e-2))
+    assert r.names() == ["V1_imu", "V1_imu_dEW", "V3_extrap", "V3_leaveout", "brute_imu_vs_integrator",
+                         "brute_imu_moments", "brute_imu_n_clip"]
+    assert r.passed() and r["V1_imu"].value < 1e-12
+    assert all("flux_integrator" in r.meta["skipped"][k] for k in ("V4", "V5", "V6", "brute"))
+    assert "brute_imu" not in r.meta["skipped"]
+    r = va.run_validation(D, MU, TN, PN, sample=smp0, exact=b, label="imu")
+    assert r.meta["skipped"]["brute_imu"] == ["samples", "brute_dumps"]
+
+
+# ----------------------------------------------------------------------------------------------
 # driver and LPV comparison
 # ----------------------------------------------------------------------------------------------
 def test_run_validation_and_lpv(gen, tmp_path):
@@ -1305,6 +1722,82 @@ def test_m424_validate_imu(m424):
         r = va.run_validation(imu, MU, TN, PN, library=m424["lib"], nodes=m424["nodes"], samples=samples,
                               dumps=[4800], brute_dumps=[4800], lref=LINESET, grid=VelocityGrid())
     assert all(r.meta["skipped"][k] == ["flux_integrator"] for k in ("V4", "V5", "V6", "brute"))
+
+
+IMU_LIB_M424 = os.environ.get("PPMPY_SYNSPEC_M424_IMU", "/scratch/ppathak/fastwind_imu/imu_library_dT10.npz")
+
+
+def _m424_imu_lib():
+    """The M424 intensity library (PPMPY_SYNSPEC_M424_IMU: the .npz as in test_discimu.py, or a directory holding
+    imu_library_dT10.npz as in test_imulib.py)."""
+    p = os.path.join(IMU_LIB_M424, "imu_library_dT10.npz") if os.path.isdir(IMU_LIB_M424) else IMU_LIB_M424
+    if not os.path.exists(p):
+        pytest.skip("M424 intensity library not available: {}".format(p))
+    return p
+
+
+@pytest.mark.m424
+@pytest.mark.slow
+def test_m424_validate_imu_ppmpy(m424):
+    """V1 of the intensity method with ppmpy's DiscImu (dumps.imu_integrator, default options, the M424 LineSet) vs
+    disc_los8_imu.npz: V1_imu_F, V1_imu_F0 of validate.npz bit for bit; run_validation runs V1 and the intensity brute
+    force on a 20000-point subset of dump 4800 (DiscImu to rounding: profiles, velocity moments, clipped counts),
+    skips the flux-only checks. Set-up 21-200 s (login node; almost all system time), ~9.3-9.6 GB."""
+    from ppmpy.synspec import dumps as dm
+    ref = np.load(m424_path("disc", "validate.npz"))
+    MU, TN, PN = m424["proj"]
+    samples = _samples_m424(4800)
+    t0 = time.time()
+    integ = dm.imu_integrator(_m424_imu_lib(), lref=LINESET)
+    t1 = time.time()
+    rep = va.v1_exact(integ, m424_path("run", "disc_los8_imu.npz"), os.path.join(samples, "d3200.npz"), MU, TN, PN,
+                      label="imu")
+    t2 = time.time()
+    for k in ("V1_imu_F", "V1_imu_F0"):
+        np.testing.assert_array_equal(rep.arrays[k], ref[k], err_msg=k)
+    assert rep["V1_imu"].value == va.RECORDED_M424["V1_imu"] and rep.passed()
+    r = va.run_validation(integ, MU, TN, PN, sample=os.path.join(samples, "d3200.npz"),
+                          exact=m424_path("run", "disc_los8_imu.npz"), samples=samples, brute_dumps=[4800],
+                          label="imu", log=print)
+    print("DiscImu set-up {:.0f} s, V1 {:.0f} s, run_validation {:.0f} s, max RSS {:.1f} GB".format(
+        t1 - t0, t2 - t1, time.time() - t2, resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6))
+    print(r.table())
+    assert r.names() == ["V1_imu", "V1_imu_dEW", "brute_imu_vs_integrator", "brute_imu_moments",
+                         "brute_imu_n_clip"] and r.passed()
+    for k in ("V1_imu_F", "V1_imu_F0"):
+        np.testing.assert_array_equal(r.arrays[k], ref[k], err_msg=k)
+    c = r["brute_imu_vs_integrator"]
+    assert c.value < 1e-13 and c.details["n_clip_equal"] and np.max(c.details["moments"]) < 1e-9
+    assert r["brute_imu_moments"].value < 1e-9 and r["brute_imu_n_clip"].value == 0
+    assert all("flux_integrator" in r.meta["skipped"][k] for k in ("V4", "V5", "V6", "brute"))
+
+
+@pytest.mark.m424
+@pytest.mark.slow
+def test_m424_brute_force_imu(m424):
+    """The intensity method's per-point sum done directly for all points of dump 4800 (8 workers): the stored imu
+    products to their float32 rounding (F, F0), their float64 velocity moments to rounding and their clipped counts
+    exactly; DiscImu (fft='lazy': F bit for bit the default's on x86-64, F0 to 7e-15) to rounding, the velocity
+    moments and clipped counts too. ~3 min; about 1 GB per worker, 2.5 GB peak RSS for this process (the task list,
+    ~0.5 GB, and the lazy DiscImu's calls)."""
+    from ppmpy.synspec import dumps as dm
+    MU, TN, PN = m424["proj"]
+    samples = _samples_m424(4800)
+    integ = dm.imu_integrator(_m424_imu_lib(), fft="lazy", lref=LINESET)
+    t0 = time.time()
+    rep = va.brute_force_imu_check(integ, samples, MU, TN, PN, dumps=[4800], nsub=None,
+                                   stored=m424_path("disc", "imu"), nproc=8, log=print)
+    print("M424 brute force imu, dump 4800, all points: {:.0f} s".format(time.time() - t0))
+    print(rep.table())
+    assert rep.passed() and rep["brute_imu_vs_integrator"].value < 1e-12
+    # measured 2026-10-02: vs DiscImu 7.0e-15 / 8.3e-15 / 7.3e-15; vs stored 2^-25 (the float32 rounding of [0.5, 1))
+    assert rep["brute_imu_vs_stored"].value <= 2.0 ** -25 + 1e-15
+    assert rep["brute_imu_vs_integrator"].details["n_clip_equal"]
+    assert rep.names() == ["brute_imu_vs_integrator", "brute_imu_moments", "brute_imu_n_clip", "brute_imu_vs_stored",
+                           "brute_imu_moments_vs_stored", "brute_imu_n_clip_vs_stored"]
+    assert rep["brute_imu_moments"].value < 1e-9 and rep["brute_imu_moments_vs_stored"].value < 1e-9
+    assert rep["brute_imu_n_clip"].value == 0 and rep["brute_imu_n_clip_vs_stored"].value == 0
+    print("max RSS of this process {:.2f} GB".format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6))
 
 
 @pytest.mark.m424

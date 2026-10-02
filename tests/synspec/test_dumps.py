@@ -9,15 +9,26 @@ a subprocess with 4 OpenBLAS threads (the integrator's nodes depend on the threa
 as the production); restart, rank split, watchdog, collect options; the run record (inputs fingerprint, node profiles,
 points, extra values, corrupted / stale records, exclusive creation), the workers' integrator check, lref and nl checks
 before anything is written, the legacy nmin rule for non-flux integrators, canonical dump file names, the second-pass
-identity check of the collect. M424 (marker m424): dumps 3200-3209 of the three production flux runs, byte for byte,
-and their time series rows.
+identity check of the collect. Intensity method (a toy intensity library on the M424 grid): imu_integrator runs write
+the files of the frozen fw_disc_dumps.py --method imu (frozen fw_disc.DiscImu) byte for byte (serial, fork, spawn,
+batched, lref to the run or the factory), the lazy and float32 modes (serial = fork = spawn = per line of sight; the
+run record refuses mixing modes; each mode its own default name; record-less legacy directories adopted by the legacy
+mode only), lref attachment (names checked, also against a library that records names only; lref not part of the
+integrator's identity, so a restart may move it between the run and the factory), lines by name, an ImuLibrary under
+spawn, disc_dump's batch option, the CPU-time warning of in-process runs. M424 (marker
+m424): dumps 3200-3209 of the three production flux runs, byte for byte, and their time series rows; the imu run
+(slow): dumps 3200-3209 with 4 fork and 2 spawn workers byte for byte, the lazy mode in a fresh process (time, peak
+RSS <= 3 GB).
 
 PPMPY_SYNSPEC_M424_SAMPLES (default /scratch/ppathak/fastwind_sphere/samples_r4050_N1236544) locates the per-dump
 sphere samples, PPMPY_SYNSPEC_DUMPS_SHADOW (default /scratch/ppathak/synspec_shadow/m2/dumps) the scratch directory of
-the M424 runs (a fresh subdirectory per test, removed when the test passes)."""
+the M424 runs (a fresh subdirectory per test, removed when the test passes); PPMPY_SYNSPEC_DUMPS_SHADOW_M4 (default
+/scratch/ppathak/synspec_shadow/m4/dumps_validate_fwresults) that of the imu runs; PPMPY_SYNSPEC_M424_IMU the intensity
+library (the .npz, or a directory holding imu_library_dT10.npz)."""
 import hashlib
 import json
 import os
+import platform
 import resource
 import socket
 import shutil
@@ -49,6 +60,8 @@ LINESET = LineSet(LINES, LREF)
 LEGACY = os.environ.get("PPMPY_SYNSPEC_M424_PROJECT",
                         os.path.join(os.path.dirname(os.path.abspath(__file__)), "legacy"))
 SHADOW = os.environ.get("PPMPY_SYNSPEC_DUMPS_SHADOW", "/scratch/ppathak/synspec_shadow/m2/dumps")
+SHADOW_M4 = os.environ.get("PPMPY_SYNSPEC_DUMPS_SHADOW_M4",
+                           "/scratch/ppathak/synspec_shadow/m4/dumps_validate_fwresults")
 GRID = VelocityGrid()
 N_TOY = 3000
 DUMPS = list(range(100, 106))
@@ -858,6 +871,335 @@ def test_rebuild_cost_message():
 
 
 # ----------------------------------------------------------------------------------------------
+# intensity method: imu_integrator, batched lines of sight
+# ----------------------------------------------------------------------------------------------
+def _toy_imu_library(seed=0, nb=11, K=5, t0=36650.0, dT=65.0, empty=(3, 8), short=((2, 1, 4), (6, 0, 3))):
+    """A toy intensity library (the members of the legacy imu_library_dT10.npz) on the M424 grid with 3 lines: nb bins
+    of width dT from t0 (covering most of the toy samples' T_eff', the rest beyond the nodes), empty bins served by the
+    nearest filled one (src), K rays s = p / R_max from 0 to 1 (some rows with nnode < K: NaN beyond, garbage
+    intensities there), float32 intensities with limb darkening, a line depth / width / centre changing with T_eff'
+    and mu (the 'imu' rows of fw_imu_library.py)."""
+    rng = np.random.default_rng(seed)
+    y = GRID.y
+    edges = t0 + dT * np.arange(nb + 1)
+    filled = np.array([b for b in range(nb) if b not in empty])
+    src = np.array([filled[np.argmin(np.abs(filled - b))] for b in range(nb)])
+    teff_rep = (edges[:-1] + rng.uniform(0.2, 0.8, nb) * dT)[src]
+    nnode = np.full((nb, 3), K, np.int64)
+    for b, j, n in short:
+        nnode[b, j] = n
+    nnode = nnode[src]
+    s = np.full((nb, 3, K), np.nan)
+    Il = np.full((nb, 3, K, y.size), 5.0, np.float32)
+    Ic = np.full((nb, 3, K, y.size), 5.0, np.float32)
+    for b in filled:
+        x = (teff_rep[b] - 37000.0) / 300.0
+        for j, (sig, amp, c0) in enumerate(((60.0, 0.3, 0.0), (140.0, 0.2, 5.0), (40.0, 0.4, -3.0))):
+            n = nnode[src[b], j]
+            s[b, j, :n] = np.concatenate([[0.0], np.sort(rng.uniform(0.1, 0.95, n - 2)), [1.0]])
+            for k in range(n):
+                mu = np.sqrt(1.0 - s[b, j, k] ** 2)
+                ic = (1.0 + 0.1 * x + 0.01 * j) * (1.0 - 0.6 * (1.0 - mu)) * (1.0 + 1e-5 * y)
+                d = amp * (1.0 + 0.2 * x) * (0.7 + 0.3 * mu) * np.exp(
+                    -0.5 * ((y - c0 - 2.0 * x - 3.0 * mu) / (sig * (1.0 + 0.05 * x) * (1.0 + 0.1 * mu))) ** 2)
+                Ic[b, j, k] = ic
+                Il[b, j, k] = ic * (1.0 - d)
+    count = np.where(np.isin(np.arange(nb), filled), 30.0, 0.0)
+    return dict(edges=edges, tmean=0.5 * (edges[:-1] + edges[1:]), count=count, src=src,
+                idx_rep=(5000 + np.arange(nb))[src], teff_rep=teff_rep, rmax=np.ones((nb, 3)), nnode=nnode,
+                s=s[src], Ic=Ic[src], Il=Il[src])
+
+
+LAZY_BITWISE = platform.machine().lower() in ("x86_64", "amd64")
+"""fft='lazy' gives F bit for bit the default on x86-64 (ppmpy.synspec.disc.DiscImu notes); elsewhere to rounding."""
+
+
+@pytest.fixture(scope="module")
+def toy_imu(toy):
+    """The toy intensity library saved uncompressed (legacy layout, no '_meta') next to the toy inputs."""
+    path = str(toy.root / "imu_library_dT10.npz")
+    if not os.path.exists(path):
+        np.savez(path, **_toy_imu_library())
+    return path
+
+
+def _legacy_imu_dump_files(toy, imu_path, outroot, monkeypatch):
+    """The per-dump files of the frozen fw_disc_dumps.py --method imu for the toy: its source lines (NAME, the
+    projections, KEYS, process()) with INT = the frozen fw_disc.DiscImu of the toy intensity library, built and run
+    with the loaded BLAS limited to 1 thread (the production container: OMP_NUM_THREADS=1)."""
+    fd = _legacy_fw_disc()
+    monkeypatch.setattr(fd, "SAMPLES", toy.samples)
+    a = types.SimpleNamespace(overwrite=False, method="imu", lamfix=False, smooth=0.0, nmin=NMIN)
+    ns = dict(np=np, fd=fd, os=os, time=time, a=a, pts=dict(theta=toy.theta, phi=toy.phi))
+    _legacy_exec("fw_disc_dumps.py", "NAME = a.method", "NAME = a.method", ns)
+    _legacy_exec("fw_disc_dumps.py", "rhat, that, phat = fd.unit_vectors", "del rhat, that, phat, pts", ns)
+    _legacy_exec("fw_disc_dumps.py", "KEYS = [", "KEYS = [", ns)
+    with dm._blas_limit(1):
+        ns["INT"] = fd.DiscImu(imu_path)
+        out = os.path.join(str(outroot), ns["NAME"])
+        os.makedirs(out)
+        ns["OUT"] = out
+        _legacy_exec("fw_disc_dumps.py", "def process(d):", 'f"{time.time() - t0:.1f} s")', ns)
+        for d in DUMPS:
+            assert ns["process"](d).startswith("dump {}: EW".format(d))
+    assert ns["NAME"] == "imu"
+    return out
+
+
+def _run_imu(toy, imu_path, outdir, name=None, dumps=DUMPS, kw=None, lref=LINESET, **opt):
+    return dm.run_disc_dumps(dumps, toy.samples, str(outdir), name, dm.imu_integrator, (imu_path,), toy.theta,
+                             toy.phi, "thompson2024", lref=lref, factory_kwargs=kw, **opt)
+
+
+def test_imu_dump_files_match_legacy(toy, toy_imu, tmp_path, monkeypatch):
+    """imu_integrator (default options) through run_disc_dumps writes the per-dump files of the frozen
+    fw_disc_dumps.py --method imu (frozen fw_disc.DiscImu) byte for byte: serial, 'fork' (shared integrator) and
+    'spawn' (each worker builds its own from the file and must match the parent's fingerprint), per line of sight and
+    batched (integrate_los); the time series equals the frozen fw_disc_collect.py's."""
+    legacy = _legacy_imu_dump_files(toy, toy_imu, tmp_path / "legacy", monkeypatch)
+    runs = (("serial", dict(nproc=1)), ("batch", dict(nproc=1, batch=True)),
+            ("lref", dict(nproc=1, kw=dict(lref=LINESET), lref=None)),
+            ("fork", dict(nproc=2, start_method="fork", maxtasksperchild=2)),
+            ("spawn", dict(nproc=2, start_method="spawn", maxtasksperchild=2, timeout=300)))
+    for sub, opt in runs:
+        s = _run_imu(toy, toy_imu, tmp_path / sub, **opt)
+        assert s["name"] == "imu" and sorted(s["done"]) == DUMPS, sub
+        assert s["fields"] == dict(method="imu", name="imu", lamfix=False, smooth=0.0, nmin=0)
+        for d in DUMPS:
+            _assert_npz_equal(os.path.join(legacy, "d{:04d}.npz".format(d)), dm.dump_path(tmp_path / sub, "imu", d))
+        with np.load(dm.dump_path(tmp_path / sub, "imu", DUMPS[0])) as z:
+            assert int(z["n_clip"].sum()) > 0 and int(z["n_lo"]) > 0 and int(z["n_hi"]) > 0
+    ts_legacy = _legacy_collect(tmp_path / "spawn", "imu", DUMPS[0], DUMPS[-1])
+    ts = dm.collect_timeseries(str(tmp_path / "spawn"), "imu", out=str(tmp_path / "ts.npz"))
+    _assert_npz_equal(ts_legacy, ts)
+    rec = dm.read_run_record(str(tmp_path / "spawn" / "imu"))
+    integ = rec["params"]["integrator"]
+    assert integ["cls"] == "ppmpy.synspec.disc.DiscImu"
+    assert integ["inputs"]["factory"] == "ppmpy.synspec.dumps.imu_integrator"
+    assert integ["inputs"]["args"] == [dict(file_sha256=_sha(toy_imu))]
+    c = integ["custom"]
+    assert (c["method"], c["fft"], c["dtype"], c["chunk"], c["lines"]) == ("imu", "precomputed", "float64", 128,
+                                                                          [0, 1, 2])
+    assert "lref" not in c and len(c["library_sha256"]) == 64             # lref: in the params only (labels the lines)
+    assert rec["params"]["lref"] == LREF.tolist() and rec["info"]["names"] == LINES
+    # lref given to the factory instead of the run: the same params (the same run; reviewer)
+    rec2 = dm.read_run_record(str(tmp_path / "lref" / "imu"))
+    assert "lref" not in rec2["params"]["integrator"]["inputs"]["kwargs"] and rec2["params"] == rec["params"]
+
+
+def test_imu_lazy_runs(toy, toy_imu, tmp_path):
+    """fft='lazy' (batched by default) and dtype='float32': serial = fork = spawn byte for byte, batched = per line of
+    sight byte for byte; against the default run F to the float32 storage rounding (lazy float64: bit for bit on
+    x86-64), the velocity moments and coverage exactly; the run record refuses to mix the modes in one directory."""
+    ref = _run_imu(toy, toy_imu, tmp_path / "ref")
+    assert ref["done"] == DUMPS
+    lazy = dict(fft="lazy")
+    out = {}
+    for sub, opt in (("serial", dict(nproc=1)), ("perlos", dict(nproc=1, batch=False)),
+                     ("fork", dict(nproc=2, start_method="fork")),
+                     ("spawn", dict(nproc=2, start_method="spawn", timeout=300))):
+        s = _run_imu(toy, toy_imu, tmp_path / sub, name="imu_lazy", kw=lazy, **opt)
+        assert sorted(s["done"]) == DUMPS and s["name"] == "imu_lazy"
+        out[sub] = [_sha(dm.dump_path(tmp_path / sub, "imu_lazy", d)) for d in DUMPS]
+    assert out["serial"] == out["perlos"] == out["fork"] == out["spawn"]
+    f32 = _run_imu(toy, toy_imu, tmp_path / "f32", name="imu_f32", kw=dict(fft="lazy", dtype="float32"))
+    assert f32["done"] == DUMPS
+    for d in DUMPS:
+        with np.load(dm.dump_path(tmp_path / "ref", "imu", d)) as a, \
+                np.load(dm.dump_path(tmp_path / "serial", "imu_lazy", d)) as b, \
+                np.load(dm.dump_path(tmp_path / "f32", "imu_f32", d)) as c:
+            assert np.abs(a["F"].astype(float) - b["F"]).max() <= (0.0 if LAZY_BITWISE else 6e-8)
+            assert np.abs(a["F0"].astype(float) - b["F0"]).max() <= 6e-8
+            assert np.abs(a["F"].astype(float) - c["F"]).max() <= 1e-6
+            for k in ("vmean_w", "sigma_w", "n_clip", "n_lo", "n_hi", "wout", "node_range"):
+                np.testing.assert_array_equal(a[k], b[k], err_msg=k)
+    rec = dm.read_run_record(str(tmp_path / "serial" / "imu_lazy"))["params"]["integrator"]["custom"]
+    assert rec["fft"] == "lazy" and rec["dtype"] == "float64"
+    with pytest.raises(ValueError, match="another configuration"):
+        _run_imu(toy, toy_imu, tmp_path / "serial", name="imu_lazy", kw=dict(fft="precomputed"), overwrite=True)
+
+
+def test_imu_integrator_lref(toy, toy_imu, tmp_path):
+    """lref attached by imu_integrator (the legacy library records none): a LineSet names the lines (labels kept), an
+    array does not; it survives pickling (recipe), defaults disc_dump's lref and enters the fingerprint; another
+    length, or values / names other than those a library records, are refused."""
+    import pickle
+    MU, TN, PN = sph.project_los(toy.theta, toy.phi, "thompson2024")
+    smp = dm.load_sample(toy.samples, DUMPS[0])
+    bare = dm.imu_integrator(toy_imu)
+    assert bare.lines is None and bare.lref is None and bare.fingerprint()["lref"] is None
+    with pytest.raises(ValueError, match="lref is required"):
+        dm.disc_dump(bare, smp, MU, TN, PN)
+    labelled = LineSet(LINES, LREF, labels=["a", "b", "c"])
+    integ = dm.imu_integrator(toy_imu, lref=labelled)
+    assert integ.lines.names == LINES and integ.lines.labels == ["a", "b", "c"] and integ.names == LINES
+    np.testing.assert_array_equal(integ.lref, LREF)
+    assert integ.fingerprint()["lref"] == LREF.tolist()
+    r = dm.disc_dump(integ, smp, MU, TN, PN)
+    r_ref = dm.disc_dump(bare, smp, MU, TN, PN, lref=LINESET)
+    for k in ("F", "F0", "diag_F", "diag_F0", "vmean_w", "sigma_w"):
+        np.testing.assert_array_equal(r[k], r_ref[k], err_msg=k)
+    back = pickle.loads(pickle.dumps(integ))
+    assert back.names == LINES and np.array_equal(back.lref, LREF) and back.fingerprint() == integ.fingerprint()
+    arr = dm.imu_integrator(toy_imu, lref=LREF)
+    assert arr.lines is None and arr.names is None and np.array_equal(arr.lref, LREF)
+    with pytest.raises(ValueError, match="wavelengths"):
+        dm.imu_integrator(toy_imu, lref=LREF[:2])
+    # a library that records its lines (members lref / lines): a matching lref is accepted, others are refused
+    with np.load(toy_imu) as z:
+        rec = {k: z[k] for k in z.files}
+    path = str(tmp_path / "imu_lines.npz")
+    np.savez(path, lref=LREF, lines=np.array(LINES), **rec)
+    own = dm.imu_integrator(path, lref=LREF + 1e-14)
+    assert own.names == LINES and np.array_equal(own.lref, LREF)
+    with pytest.raises(ValueError, match="differs from the intensity library's"):
+        dm.imu_integrator(path, lref=LREF[[1, 0, 2]])
+    with pytest.raises(ValueError, match="line names"):
+        dm.imu_integrator(path, lref=LineSet(["x", "y", "z"], LREF))
+    # a library that records only the names (member lines): a LineSet must have those names in that order (reviewer:
+    # other or permuted names relabelled the lines); an array lref is attached under the library's names
+    names_only = str(tmp_path / "imu_names.npz")
+    np.savez(names_only, lines=np.array(LINES), **rec)
+    nm = dm.imu_integrator(names_only, lref=LREF)
+    assert nm.names == LINES and nm.lines.names == LINES and np.array_equal(nm.lref, LREF)
+    nm = dm.imu_integrator(names_only, lref=labelled)
+    assert nm.names == LINES and nm.lines.labels == ["a", "b", "c"]
+    for bad in (LineSet(["X", "Y", "Z"], LREF), LineSet([LINES[1], LINES[0], LINES[2]], LREF)):
+        with pytest.raises(ValueError, match="line names"):
+            dm.imu_integrator(names_only, lref=bad)
+
+
+def test_imu_integrator_lines_by_name(toy, toy_imu, tmp_path):
+    """Lines selected by name: with the legacy library (no names) through the names of a LineSet lref (reviewer: they
+    failed before the factory attached the names), with a library that names its lines through its names; unknown
+    names, names without a LineSet, a LineSet of another length are refused. A per-line run equals the full run on its
+    line."""
+    one = dm.imu_integrator(toy_imu, lines=["HEII4200"], lref=LINESET, fft="lazy")
+    assert one.built == (1,) and one.names == LINES and np.array_equal(one.lref, LREF)
+    assert dm.imu_integrator(toy_imu, lines="HEI4922", lref=LINESET).built == (2,)
+    assert dm.imu_integrator(toy_imu, lines=["HEI4922", 0], lref=LINESET, fft="lazy").built == (0, 2)
+    with pytest.raises(ValueError, match="unknown line 'HEII9999'"):
+        dm.imu_integrator(toy_imu, lines=["HEII9999"], lref=LINESET, fft="lazy")
+    with pytest.raises(ValueError, match="records no line names"):
+        dm.imu_integrator(toy_imu, lines=["HEII4200"], lref=LREF, fft="lazy")
+    with pytest.raises(ValueError, match="names 2 lines"):
+        dm.imu_integrator(toy_imu, lines=["HEII4200"], lref=LineSet(LINES[:2], LREF[:2]), fft="lazy")
+    with np.load(toy_imu) as z:
+        rec = {k: z[k] for k in z.files}
+    path = str(tmp_path / "imu_names.npz")
+    np.savez(path, lines=np.array(LINES), **rec)
+    assert dm.imu_integrator(path, lines=["HEI4922"], fft="lazy").built == (2,)
+    with pytest.raises(ValueError, match="line names"):
+        dm.imu_integrator(path, lines=["HEI4922"], lref=LineSet(["A", "B", "C"], LREF), fft="lazy")
+    MU, TN, PN = sph.project_los(toy.theta, toy.phi, "thompson2024")
+    smp = dm.load_sample(toy.samples, DUMPS[0])
+    full = dm.disc_dump(dm.imu_integrator(toy_imu, lref=LINESET, fft="lazy"), smp, MU, TN, PN, batch=True)
+    part = dm.disc_dump(one, smp, MU, TN, PN, batch=True)
+    np.testing.assert_array_equal(part["F"][:, 1], full["F"][:, 1])
+    assert np.all(np.isnan(part["F"][:, [0, 2]])) and dm.run_fields(one)["name"] == "imu_lazy_l1"
+
+
+def test_imu_mode_names_and_legacy_adoption(toy, toy_imu, tmp_path):
+    """run_fields gives every DiscImu mode its own default name ('imu' only for the legacy options); a per-dump
+    directory without a run record (as the production imu/ of the legacy driver) is adopted by the legacy mode only
+    (reviewer: a lazy float32 run with name=None adopted it and mixed its files in), and the refused run writes
+    nothing."""
+    for kw, want in ((dict(), "imu"), (dict(fft="lazy"), "imu_lazy"), (dict(dtype="float32"), "imu_f32"),
+                     (dict(fft="lazy", dtype="f4"), "imu_lazy_f32"), (dict(fft="lazy", chunk=64), "imu_lazy_c64"),
+                     (dict(chunk=128, lines=[0, 1, 2]), "imu"), (dict(fft="lazy", lines=[0, 2]), "imu_lazy_l0-2")):
+        integ = dm.imu_integrator(toy_imu, **kw)
+        assert dm.run_fields(integ)["name"] == want, kw
+        assert dm.run_fields(integ, "mine")["name"] == "mine"
+        assert (want == "imu") == (dm._imu_mode(integ) == [])
+    assert dm._imu_mode(dm.flux_integrator(toy.library, nmin=NMIN)) == []
+    # a legacy directory: files of the default mode, no run record
+    s = _run_imu(toy, toy_imu, tmp_path, dumps=DUMPS[:2])
+    ddir = os.path.join(str(tmp_path), "imu")
+    os.remove(os.path.join(ddir, dm.RUN_FILE))
+    before = {f: _sha(os.path.join(ddir, f)) for f in os.listdir(ddir)}
+    for kw in (dict(fft="lazy", dtype="float32"), dict(fft="lazy"), dict(dtype="float32"), dict(chunk=64),
+               dict(lines=[1])):
+        with pytest.raises(ValueError, match="not the legacy ones"):
+            _run_imu(toy, toy_imu, tmp_path, name="imu", kw=kw)
+    assert {f: _sha(os.path.join(ddir, f)) for f in os.listdir(ddir)} == before          # nothing written
+    s = _run_imu(toy, toy_imu, tmp_path, kw=dict(fft="lazy", dtype="float32"), dumps=DUMPS[:2])
+    assert s["name"] == "imu_lazy_f32" and s["done"] == DUMPS[:2]                        # its own directory
+    logs = []
+    s = _run_imu(toy, toy_imu, tmp_path, log=logs.append)                                 # the legacy mode adopts it
+    assert s["name"] == "imu" and s["done"] == DUMPS[2:] and any("adopting the directory" in x for x in logs)
+    assert all(_sha(os.path.join(ddir, f)) == h for f, h in before.items())
+
+
+def test_imu_lref_restart(toy, toy_imu, tmp_path):
+    """lref is not part of the integrator's identity (reviewer): a run with lref given to run_disc_dumps continues
+    with lref given to the factory (and the other way round) in the same directory, byte for byte the files of one
+    run; lref values other than the recorded ones are still refused (params lref)."""
+    _run_imu(toy, toy_imu, tmp_path / "ref")
+    a = _run_imu(toy, toy_imu, tmp_path / "mix", dumps=DUMPS[:2])
+    b = _run_imu(toy, toy_imu, tmp_path / "mix", dumps=DUMPS[:4], kw=dict(lref=LINESET), lref=None)
+    c = _run_imu(toy, toy_imu, tmp_path / "mix", kw=dict(lref=LREF), lref=LINESET)
+    assert (a["done"], b["done"], c["done"]) == (DUMPS[:2], DUMPS[2:4], DUMPS[4:])
+    for d in DUMPS:
+        _assert_npz_equal(dm.dump_path(tmp_path / "ref", "imu", d), dm.dump_path(tmp_path / "mix", "imu", d))
+    other = LineSet(LINES, LREF + 0.01)
+    with pytest.raises(ValueError, match="another configuration"):
+        _run_imu(toy, toy_imu, tmp_path / "mix", kw=dict(lref=other), lref=None, overwrite=True)
+
+
+def test_cpu_budget_warning(toy, tmp_path, monkeypatch):
+    """The CPU-time limit of an in-process run: a RuntimeWarning (and log line) when the CPU used plus the first
+    dump's CPU time for every remaining dump exceeds the limit (lazy M424: ~11 s per dump, 3600 s limit: killed after
+    ~300 dumps); none within it or without a limit; run_disc_dumps checks once, after its first dump."""
+    logs = []
+    with pytest.warns(RuntimeWarning, match=r"killed after ~326 more"):
+        msg = dm._cpu_budget_warning(11.0, 1600, logs.append, limit=3600.0, used=10.0)
+    assert logs == ["WARNING: " + msg] and "nproc >= 2" in msg
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert dm._cpu_budget_warning(11.0, 300, logs.append, limit=3600.0, used=10.0) is None
+    calls = []
+    monkeypatch.setattr(dm, "_cpu_budget_warning", lambda per, left, _log: calls.append((per, left)))
+    s = dm.run_disc_dumps(DUMPS[:3], toy.samples, str(tmp_path), "flux", dm.flux_integrator, (toy.library,),
+                          toy.theta, toy.phi, "thompson2024", lref=LINESET, factory_kwargs=dict(nmin=NMIN))
+    assert s["done"] == DUMPS[:3] and len(calls) == 1 and calls[0][1] == 2 and calls[0][0] >= 0.0
+
+
+def test_imu_integrator_imulibrary_spawn(toy, toy_imu, tmp_path):
+    """imu_integrator of an ImuLibrary memory-mapped from its file (pickled to 'spawn' workers as its path; the run
+    record falls back to the integrator's fingerprint) writes the files of the path run byte for byte."""
+    lib = lb.ImuLibrary.load(toy_imu)
+    ref = _run_imu(toy, toy_imu, tmp_path / "path", dumps=DUMPS[:3])
+    s = dm.run_disc_dumps(DUMPS[:3], toy.samples, str(tmp_path / "obj"), None, dm.imu_integrator, (lib,), toy.theta,
+                          toy.phi, "thompson2024", lref=LINESET, nproc=2, start_method="spawn", timeout=300)
+    assert ref["done"] == sorted(s["done"]) == DUMPS[:3]                  # done: in the order the workers finish
+    for d in DUMPS[:3]:
+        _assert_npz_equal(dm.dump_path(tmp_path / "path", "imu", d), dm.dump_path(tmp_path / "obj", "imu", d))
+    rec = dm.read_run_record(str(tmp_path / "obj" / "imu"))["params"]["integrator"]
+    assert "inputs" not in rec and rec["custom"]["library_sha256"] == dm.read_run_record(
+        str(tmp_path / "path" / "imu"))["params"]["integrator"]["custom"]["library_sha256"]
+
+
+def test_disc_dump_batch(toy):
+    """disc_dump(batch=True) equals the per-line-of-sight loop bit for bit for DiscFlux (its integrate_los); the
+    default (None) batches only lazy integrators; batch=True without integrate_los is refused."""
+    integ = dm.flux_integrator(toy.library, nmin=NMIN)
+    MU, TN, PN = sph.project_los(toy.theta, toy.phi, "thompson2024")
+    smp = dm.load_sample(toy.samples, DUMPS[1])
+    a = dm.disc_dump(integ, smp, MU, TN, PN, lref=LINESET)
+    b = dm.disc_dump(integ, smp, MU, TN, PN, lref=LINESET, batch=True)
+    for k in a:
+        np.testing.assert_array_equal(a[k], b[k], err_msg=k)
+    assert dm._use_batch(integ, None) is False and dm._use_batch(integ, True) is True
+    assert dm._use_batch(types.SimpleNamespace(fft="lazy", integrate_los=lambda *x, **y: None), None) is True
+    with pytest.raises(ValueError, match="integrate_los"):
+        dm.disc_dump(_ImuLike(integ), smp, MU, TN, PN, lref=LINESET, batch=True)
+    with pytest.raises(ValueError, match="integrate_los"):
+        dm.run_disc_dumps(DUMPS, toy.samples, str(toy.root / "never"), "x", _imu_like_factory, (toy.library,),
+                          toy.theta, toy.phi, "thompson2024", lref=LINESET, batch=True)
+    assert not os.path.exists(str(toy.root / "never" / "x"))
+
+
+# ----------------------------------------------------------------------------------------------
 # collect
 # ----------------------------------------------------------------------------------------------
 @pytest.fixture(scope="module")
@@ -1124,6 +1466,127 @@ def test_m424_collect_production_files(m424, tmp_path):
     assert _sha(ts_legacy) == _sha(out)
 
 
+def _m424_imu_lib():
+    """The M424 intensity library: PPMPY_SYNSPEC_M424_IMU (the .npz, as test_discimu.py, or a directory holding
+    imu_library_dT10.npz, as test_imulib.py), default /scratch/ppathak/fastwind_imu/imu_library_dT10.npz."""
+    p = os.environ.get("PPMPY_SYNSPEC_M424_IMU", "/scratch/ppathak/fastwind_imu/imu_library_dT10.npz")
+    if os.path.isdir(p):
+        p = os.path.join(p, "imu_library_dT10.npz")
+    if not os.path.exists(p):
+        pytest.skip("M424 intensity library not available: {}".format(p))
+    return p
+
+
+def _shadow_m4():
+    if not os.path.isdir(os.path.dirname(SHADOW_M4)):
+        pytest.skip("shadow directory {} not available".format(SHADOW_M4))
+    os.makedirs(SHADOW_M4, exist_ok=True)
+    assert not os.path.realpath(SHADOW_M4).startswith(("/scratch/ppathak/fastwind_sphere",
+                                                       "/scratch/ppathak/fastwind_imu"))
+    return SHADOW_M4
+
+
+@pytest.mark.m424
+@pytest.mark.slow
+@pytest.mark.parametrize("nproc,start", [(4, "fork"), (2, "spawn")])
+def test_m424_run_disc_dumps_imu(m424, nproc, start):
+    """run_disc_dumps with imu_integrator (default options, the legacy imu_library_dT10.npz, lref = the M424 LineSet)
+    for dumps 3200-3209: every per-dump file equals the production imu/dNNNN.npz of fw_disc_dumps.py --method imu
+    byte for byte, with 4 'fork' workers (sharing the parent's precomputed library FFTs) and with 2 'spawn' workers
+    (each builds its own integrator and must match the parent's fingerprint); collect_timeseries of them equals the
+    rows of imu_timeseries.npz. Measured 2026-10-02 (Trillium login node): see the printed line; ~8-10 GB per
+    process that builds the integrator."""
+    lib = _m424_imu_lib()
+    for d in M424_DUMPS:
+        m424_path("disc", "imu", "d{:04d}.npz".format(d))
+    out = tempfile.mkdtemp(prefix="test_imu_{}_".format(start), dir=_shadow_m4())
+    t0, c0, p0 = time.time(), resource.getrusage(resource.RUSAGE_CHILDREN), resource.getrusage(resource.RUSAGE_SELF)
+    s = dm.run_disc_dumps(M424_DUMPS, m424.samples, out, None, dm.imu_integrator, (lib,), m424.theta, m424.phi,
+                          "thompson2024", lref=LINESET, nproc=nproc, start_method=start, tmpdir=out, log=print)
+    wall = time.time() - t0
+    ru, rc = resource.getrusage(resource.RUSAGE_SELF), resource.getrusage(resource.RUSAGE_CHILDREN)
+    print("M424 imu: {} dumps in {:.1f} s ({} workers, {}), workers {:.0f} s CPU (max RSS {:.2f} GB), parent {:.1f} s "
+          "user + {:.1f} s system, max RSS {:.2f} GB".format(
+              len(M424_DUMPS), wall, nproc, start, rc.ru_utime + rc.ru_stime - c0.ru_utime - c0.ru_stime,
+              rc.ru_maxrss / 1e6, ru.ru_utime - p0.ru_utime, ru.ru_stime - p0.ru_stime, ru.ru_maxrss / 1e6))
+    assert s["name"] == "imu" and sorted(s["done"]) == M424_DUMPS and s["nn"] == 303 and s["start_method"] == start
+    for d in M424_DUMPS:
+        _assert_npz_equal(dm.dump_path(out, "imu", d), m424_path("disc", "imu", "d{:04d}.npz".format(d)))
+    rec = dm.read_run_record(os.path.join(out, "imu"))["params"]["integrator"]
+    assert rec["cls"] == "ppmpy.synspec.disc.DiscImu" and rec["custom"]["fft"] == "precomputed"
+    assert rec["inputs"]["factory"] == "ppmpy.synspec.dumps.imu_integrator"
+    ts = dm.collect_timeseries(out, "imu", out=os.path.join(out, "ts.npz"), log=print)
+    _assert_timeseries_rows(ts, m424_path("disc", "imu_timeseries.npz"), M424_DUMPS)
+    shutil.rmtree(out)
+
+
+@pytest.mark.m424
+@pytest.mark.slow
+def test_m424_run_disc_dumps_imu_lazy(m424):
+    """The laptop mode: run_disc_dumps with imu_integrator(fft='lazy') in one fresh process (nproc 1, lines of sight
+    batched by default) for dumps 3200 and 4800: F equals the production imu files bit for bit (x86-64; else to the
+    float32 rounding), F0 to the float32 rounding, the velocity moments and every other member exactly; batched equals
+    per line of sight bit for bit (every member but the name) and is faster; peak RSS (VmHWM) of the whole run,
+    projections included, <= 3 GB."""
+    lib = _m424_imu_lib()
+    dl = [3200, 4800]
+    for d in dl:
+        m424_path("disc", "imu", "d{:04d}.npz".format(d))
+    pts = m424_path("run", "points.npz")
+    out = tempfile.mkdtemp(prefix="test_imu_lazy_", dir=_shadow_m4())
+    code = textwrap.dedent("""
+        import json, sys, time
+        sys.path.insert(0, {root!r})
+        import numpy as np
+        from ppmpy.synspec import dumps as dm
+        from ppmpy.synspec.io import npz_member_memmap
+        from ppmpy.synspec.spectral import LineSet
+
+        def status():
+            out = {{}}
+            for l in open('/proc/self/status'):
+                k = l.split(':')[0]
+                if k in ('VmHWM', 'VmRSS', 'RssAnon', 'RssFile'):
+                    out[k] = int(l.split()[1]) / 1e6
+            return out
+
+        th, ph = (npz_member_memmap({pts!r}, k) for k in ('theta', 'phi'))
+        r = dict(base=status())
+        for name, batch in (('imu_lazy', None), ('imu_lazy_perlos', False)):
+            t0 = time.time()
+            s = dm.run_disc_dumps({dl}, {samples!r}, {out!r}, name, dm.imu_integrator, ({lib!r},), th, ph,
+                                  'thompson2024', lref=LineSet({lines!r}, {lref!r}), factory_kwargs=dict(fft='lazy'),
+                                  batch=batch, tune_malloc=True)
+            r[name] = dict(wall=time.time() - t0, status=status(), done=s['done'])
+        print('RESULT ' + json.dumps(r))
+    """).format(root=ROOT, pts=pts, dl=dl, samples=m424.samples, out=out, lib=lib, lines=LINES, lref=LREF.tolist())
+    res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=3000)
+    assert res.returncode == 0, res.stdout[-3000:] + res.stderr[-3000:]
+    r = json.loads(res.stdout.split("RESULT ", 1)[1])
+    print("M424 lazy run (GB): {}".format(r))
+    assert r["imu_lazy"]["done"] == dl and r["imu_lazy"]["status"]["VmHWM"] <= 3.0
+    assert r["imu_lazy"]["wall"] < r["imu_lazy_perlos"]["wall"]
+    for d in dl:
+        a = dm.dump_path(out, "imu_lazy", d)
+        with np.load(a) as z, np.load(dm.dump_path(out, "imu_lazy_perlos", d)) as zp:
+            assert z.files == zp.files
+            for k in z.files:
+                if k != "name":
+                    assert z[k].dtype == zp[k].dtype and np.array_equal(z[k], zp[k],
+                                                                        equal_nan=z[k].dtype.kind == "f"), k
+        with np.load(a) as z, np.load(m424_path("disc", "imu", "d{:04d}.npz".format(d))) as ref:
+            assert z.files == ref.files
+            for k in z.files:
+                if k == "name":
+                    continue
+                if k in ("F0", "diag_F0") or (k == "F" and not LAZY_BITWISE):
+                    tol = 6e-8 if k != "diag_F0" else 1e-6
+                    assert np.abs(z[k].astype(float) - ref[k]).max() <= tol, k
+                else:
+                    np.testing.assert_array_equal(z[k], ref[k], err_msg=k)
+    shutil.rmtree(out)
+
+
 def test_modname_spawn_alias():
     """A class defined in the calling script is '__main__' in the parent and '__mp_main__' in spawn workers; run
     records must treat both as the same module."""
@@ -1135,3 +1598,12 @@ def test_modname_spawn_alias():
     assert dm._modname(A) == "__main__"
     A.__module__ = "pkg.mod"
     assert dm._modname(A) == "pkg.mod"
+
+
+def test_imu_fingerprint_defaults_normalised():
+    """imu_integrator runs started with explicit defaults and with omitted defaults have the same input record."""
+    from ppmpy.synspec import dumps as dm
+    a = dm._inputs_fingerprint(dm.imu_integrator, ("lib.npz",), {})
+    b = dm._inputs_fingerprint(dm.imu_integrator, ("lib.npz",), dict(fft="precomputed", dtype="float64", lines=None))
+    c = dm._inputs_fingerprint(dm.imu_integrator, ("lib.npz",), dict(fft="lazy"))
+    assert a == b and a != c

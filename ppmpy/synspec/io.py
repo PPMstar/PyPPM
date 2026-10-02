@@ -39,6 +39,16 @@ def file_identity(path):
                 mtime=datetime.datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds"))
 
 
+def _input_record(v):
+    """file_identity for an existing path; other values (lists of paths, labels) are recorded as given."""
+    # PP 2026-10-02: migration finding: a list of raw directories in ImuLibrary.inputs raised TypeError
+    if isinstance(v, (str, bytes, os.PathLike)) and os.path.exists(v):
+        return file_identity(v)
+    if isinstance(v, (list, tuple)):
+        return [_input_record(x) for x in v]
+    return v if isinstance(v, (str, int, float, bool)) else str(v)
+
+
 def make_meta(kind, params=None, inputs=None, **extra):
     """
     Provenance record for a product.
@@ -60,7 +70,7 @@ def make_meta(kind, params=None, inputs=None, **extra):
                 host=socket.gethostname(), argv=list(sys.argv), python=platform.python_version(),
                 numpy=np.__version__, scipy=scipy.__version__, ppmpy=_ppmpy_info(),
                 slurm_job=os.environ.get("SLURM_JOB_ID"), params=params or {},
-                inputs={k: file_identity(v) for k, v in (inputs or {}).items() if v and os.path.exists(v)})
+                inputs={k: _input_record(v) for k, v in (inputs or {}).items() if v is not None})
     meta.update(extra)
     return meta
 

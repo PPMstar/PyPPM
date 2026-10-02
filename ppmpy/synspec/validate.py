@@ -24,6 +24,11 @@ V6        :func:`v6_rounding`          Doppler shifts rounded to grid steps vs c
 brute     :func:`brute_force_check`    the full per-point sum with the same rounding, done directly (each point's
                                        interpolated node profile shifted and added, no FFT) vs the integrator
                                        (float64) and vs stored per-dump products (float32)
+brute_imu :func:`brute_force_imu_check`
+                                       the same for the intensity method (each point's intensities interpolated in
+                                       T_eff' and s, weighted by mu, shifted with the edge values, added), on a
+                                       random subset vs the integrator or on all points also vs stored products;
+                                       the profiles, the velocity moments [km/s] and the clipped counts
 EW        :func:`ew_conservation`      whole-step Doppler shifts conserve the EW on the y grid
 ========  ===========================  =======================================================================
 
@@ -80,15 +85,18 @@ corr)) (``t`` and ``fc`` of its nodes). V4 compares it with the nearest bin of t
 ``corr`` must be passed again; with smoothed nodes V4 measures smoothing and interpolation together and is
 informational), V5 rebuilds nodes from the library with the integrator's smoothing (a correction must be passed), V6
 and the brute force take the integrator's nodes (checked: the same t, and fc where the integrator has one). An
-intensity integrator differs from the flux library by its method (~1e-3): it gets V1 (and V2 through a factory);
-:func:`run_validation` skips V4-V6 and the brute force for integrators without ``fc``.
+intensity integrator differs from the flux library by its method (~1e-3): it gets V1 (and V2 through a factory, V3)
+and its own brute force (:func:`brute_force_imu_check`); :func:`run_validation` skips V4-V6 and the flux brute force
+for integrators without ``fc``.
 
 Conventions
 -----------
 * Integrators have the duck type of :class:`ppmpy.synspec.disc.DiscFlux`: ``t`` (increasing node T_eff'),
   ``pairs(teff) -> (k0, k1, a)``, ``__call__(mu, v, k0, k1, a, novel=True) -> (F, F0, ...)`` with F, F0 (nl, ny);
   optional ``grid`` (:class:`~ppmpy.synspec.spectral.VelocityGrid`; else pass ``grid``) and ``lines`` / ``lref``
-  (else pass ``lref``). The frozen legacy fw_disc.DiscImu qualifies (with grid and lref given).
+  (else pass ``lref``). :class:`ppmpy.synspec.disc.DiscImu` qualifies (any mode; :func:`ppmpy.synspec.dumps.
+  imu_integrator` can attach the lref the legacy intensity library lacks), and so does the frozen legacy
+  fw_disc.DiscImu (with grid and lref given).
 * Projections mu, tn, pn (nlos, N) come from :func:`ppmpy.synspec.sphere.project_los` ('matmul' for the all-dump
   products, as fw_disc_dumps_validate.py); v = u . n > 0 towards the observer (:func:`los_velocity`).
 * Samples: a directory of per-dump sphere samples (:func:`ppmpy.synspec.dumps.load_sample`), a mapping dump ->
@@ -130,19 +138,29 @@ fw_disc_dumps_validate.py (run as a script on the toy files), v2_holdout those o
 grid): every check passes on correct inputs and fails exactly on the faults of the table above (V2 through faulty
 factories and a replaced DiscFlux), and a second toy with T_eff' within the bins shows faulty interpolation weights;
 the sign conventions are checked analytically; the brute force agrees with a naive per-point loop and DiscFlux to
-~1e-15 (serial = fork = spawn, bit for bit); NaN inputs fail V1 and EW conservation in any position. M424 (marker m424):
-validate.npz (V1 flux, V3, V4, V5, V6; V1 imu with the frozen fw_disc.DiscImu) and holdout.npz are reproduced bit for
-bit; teff_ranges reproduces the first six columns of teff_ranges_all_dumps.npy (all 1601 dumps, a scratch check; 6
-dumps in the test); the brute force agrees with DiscFlux to 2.1e-15 and with the stored flux products to their float32
-rounding, 2^-25 = 2.98e-8 (dumps 3200 and 4800); EW conservation and the LPV rms of the flux and imu time series
-equal :data:`RECORDED_M424`. Under numpy 1.26 on the AVX512 Trillium nodes (library and sphere
-module notes for what is hardware-dependent).
+~1e-15 (serial = fork = spawn, bit for bit); NaN inputs fail V1 and EW conservation in any position. Intensity
+method (toy intensity libraries): :func:`v1_exact` with :class:`ppmpy.synspec.disc.DiscImu` gives the arrays of
+the frozen fw_disc.DiscImu bit for bit; :func:`brute_force_imu` agrees with a naive per-point loop and with DiscImu
+(every mode) to rounding, serial = fork = spawn; :func:`brute_force_imu_check` fails for a flipped velocity sign,
+swapped T_eff' weights and mixed-up stored products, and refuses another library. M424 (marker m424):
+validate.npz (V1 flux, V3, V4, V5, V6; V1 imu with the frozen fw_disc.DiscImu and with
+:class:`ppmpy.synspec.disc.DiscImu`) and holdout.npz are reproduced bit for bit; teff_ranges reproduces the first
+six columns of teff_ranges_all_dumps.npy (all 1601 dumps, a scratch check; 6 dumps in the test); the brute force
+agrees with DiscFlux to 2.1e-15 and with the stored flux products to their float32 rounding, 2^-25 = 2.98e-8 (dumps
+3200 and 4800); the intensity brute force agrees with DiscImu to 2.5e-14 (dump 4800, 20000-point subset) and
+8.3e-15 (all points; F, F0) and with the stored imu products to their float32 rounding, 2^-25 = 2.98e-8 (dump 4800);
+EW conservation and the LPV rms of the flux and imu time series equal :data:`RECORDED_M424`. Under numpy 1.26 on
+the AVX512 Trillium nodes (library and sphere module notes for what is hardware-dependent).
 
 Measured (M424, Trillium login node, 2026-10-01): V1 + V3-V6 serially 65-71 s, 1.7 GB; V1 imu with the frozen
 DiscImu 13 s with a warm page cache (9.4 GB); v2_holdout with 8 'fork' workers 72 s (workers 452 s CPU, parent
 5.9 GB peak RSS, 3.7 GB per worker including inherited pages); brute force 34-38 s per dump with 8 workers (~250 s
 CPU, < 1 GB per process); teff_ranges of all 1601 dumps 2 s with 8 workers (warm cache); EW conservation and LPV
-rms of one production time series 60-70 s.
+rms of one production time series 60-70 s. 2026-10-02: V1 imu with ppmpy's DiscImu 15 s after a 67 s set-up (peak
+RSS 9.6 GB; the set-up takes 21-200 s on a login node, almost all system time, 192 s in one run); the intensity brute
+force of a 20000-point subset 16 s in one process, of all points of a dump 143 s with 8 'fork' workers (~15 min in
+one process: 37 s per line of sight and line; about 1 GB per worker, and 2.5 GB peak RSS for the parent, which holds
+the task list, ~0.5 GB, and computes the integrator's profiles: a lazy DiscImu).
 
 Notes
 -----
@@ -194,8 +212,8 @@ from .sphere import _los_vectors, disc_weights, los_velocity, project_los
 __all__ = ["CheckResult", "ValidationReport", "NearestBin", "DEFAULT_TOLERANCES", "RECORDED_M424",
            "RECORDED_M424_ARRAYS", "LPV_WARN", "exact_continuous", "v1_exact", "v2_holdout", "v3_tails", "v4_nearest",
            "v5_node_merging", "v6_rounding",
-           "teff_ranges", "v3_select", "brute_force", "brute_force_check", "ew_conservation", "lpv_residual_rms",
-           "compare_lpv", "run_validation"]
+           "teff_ranges", "v3_select", "brute_force", "brute_force_check", "brute_force_imu", "brute_force_imu_check",
+           "ew_conservation", "lpv_residual_rms", "compare_lpv", "run_validation"]
 
 DEFAULT_TOLERANCES = dict(
     V1=5e-6,           # max |dF|, pipeline vs exact per-point sums (M424: flux 3.2e-6, imu 2.0e-6)
@@ -209,6 +227,10 @@ DEFAULT_TOLERANCES = dict(
     brute=2.5e-7,      # brute force vs stored float32 products: 8 x their rounding bound 2^-25 = 2.98e-8 (M424:
                        # 2.98e-8; the 2026-09-29 review's re-implementations agreed to <= 7.6e-6, 'brute_review')
     brute_f64=1e-10,   # brute force vs the integrator, float64 (M424: ~1e-15)
+    brute_moments=1e-9,  # [km/s] intensity brute force vs the integrator / the stored float64 velocity moments
+                       # vmean_w, sigma_w (M424 dump 4800: 5e-13 vs DiscImu on a subset; all points 1.1e-13 vs DiscImu
+                       # and vs the stored imu products)
+    brute_n_clip=0,    # clipped shifts per line of sight, intensity brute force vs the integrator / stored (exact)
     ew=1e-6,           # relative |EW(F) - EW(F0)| on the y grid without the Jacobian (M424 float32 products: 1.6e-7)
 )
 """Default tolerances: the recorded M424 values (:data:`RECORDED_M424`) with a margin. M424-specific: set them per
@@ -280,7 +302,7 @@ values."""
 LPV_WARN = 0.05
 """A check whose deviation exceeds this fraction of the run's LPV residual rms (per line) is flagged and warned."""
 
-_UNITS = ("continuum", "A", "relative")
+_UNITS = ("continuum", "A", "relative", "km/s", "count")
 
 
 # ----------------------------------------------------------------------------------------------
@@ -346,7 +368,8 @@ class CheckResult:
     details: dict, optional
         Per-line values ('per_line'), line names ('lines'), dumps, notes, LPV comparison.
     unit: str
-        'continuum' (|dF| in units of the continuum), 'A' (EW) or 'relative'.
+        'continuum' (|dF| in units of the continuum), 'A' (EW), 'relative', 'km/s' (velocity moments) or 'count'
+        (e.g. clipped shifts); the LPV comparison (:func:`compare_lpv`) covers the first three.
 
     Attributes
     ----------
@@ -881,7 +904,8 @@ def v1_exact(integ, exact, sample, mu, tn, pn, label="flux", lref=None, grid=Non
     ----------
     integ: object
         The integrator under test (DiscFlux duck type, module notes), e.g. :class:`ppmpy.synspec.disc.DiscFlux`
-        of the run's nodes, or the frozen fw_disc.DiscImu.
+        of the run's nodes, :class:`ppmpy.synspec.disc.DiscImu` (the intensity method, label 'imu'; e.g.
+        :func:`ppmpy.synspec.dumps.imu_integrator`), or the frozen fw_disc.DiscImu.
     exact: str, os.PathLike or mapping
         Exact per-point sums with F, F0 (nlos, nl, ny) for the same lines of sight (M424:
         d3200_r4050_N1236544/disc_los8.npz from :func:`ppmpy.synspec.disc.integrate_exact_stream`, shifts rounded
@@ -912,7 +936,10 @@ def v1_exact(integ, exact, sample, mu, tn, pn, label="flux", lref=None, grid=Non
 
     Validation
     ----------
-    M424: V1_flux_F, _F0, _dEW and V1_imu_F, _F0 of validate.npz bit for bit (test_validate.py).
+    M424: V1_flux_F, _F0, _dEW and V1_imu_F, _F0 of validate.npz bit for bit (test_validate.py), the latter with the
+    frozen fw_disc.DiscImu and with :class:`ppmpy.synspec.disc.DiscImu` (default options, built by
+    :func:`ppmpy.synspec.dumps.imu_integrator`). Synthetic: the ppmpy DiscImu gives the frozen DiscImu's arrays bit
+    for bit.
     """
     # PP 2026-10-01: ported from fw_disc_dumps_validate.py:71-87
     T0 = time.time()
@@ -2036,6 +2063,499 @@ def brute_force_check(nodes, samples, mu, tn, pn, grid=None, lref=None, dumps=No
 
 
 # ----------------------------------------------------------------------------------------------
+# brute force of the intensity method
+# ----------------------------------------------------------------------------------------------
+def _imu_library_arrays(library):
+    """The representatives' arrays of an intensity library (path: Il, Ic memory-mapped; NpzFile; mapping such as
+    ImuLibrary): nodes u = unique(src), their T_eff' t, and per node s (nn, nl, K), nnode (nn, nl); Il, Ic as stored
+    (nb, nl, K, ny), indexed by bin; grid: the VelocityGrid the library records (ImuLibrary, a file's '_meta'), or
+    None."""
+    from .disc import _imu_grid, _imu_open
+    m, path, _ = _imu_open(library)
+    src = np.asarray(m["src"])
+    u = np.unique(src)
+    t = np.asarray(m["teff_rep"], dtype=np.float64)[u]
+    if t.size < 2 or not np.all(np.diff(t) > 0):
+        raise ValueError("the intensity library needs at least 2 representatives with increasing T_eff'")
+    return dict(u=u, t=t, S=np.asarray(m["s"], dtype=np.float64)[u], NN=np.asarray(m["nnode"])[u], Il=m["Il"],
+                Ic=m["Ic"], path=path, grid=_imu_grid(library, m))
+
+
+def _imu_clamped_pairs(t, teff):
+    """(k0, k1, a) of T_eff' linear between the nodes t, clamped at the ends (written out here, not
+    library.node_pairs, so that the brute force shares no interpolation code with the integrator)."""
+    k0 = np.clip(np.searchsorted(t, teff, side="right") - 1, 0, t.size - 2)
+    k1 = k0 + 1
+    a = np.clip((teff - t[k0]) / (t[k1] - t[k0]), 0.0, 1.0)
+    return k0, k1, a
+
+
+def _brute_imu_line(L, j, m, v, k0, k1, a, dv, nshift, icentre, chunk):
+    """
+    F, F0 (ny,), vmean, vsig and the clipped count of one line and line of sight of the intensity method, point by
+    point: each visible point's intensities I_l, I_c interpolated linearly in T_eff' (nodes k0, k1, weights 1 - a, a of
+    any sign) and in s = sqrt(1 - mu^2) between its nodes' real rays, weighted by mu, shifted by its rounded Doppler
+    shift with the edge values beyond the grid, and added; no velocity histogram, no FFT.
+    """
+    # PP 2026-10-02: new (the intensity method's brute force; its rules are those of disc.DiscImu, coded anew)
+    S, NN, Il, Ic, u = L["S"], L["NN"], L["Il"], L["Ic"], L["u"]
+    ny = int(np.shape(Il)[-1])
+    n = m.size
+    s = np.sqrt(np.clip(1.0 - m * m, 0.0, 1.0))
+    raw = np.rint(-C_KMS * np.log(1.0 - v / C_KMS) / dv)
+    n_clip = int((np.abs(raw) > nshift).sum())
+    sh = np.clip(raw, -nshift, nshift).astype(np.int64)
+    kk, tt = np.empty((2, n), np.int64), np.empty((2, n))
+    for q, kn in enumerate((k0, k1)):
+        for node in np.unique(kn):
+            sel = kn == node
+            nr = int(NN[node, j])
+            sn = S[node, j, :nr]
+            g = np.clip(np.searchsorted(sn, s[sel], side="right") - 1, 0, nr - 2)
+            kk[q, sel] = g
+            tt[q, sel] = np.clip((s[sel] - sn[g]) / (sn[g + 1] - sn[g]), 0.0, 1.0)
+    w = np.stack([m * (1 - a) * (1 - tt[0]), m * (1 - a) * tt[0], m * a * (1 - tt[1]), m * a * tt[1]])
+    b = np.stack([u[k0], u[k0], u[k1], u[k1]])
+    r = np.stack([kk[0], kk[0] + 1, kk[1], kk[1] + 1])
+    wc = (w * np.asarray(Ic[b, j, r, icentre], dtype=np.float64)).sum(axis=0)      # mu I_c(mu) at the line centre
+    vm = np.sum(wc * v) / wc.sum()
+    sd = np.sqrt(np.sum(wc * (v - vm) ** 2) / wc.sum())
+    order = np.argsort(sh, kind="stable")
+    yy = np.arange(ny)
+    num, den, n0, d0 = np.zeros(ny), np.zeros(ny), np.zeros(ny), np.zeros(ny)
+    for c0 in range(0, n, chunk):
+        ii = order[c0:c0 + chunk]
+        RL, RC = np.zeros((ii.size, ny)), np.zeros((ii.size, ny))
+        for q in range(4):
+            wq = w[q, ii, None]
+            RL += wq * np.asarray(Il[b[q, ii], j, r[q, ii]], dtype=np.float64)
+            RC += wq * np.asarray(Ic[b[q, ii], j, r[q, ii]], dtype=np.float64)
+        n0 += RL.sum(axis=0)
+        d0 += RC.sum(axis=0)
+        si = sh[ii]
+        starts = np.concatenate([[0], np.flatnonzero(np.diff(si)) + 1])
+        GL, GC = np.add.reduceat(RL, starts, axis=0), np.add.reduceat(RC, starts, axis=0)
+        for g, st in enumerate(starts):
+            idx = np.clip(yy + si[st], 0, ny - 1)            # observed y sees the rest profile at y + shift
+            num += GL[g][idx]
+            den += GC[g][idx]
+        del RL, RC, GL, GC
+    return num / den, n0 / d0, vm, sd, n_clip
+
+
+def _brute_imu_init(spec):
+    lib = spec["library"]
+    spec = dict(spec)
+    spec["L"] = _imu_library_arrays(lib)
+    return spec
+
+
+def _brute_imu_task(item):
+    i, (k, j, m, v, k0, k1, a) = item
+    st = par.worker_state()
+    return i, _brute_imu_line(st["L"], j, m, v, k0, k1, a, st["dv"], st["nshift"], st["icentre"], st["chunk"])
+
+
+def brute_force_imu(library, sample, mu, tn, pn, grid, mask=None, pairs=None, lines=None, chunk=256, nproc=1,
+                    start_method=None, timeout=900.0):
+    """
+    Disc-integrated profiles of the intensity method by a direct per-point sum with the rules of
+    :class:`ppmpy.synspec.disc.DiscImu`: every visible point's line and continuum intensities, interpolated linearly in
+    T_eff' between the representatives (nodes ``unique(src)`` at ``teff_rep``; clamped, or the given ``pairs``) and in
+    s = sqrt(1 - mu^2) between the real rays of each node, weighted by mu, shifted by rint(-c ln(1 - v/c) / dv) grid
+    steps (clipped to +-nshift) with the edge intensities beyond the grid, and summed: F = sum mu I_l / sum mu I_c;
+    F0 the same without shifts; the velocity moments weighted by mu I_c(mu) at the line centre. No velocity histogram,
+    no FFT and none of DiscImu's code (its ray search over all nodes at once, its row selection, the library FFTs), so
+    an independent evaluation of the same sum.
+
+    Parameters
+    ----------
+    library: str, os.PathLike or mapping
+        The intensity library (as :class:`ppmpy.synspec.disc.DiscImu`; a path is memory-mapped, and is what 'spawn'
+        workers should get: a mapping is pickled to them).
+    sample: mapping or str
+        teff, ur, uth, uph (N,) (teff unused with ``pairs``).
+    mu, tn, pn: array-like
+        (nlos, N) projections.
+    grid: VelocityGrid, dict or None
+        The library's grid (dv, nshift, the line centre); a dict is passed to VelocityGrid; None: the grid the
+        library records, else the M424 grid (as DiscImu). A library that records its grid (ImuLibrary, a file
+        written by ImuLibrary.save) refuses a grid with other points (ny, y[0], y[-1]; vshift is free), as
+        DiscImu does; a legacy library is checked on ny only.
+    mask: np.ndarray of bool, optional
+        (N,) points to include (the others count as hidden), e.g. a random subset.
+    pairs: tuple, optional
+        (k0, k1, a) (N,) on the library's nodes (k0, k1 integers in [0, nn)), weights of any sign (e.g.
+        validate.v3_tails' extrapolation).
+    lines: sequence of int, optional
+        Lines to compute (default all); the others stay NaN.
+    chunk: int
+        Points formed at a time (memory: ~6 chunk ny x 8 bytes per process).
+    nproc, start_method, timeout:
+        Worker processes over the (line of sight, line) tasks ('fork' or 'spawn'; the same bits as serial).
+
+    Returns
+    -------
+    dict
+        F, F0 (nlos, nl, ny) float64; vmean_w, sigma_w (nlos, nl); n_clip (nlos,) int64 (visible points with clipped
+        shifts; per line of sight, as DiscImu).
+
+    Notes
+    -----
+    Work: per (line of sight, line) 8 intensity rows of ny values gathered and added per visible point (M424: ~620 000
+    visible points, ~2.7e10 multiply-adds; measured 37 s per line of sight and line in one process, so 15 min per
+    dump of 8 lines of sight and 3 lines, 143 s with 8 'fork' workers; a 20000-point subset 16 s); use ``mask`` for
+    subsets (:func:`brute_force_imu_check`, ``nsub``). Memory per process: ~6 chunk ny x 8 bytes (M424, chunk 256:
+    66 MB), the per-point arrays of one task and the pages of the memory-mapped library it reads (peak RSS about 1 GB
+    per worker); the calling process holds the per-point arrays of all tasks (nlos x nl tasks of ~7 x 8 bytes per
+    visible point; M424 all points ~0.5 GB).
+
+    Validation
+    ----------
+    Synthetic (toy libraries, M424 grid and others, 1-3 lines, nnode < K rows, empty bins, clipped shifts, T_eff'
+    beyond the nodes, extrapolated pairs): a naive per-point Python loop to rounding (another summation order, <=
+    6e-15) and DiscImu (every mode) to rounding; serial = fork = spawn bit for bit (tests/synspec/test_validate.py).
+    M424: :func:`brute_force_imu_check`.
+    """
+    # PP 2026-10-02: new
+    # PP 2026-10-02 (reviewer): dict grids, the recorded grid's points checked (another grid of the same ny gave wrong
+    # shifts silently), integer node indices in pairs
+    from .disc import _same_grid_points
+    if isinstance(grid, dict):
+        grid = VelocityGrid(**grid)
+    L = _imu_library_arrays(library)
+    if grid is None:
+        grid = L["grid"] if L["grid"] is not None else VelocityGrid()
+    if not isinstance(grid, VelocityGrid):
+        raise TypeError("grid must be a VelocityGrid or a dict, got {}".format(type(grid).__name__))
+    if L["grid"] is not None and not _same_grid_points(grid, L["grid"]):
+        raise ValueError("grid {} (ny {}, y {:g}..{:g} km/s) differs from the intensity library's recorded grid {} "
+                         "(ny {}, y {:g}..{:g} km/s)".format(grid, grid.ny, grid.y[0], grid.y[-1], L["grid"],
+                                                             L["grid"].ny, L["grid"].y[0], L["grid"].y[-1]))
+    nb, nl, K, ny = (int(x) for x in np.shape(L["Il"]))
+    if ny != grid.ny:
+        raise ValueError("the intensity library has {} grid points, the grid {}".format(ny, grid.ny))
+    smp = _sample_dict(sample)
+    teff, ur, uth, uph = smp["teff"], smp["ur"], smp["uth"], smp["uph"]
+    mu, tn, pn = _projections(mu, tn, pn, teff.size)
+    if pairs is None:
+        k0, k1, a = _imu_clamped_pairs(L["t"], teff)
+    else:
+        k0, k1, a = (np.asarray(x) for x in pairs)
+        a = a.astype(np.float64)
+        if any(x.shape != teff.shape for x in (k0, k1, a)):
+            raise ValueError("pairs must be (N,) arrays")
+        if k0.dtype.kind not in "iu" or k1.dtype.kind not in "iu":
+            raise ValueError("pairs: k0, k1 must be integer node indices, got {} and {}".format(k0.dtype, k1.dtype))
+        if k0.size and (min(k0.min(), k1.min()) < 0 or max(k0.max(), k1.max()) >= L["t"].size):
+            raise ValueError("pairs: node indices must be in [0, {})".format(L["t"].size))
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != teff.shape:
+            raise ValueError("mask must have shape (N,) = ({},)".format(teff.size))
+    jl = list(range(nl)) if lines is None else sorted({int(x) for x in lines})
+    if not jl or jl[0] < 0 or jl[-1] >= nl:
+        raise ValueError("lines must be indices in [0, {})".format(nl))
+    nlos = mu.shape[0]
+    tasks = []
+    ncl = np.zeros(nlos, np.int64)
+    for k in range(nlos):
+        vis = mu[k] > 0
+        if mask is not None:
+            vis &= mask
+        v = los_velocity(ur, uth, uph, mu[k], tn[k], pn[k])[vis]
+        for j in jl:
+            tasks.append((k, j, mu[k][vis], v, k0[vis], k1[vis], a[vis]))
+    F, F0 = np.full((nlos, nl, ny), np.nan), np.full((nlos, nl, ny), np.nan)
+    vm, sd = np.full((nlos, nl), np.nan), np.full((nlos, nl), np.nan)
+    spec = dict(dv=grid.dv, nshift=grid.nshift, icentre=grid.icentre, chunk=max(1, int(chunk)))
+
+    def put(i, res):
+        k, j = tasks[i][:2]
+        F[k, j], F0[k, j], vm[k, j], sd[k, j], ncl[k] = res
+
+    nproc = max(1, min(int(nproc), len(tasks)))
+    if nproc <= 1:
+        for i, task in enumerate(tasks):
+            put(i, _brute_imu_line(L, task[1], *task[2:], spec["dv"], spec["nshift"], spec["icentre"],
+                                   spec["chunk"]))
+        return dict(F=F, F0=F0, vmean_w=vm, sigma_w=sd, n_clip=ncl)
+    smethod = par.get_context(start_method).get_start_method()
+    spec["library"] = L["path"] if (L["path"] is not None and smethod != "fork") else library
+    par.login_node_warning(nproc)
+    with par.make_pool(nproc, initializer=_brute_imu_init, initargs=(spec,), start_method=smethod) as pool:
+        for i, res in par.imap_watchdog(pool, _brute_imu_task, list(enumerate(tasks)), timeout=timeout):
+            put(i, res)
+    return dict(F=F, F0=F0, vmean_w=vm, sigma_w=sd, n_clip=ncl)
+
+
+_STORED_KEYS = ("F", "F0", "vmean_w", "sigma_w", "n_clip")
+
+
+def _stored_record(stored, d):
+    """
+    The stored products of dump d for :func:`brute_force_imu_check`: dict with F, F0 and, where the source has
+    them, vmean_w, sigma_w, n_clip. ``stored``: a per-dump directory or an (outdir, name) pair (dNNNN.npz, which
+    holds all five), or a callable dump -> (F, F0), (F, F0, vmean_w, sigma_w, n_clip) or a mapping with F, F0 and
+    any of the others.
+    """
+    # PP 2026-10-02: new (reviewer: the stored velocity moments and clipped counts, products of record, were not
+    # compared)
+    if callable(stored):
+        r = stored(d)
+        if hasattr(r, "keys"):
+            out = {k: np.asarray(r[k]) for k in _STORED_KEYS if k in r}
+            if "F" not in out or "F0" not in out:
+                raise ValueError("stored({}) returned a mapping without F and F0".format(d))
+            return out
+        r = tuple(r)
+        if len(r) not in (2, 5):
+            raise ValueError("stored({}) must return (F, F0), (F, F0, vmean_w, sigma_w, n_clip) or a mapping, got {} "
+                             "items".format(d, len(r)))
+        return {k: np.asarray(x) for k, x in zip(_STORED_KEYS, r)}
+    if isinstance(stored, (tuple, list)):
+        stored = os.path.join(os.fspath(stored[0]), stored[1])
+    path = os.path.join(os.fspath(stored), "d{:04d}.npz".format(int(d)))
+    with np.load(path) as z:
+        return {k: np.asarray(z[k]) for k in _STORED_KEYS if k in z.files}
+
+
+def brute_force_imu_check(integ, samples, mu, tn, pn, library=None, dumps=None, nsub=20000, seed=7, stored=None,
+                          lref=None, chunk=256, nproc=1, start_method=None, timeout=900.0, tolerance=None,
+                          f64_tolerance=None, tolerances=None, pattern=SAMPLE_PATTERN, log=None):
+    """
+    The intensity method's per-point sum done directly (:func:`brute_force_imu`) compared with an intensity
+    integrator (:class:`ppmpy.synspec.disc.DiscImu`, float64) on a random subset of the points, or on all points and
+    then also with stored per-dump products (F, F0 float32; vmean_w, sigma_w float64; n_clip): the profiles, the
+    line-of-sight velocity moments and the clipped counts.
+
+    Parameters
+    ----------
+    integ: DiscImu
+        The integrator under test (its nodes must be the library's representatives: the same T_eff'). A per-line
+        build (``built``, e.g. DiscImu(lines=(1,))) is compared on its built lines only; the brute force computes
+        only those.
+    samples: str, os.PathLike, mapping, callable or a single sample
+        Per-dump samples (module notes); with ``dumps`` None, one sample (mapping or .npz path) labelled dump -1.
+    mu, tn, pn: array-like
+        (nlos, N) projections ('matmul' for the stored M424 products).
+    library: str, os.PathLike or mapping, optional
+        The intensity library; default the integrator's file (``integ.path``).
+    dumps: sequence of int, optional
+    nsub: int or None
+        Points of the random subset (one ``np.random.default_rng(seed)`` draws the subsets of all dumps in order, from
+        all N points; each line of sight uses the visible ones among them; the integrator gets the others hidden).
+        None: all points (M424: ~2-3 min per line of sight and line in one process; use nproc), required for
+        ``stored``.
+    seed: int
+    stored: str, (outdir, name) or callable, optional
+        Per-dump products of the run (dNNNN.npz; M424 disc_dumps_r4050_N1236544/imu): F, F0 compared after their
+        float32 rounding (default tolerance 'brute' 2.5e-7), and vmean_w, sigma_w, n_clip (the float64 moments to
+        'brute_moments', the counts exactly); needs nsub None. A callable dump -> (F, F0), (F, F0, vmean_w,
+        sigma_w, n_clip) or a mapping: the moments and counts are compared where it gives them (for every dump or
+        for none; ValueError otherwise).
+    lref: LineSet or array-like, optional
+        For the line names only.
+    chunk, nproc, start_method, timeout:
+        :func:`brute_force_imu`.
+    tolerance, f64_tolerance, tolerances:
+        'brute' (vs stored) and 'brute_f64' (vs the integrator) of :data:`DEFAULT_TOLERANCES` by default; the
+        moments 'brute_moments' (1e-9 km/s) and the clipped counts 'brute_n_clip' (0) through ``tolerances``.
+
+    Returns
+    -------
+    ValidationReport
+        Checks brute_imu_vs_integrator (F and F0, float64), brute_imu_moments (max |d vmean_w|, |d sigma_w| vs the
+        integrator, km/s), brute_imu_n_clip (max |d n_clip| per line of sight vs the integrator, count), and with
+        ``stored`` brute_imu_vs_stored, brute_imu_moments_vs_stored and brute_imu_n_clip_vs_stored (the latter two
+        where the stored products have them). Details: lines, per_line (the compared lines), line_index (their
+        indices), not_computed (names of lines the integrator did not build), dumps, per_dump; the profile check
+        also keeps moments and n_clip_equal. Arrays brute_imu_dumps, brute_imu_integ, brute_imu_moments (nd, nl;
+        NaN for lines not compared), brute_imu_n_clip (nd, nlos), and the *_stored counterparts; data brute_imu
+        (dump -> dict of the brute force).
+
+    Raises
+    ------
+    ValueError
+        No library, an empty ``dumps``, nodes that are not the library's, stored with a subset, stored moments or
+        counts given for some dumps only.
+
+    Validation
+    ----------
+    Synthetic: passes on correct inputs (also for a per-line DiscImu) and fails for a flipped velocity sign,
+    swapped T_eff' weights and lines of sight mixed up in stored products; an integrator whose profiles are right
+    but whose velocity moments or clipped counts are wrong fails exactly brute_imu_moments / brute_imu_n_clip, and
+    stored products with altered moments or counts fail the *_vs_stored checks; refuses the library of other nodes
+    (tests/synspec/test_validate.py). M424 dump 4800 (2026-10-02): a 20000-point subset, DiscImu (default) to
+    1.1e-14 / 1.5e-14 / 2.5e-14 per line, velocity moments to 5e-13 km/s; all points, DiscImu (lazy) to 7.0e-15 /
+    8.3e-15 / 7.3e-15 and the stored imu products to 2^-25 = 2.98e-8 (their float32 rounding), the velocity moments
+    to 8.7e-14 / 9.0e-14 / 1.1e-13 km/s (vs DiscImu and vs the stored float64 moments alike), the clipped counts
+    equal (160 s with 8 'fork' workers, parent peak RSS 2.3 GB).
+    """
+    # PP 2026-10-02: new (the intensity counterpart of brute_force_check)
+    # PP 2026-10-02 (reviewer): the velocity moments and clipped counts decide checks of their own (they were only
+    # stored in details, and an n_clip mismatch turned the profile check's value into NaN); the stored moments and
+    # counts are compared; a per-line integrator is compared on its built lines
+    T0 = time.time()
+    _log = _logger(log, T0)
+    if library is None:
+        library = getattr(integ, "path", None)
+        if library is None:
+            raise ValueError("library is required (the integrator has no library file)")
+    grid = _integ_grid(integ, None)
+    L = _imu_library_arrays(library)
+    t = np.asarray(getattr(integ, "t", ()), dtype=np.float64)
+    if t.shape != L["t"].shape or not np.array_equal(t, L["t"]):
+        raise ValueError("brute force imu: the integrator's nodes ({} nodes) are not this library's representatives "
+                         "({} nodes): pass the library the integrator was built from".format(t.size, L["t"].size))
+    if stored is not None and nsub is not None:
+        raise ValueError("stored products are compared on all points: pass nsub=None")
+    nl = int(np.shape(L["Il"])[1])
+    built = getattr(integ, "built", None)
+    jl = None if built is None else sorted({int(j) for j in built})
+    if jl is not None and (not jl or jl[0] < 0 or jl[-1] >= nl):
+        raise ValueError("the integrator's built lines {} are not lines of the library ({} lines)".format(jl, nl))
+    cols = list(range(nl)) if jl is None else jl
+    if dumps is None:
+        dl, getter = [-1], (lambda d: _sample_dict(samples))
+    else:
+        dl = _dumps_given(dumps, "brute force imu")
+
+        def getter(d):
+            return _get_sample(samples, d, pattern)
+    mu, tn, pn = _projections(mu, tn, pn)
+    nlos = mu.shape[0]
+    rng = np.random.default_rng(seed)
+
+    def per_line(A, B):
+        """(nl,) max |A - B| over the lines of sight per line, NaN for the lines not compared."""
+        A, B = np.asarray(A, dtype=np.float64), np.asarray(B, dtype=np.float64)
+        if A.shape != B.shape or A.shape != (nlos, nl):
+            raise ValueError("velocity moments of shape {} and {}, expected (nlos, nl) = ({}, {})".format(
+                A.shape, B.shape, nlos, nl))
+        out = np.full(nl, np.nan)
+        out[cols] = np.abs(A[:, cols] - B[:, cols]).max(axis=0)
+        return out
+
+    def prof(Fa, F0a, Fb, F0b):
+        out = np.full(nl, np.nan)
+        Fb, F0b = np.asarray(Fb, dtype=np.float64), np.asarray(F0b, dtype=np.float64)
+        out[cols] = np.maximum(_dmax(Fa[:, cols], Fb[:, cols]), _dmax(F0a[:, cols], F0b[:, cols]))
+        return out
+
+    def counts(a, b):
+        b = np.asarray(b)
+        if b.shape != (nlos,):
+            raise ValueError("clipped counts of shape {}, expected ({},)".format(b.shape, nlos))
+        return np.abs(np.asarray(a, dtype=np.int64) - b.astype(np.int64))
+
+    d_int, d_mom, d_ncl, d_sto, d_msto, d_nsto, data = [], [], [], [], [], [], {}
+    for d in dl:
+        smp = getter(d)
+        N = smp["teff"].size
+        mask = None
+        if nsub is not None:
+            mask = np.zeros(N, bool)
+            mask[rng.choice(N, min(int(nsub), N), replace=False)] = True
+        t1 = time.time()
+        b = brute_force_imu(library, smp, mu, tn, pn, grid, mask=mask, lines=jl, chunk=chunk, nproc=nproc,
+                            start_method=start_method, timeout=timeout)
+        t2 = time.time()
+        Fi, F0i, vmi, sdi, nci = _run_imu_full(integ, smp, mu, tn, pn, mask)
+        d_int.append(prof(b["F"], b["F0"], Fi, F0i))
+        d_mom.append(np.maximum(per_line(b["vmean_w"], vmi), per_line(b["sigma_w"], sdi)))
+        d_ncl.append(counts(b["n_clip"], nci))
+        msg = ("brute force imu dump {} ({} points, {:.0f} s): vs integrator max|dF| {}; velocity moments {} km/s; "
+               "clipped counts differ by {}".format(d, "all" if mask is None else int(mask.sum()), t2 - t1,
+                                                    _fmt(d_int[-1][cols]), _fmt(d_mom[-1][cols]),
+                                                    int(d_ncl[-1].max())))
+        if stored is not None:
+            st = _stored_record(stored, d)
+            d_sto.append(prof(b["F"], b["F0"], st["F"], st["F0"]))
+            msg += "; vs stored {}".format(_fmt(d_sto[-1][cols]))
+            if "vmean_w" in st and "sigma_w" in st:
+                d_msto.append(np.maximum(per_line(b["vmean_w"], st["vmean_w"]),
+                                         per_line(b["sigma_w"], st["sigma_w"])))
+                msg += ", moments {} km/s".format(_fmt(d_msto[-1][cols]))
+            if "n_clip" in st:
+                d_nsto.append(counts(b["n_clip"], st["n_clip"]))
+                msg += ", clipped counts differ by {}".format(int(d_nsto[-1].max()))
+        _log(msg)
+        data[d] = b
+    for nm, got in (("velocity moments", d_msto), ("clipped counts", d_nsto)):
+        if stored is not None and 0 < len(got) < len(dl):
+            raise ValueError("stored gives the {} for {} of {} dumps: give them for every dump or for none".format(
+                nm, len(got), len(dl)))
+    names = _line_names(integ, lref, nl)
+    lines = [names[j] for j in cols]
+    skip = [names[j] for j in range(nl) if j not in cols]
+
+    def det(A, **kw):
+        A = np.asarray(A, dtype=np.float64)
+        out = dict(lines=lines, per_line=A[:, cols].max(axis=0), line_index=list(cols), dumps=dl, per_dump=A)
+        if skip:
+            out["not_computed"] = skip
+        out.update(kw)
+        return out
+
+    def vmax(A):
+        return float(np.asarray(A, dtype=np.float64)[:, cols].max())
+
+    ncl_ok = all(int(x.max()) == 0 for x in d_ncl)
+    a, am, an = np.array(d_int), np.array(d_mom), np.array(d_ncl)
+    arrays = dict(brute_imu_dumps=np.array(dl, dtype=np.int64), brute_imu_integ=a, brute_imu_moments=am,
+                  brute_imu_n_clip=an)
+    nsub_rec = None if nsub is None else int(nsub)
+    checks = [CheckResult("brute_imu_vs_integrator", vmax(a), _tol("brute_f64", f64_tolerance, tolerances),
+                          details=det(a, moments=am, n_clip_equal=ncl_ok, nsub=nsub_rec)),
+              CheckResult("brute_imu_moments", vmax(am), _tol("brute_moments", None, tolerances), unit="km/s",
+                          details=det(am, nsub=nsub_rec, note="max |d vmean_w|, |d sigma_w| vs the integrator")),
+              CheckResult("brute_imu_n_clip", float(an.max()), _tol("brute_n_clip", None, tolerances), unit="count",
+                          details=dict(dumps=dl, per_dump=an, nsub=nsub_rec,
+                                       note="|d n_clip| per line of sight vs the integrator"))]
+    if stored is not None:
+        a = np.array(d_sto)
+        arrays["brute_imu_stored"] = a
+        checks.append(CheckResult("brute_imu_vs_stored", vmax(a), _tol("brute", tolerance, tolerances),
+                                  details=det(a, note="stored profiles are float32 (rounding <= 6e-8)")))
+        if d_msto:
+            am = np.array(d_msto)
+            arrays["brute_imu_moments_stored"] = am
+            checks.append(CheckResult("brute_imu_moments_vs_stored", vmax(am), _tol("brute_moments", None, tolerances),
+                                      unit="km/s", details=det(am, note="max |d vmean_w|, |d sigma_w| vs the stored "
+                                                                        "float64 moments")))
+        if d_nsto:
+            an = np.array(d_nsto)
+            arrays["brute_imu_n_clip_stored"] = an
+            checks.append(CheckResult("brute_imu_n_clip_vs_stored", float(an.max()),
+                                      _tol("brute_n_clip", None, tolerances), unit="count",
+                                      details=dict(dumps=dl, per_dump=an, note="|d n_clip| per line of sight vs the "
+                                                                               "stored counts")))
+    meta = dict(check="brute_imu", dumps=dl, nsub=nsub_rec, seed=int(seed), chunk=int(chunk), nproc=int(nproc),
+                lines=list(cols), wall=time.time() - T0,
+                stored=None if stored is None or callable(stored) else str(stored))
+    return ValidationReport(checks, meta=meta, arrays=arrays, data=dict(brute_imu=data))
+
+
+def _run_imu_full(integ, smp, mu, tn, pn, mask):
+    """F, F0 (nlos, nl, ny), vmean, vsig (nlos, nl), n_clip (nlos,) of the integrator with the points outside mask
+    hidden (as :func:`_run`, keeping the velocity moments and the clipped counts)."""
+    teff, ur, uth, uph = smp["teff"], smp["ur"], smp["uth"], smp["uph"]
+    k0, k1, a = integ.pairs(teff)
+    out = None
+    for k in range(mu.shape[0]):
+        m = mu[k] if mask is None else np.where(mask, mu[k], 0.0)
+        r = integ(m, los_velocity(ur, uth, uph, mu[k], tn[k], pn[k]), k0, k1, a)
+        if out is None:
+            nl, ny = np.shape(r[0])
+            out = [np.zeros((mu.shape[0], nl, ny)), np.zeros((mu.shape[0], nl, ny)), np.zeros((mu.shape[0], nl)),
+                   np.zeros((mu.shape[0], nl)), np.zeros(mu.shape[0], np.int64)]
+        for x, y in zip(out, r):
+            x[k] = y
+    return out
+
+
+# ----------------------------------------------------------------------------------------------
 # EW conservation
 # ----------------------------------------------------------------------------------------------
 def ew_conservation(F, F0=None, y=None, lref=None, ew_jacobian=False, block=64, tolerance=None, tolerances=None,
@@ -2188,7 +2708,8 @@ def lpv_residual_rms(timeseries, y=None, vwin=600.0):
 def compare_lpv(report, lpv, warn=LPV_WARN):
     """
     Put every check's per-line values in relation to the run's LPV (:func:`lpv_residual_rms`): details 'lpv_ratio'
-    (per line: value / residual rms for 'continuum' checks, / EW rms for 'A', / relative EW rms for 'relative') and
+    (per line: value / residual rms for 'continuum' checks, / EW rms for 'A', / relative EW rms for 'relative'; per
+    line of 'line_index' where a check gives that; 'km/s' and 'count' checks are not compared) and
     'lpv_warn' (any ratio > warn, or any ratio not finite, e.g. a NaN per-line value; a :class:`UserWarning` for
     checks with a tolerance, informational ones are only flagged).
 
@@ -2205,6 +2726,12 @@ def compare_lpv(report, lpv, warn=LPV_WARN):
         if s is None or pl is None or np.size(pl) == 0:
             continue
         pl, s = np.asarray(pl, dtype=np.float64), np.asarray(s, dtype=np.float64)
+        li = c.details.get("line_index")
+        if pl.shape != s.shape and li is not None and s.ndim == 1 and pl.shape == (len(li),):
+            # PP 2026-10-02: per-line values of some lines only (brute_force_imu_check of a per-line integrator)
+            li = np.asarray(li, dtype=np.int64)
+            if li.size and li.min() >= 0 and li.max() < s.size:
+                s = s[li]
         if pl.shape != s.shape:
             continue
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -2231,7 +2758,7 @@ def run_validation(integ=None, mu=None, tn=None, pn=None, sample=None, exact=Non
                    samples=None, dumps=(), v3_dumps=(), label="flux", lref=None, grid=None, nsub=20000, v6_seed=7,
                    v6_chunk=2000, nmins=(1, 5, 100), margin=300.0, corr=None, corr_key="corr", holdout=None,
                    brute_dumps=(), brute_kw=None, timeseries=None, vwin=600.0, lpv_warn=LPV_WARN, tolerances=None,
-                   pattern=SAMPLE_PATTERN, log=None):
+                   pattern=SAMPLE_PATTERN, imu_library=None, log=None):
     """
     Run the checks the given inputs allow, for one run (no defaults of a particular star: every path and array is
     given), and relate them to the run's LPV.
@@ -2268,14 +2795,20 @@ def run_validation(integ=None, mu=None, tn=None, pn=None, sample=None, exact=Non
         Keyword arguments of :func:`v2_holdout` (profiles, sample, theta, phi, los, grid, lref, factory, ...): runs
         V2.
     brute_dumps: sequence of int
-        Dumps of :func:`brute_force_check` (with ``nodes``); ``brute_kw`` further arguments (stored, reference,
-        nproc, ...).
+        Dumps of :func:`brute_force_check` (with ``nodes``; flux integrators) or, for an intensity integrator
+        (method 'imu', e.g. :class:`ppmpy.synspec.disc.DiscImu`), of :func:`brute_force_imu_check` (the library
+        ``imu_library`` or the integrator's file; default a 20000-point subset per dump); ``brute_kw`` further
+        arguments of the one that runs (stored, reference, nproc, ...; for the intensity method nsub, seed, stored
+        with nsub=None, nproc, ...).
     timeseries: str, os.PathLike or mapping, optional
         The run's time series: EW conservation of its F / F0, and the LPV comparison (:func:`compare_lpv`).
     vwin, lpv_warn:
         LPV window [km/s] and warning fraction.
     tolerances: dict, optional
         Per-check tolerances (keys of :data:`DEFAULT_TOLERANCES`; missing keys take the defaults).
+    imu_library: str, os.PathLike or mapping, optional
+        The intensity library of an intensity integrator, for its brute force (default the integrator's file,
+        ``integ.path``).
     log: callable, optional
 
     Returns
@@ -2288,8 +2821,13 @@ def run_validation(integ=None, mu=None, tn=None, pn=None, sample=None, exact=Non
     -----
     * V4, V5, V6 and the brute force apply to flux integrators DiscFlux(lib_nodes(library, nmin, smooth, corr))
       only (module notes: applicability): for an integrator without ``fc`` (e.g. the intensity method) they are
-      skipped ('flux integrator' in ``meta['skipped']``); V1 and V2 (through ``holdout['factory']``) apply to any.
-      With smoothed nodes V4 is informational; a corrected run needs ``corr``.
+      skipped ('flux integrator' in ``meta['skipped']``); V1 and V2 (through ``holdout['factory']``) apply to any,
+      V3 to any whose call takes pairs with weights of any sign (DiscFlux, DiscImu). With smoothed nodes V4 is
+      informational; a corrected run needs ``corr``.
+    * Intensity integrators (``method == 'imu'``: :class:`ppmpy.synspec.disc.DiscImu`; M424: V1 imu reproduces
+      validate.npz bit for bit) get, instead of the flux brute force, :func:`brute_force_imu_check` ('brute_imu',
+      with ``brute_dumps`` and the library); the frozen legacy fw_disc.DiscImu has no ``method`` and gets V1 (and
+      V3) only.
     * V1 dEW and V2 dEW use different EW definitions by default, as the legacy products: V1 with the factor
       lambda/lref (``ew_jacobian=True``, validate.npz), V2 without it (``ew_jacobian=False``, holdout.npz was
       written before fw_disc.diagnostics got the factor); pass ``holdout['ew_jacobian']=True`` for one definition.
@@ -2346,6 +2884,16 @@ def run_validation(integ=None, mu=None, tn=None, pn=None, sample=None, exact=Non
         g = grid if grid is not None else (getattr(integ, "grid", None) if integ is not None else None)
         parts.append(brute_force_check(nodes, samples, mu, tn, pn, grid=g, lref=lref, dumps=brute_dumps, integ=integ,
                                        pattern=pattern, **kw))
+    # PP 2026-10-02: the brute force of the intensity method (only for intensity integrators: the skipped list of
+    # flux runs is unchanged)
+    if integ is not None and not flux and getattr(integ, "method", None) == "imu":
+        ilib = imu_library if imu_library is not None else getattr(integ, "path", None)
+        if need("brute_imu", projections=proj, samples=samples, brute_dumps=list(brute_dumps), library=ilib):
+            kw = dict(brute_kw or {})
+            kw.setdefault("tolerances", tol)
+            kw.setdefault("log", log)
+            parts.append(brute_force_imu_check(integ, samples, mu, tn, pn, library=ilib, dumps=brute_dumps, lref=lref,
+                                               pattern=pattern, **kw))
     lpv = None
     if need("ew_conservation", timeseries=timeseries):
         ts = timeseries

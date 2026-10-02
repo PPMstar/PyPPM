@@ -3,6 +3,11 @@
 Synthetic runs are built in tmp_path with the layout of the M424 per-point run (results/<tag>/part_*.tar.gz
 with P<idx>/meta.txt and OUT.* per point) and processed both by fwresults and by the frozen legacy
 fw_sphere_merge.py (tests/synspec/legacy, run as a script); the files must agree byte for byte.
+locate_points / extract_points: synthetic parts with ledgers (retries, failed points, parts without ledgers, hard
+links), against the frozen fw_imu_extract.sh (GNU tar), and the layout checks (a point in two groups, unpadded
+directory names, hard links out of a point or to a target not extracted); M424: the coverage search of the intensity
+library (parts_needed.txt) and
+3 extracted models against fastwind_imu/raw.
 """
 import glob
 import hashlib
@@ -901,6 +906,322 @@ def test_combine_resident_memory_bounded(big_merged, tmp_path):
 
 
 # ----------------------------------------------------------------------------------------------
+# locate_points / extract_points (the ledgers; fw_imu_extract.sh)
+# ----------------------------------------------------------------------------------------------
+_MODEL_FILES = ("CONT_FORMAL_ALL", "CONT_FORMAL", "CLUMPING_OUTPUT", "FLUXCONT", "TAU_ROS", "ENION", "LTE_POP",
+                "NLTE_POP", "MODEL")
+
+
+def _point_files(idx, teff, status, seed):
+    """The files of a packed point in fw_sphere_point.sh's order (meta.txt, the model files of 'ok' points, OUT files,
+    INDAT.DAT): name -> (bytes, mode)."""
+    rng = np.random.default_rng(seed)
+    out = {"meta.txt": ("{} {} {} 61 39000.5 150.0 0.6\n".format(idx, teff, status).encode(), 0o660)}
+    if status == "ok":
+        for k, f in enumerate(_MODEL_FILES):
+            out[f] = (rng.integers(0, 256, 50 + 400 * k, dtype=np.uint8).tobytes(), 0o660 if k % 2 else 0o640)
+        for j, ln in enumerate(LINES):
+            out["OUT.{}_VTV010".format(ln)] = (_profile(seed, j)[0], 0o660)
+    out["INDAT.DAT"] = ("'P{:06d}'\n{} 4.25\n".format(idx, teff).encode(), 0o660)
+    return out
+
+
+def _write_indexed_part(path, records, ledger=True, mtime=1758800000, link=None, bad=None, hardlink=None):
+    """A part as fw_sphere_task.sh packs it (tar -czf of the stage directory: './', then per point 'P<idx>/' and its
+    files, in the order of records) and its ledger (the meta.txt lines in sorted directory order, as
+    'cat $STAGE/*/meta.txt'). records: (idx, status). link: idx of a point that also gets a symlink member; hardlink:
+    idx of an 'ok' point that also gets the hard link MODEL_hl -> MODEL (as tar writes a second name of a file); bad: a
+    member name to add at the end. Returns {idx: {name: (bytes, mode)}}."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    files = {}
+    with tarfile.open(path, "w:gz") as tf:
+        _tar_dir(tf, "./")
+        for n, (idx, status) in enumerate(records):
+            d = "./P{:06d}".format(idx)
+            _tar_dir(tf, d + "/")
+            files[idx] = _point_files(idx, "{:.3f}".format(38000.0 + idx), status, idx)
+            for name, (data, mode) in files[idx].items():
+                ti = tarfile.TarInfo(d + "/" + name)
+                ti.size, ti.mtime, ti.mode = len(data), mtime + 60 * n, mode
+                tf.addfile(ti, io.BytesIO(data))
+            if link == idx:
+                ti = tarfile.TarInfo(d + "/link")
+                ti.type, ti.linkname, ti.mtime = tarfile.SYMTYPE, "MODEL", mtime
+                tf.addfile(ti)
+            if hardlink == idx:
+                ti = tarfile.TarInfo(d + "/MODEL_hl")
+                ti.type, ti.linkname, ti.mtime, ti.mode = tarfile.LNKTYPE, d + "/MODEL", mtime + 60 * n, 0o640
+                tf.addfile(ti)
+        if bad is not None:
+            _tar_add(tf, bad, b"evil\n")
+    if ledger:
+        with open(path[:-len(".tar.gz")] + ".idx", "w") as f:
+            for idx in sorted(files, key=lambda i: "P{:06d}".format(i)):
+                f.write(files[idx]["meta.txt"][0].decode())
+    return files
+
+
+@pytest.fixture(scope="module")
+def packed(tmp_path_factory):
+    """Results of a per-point run with ledgers: retries in later tags (failed then ok), a point failed everywhere,
+    7-digit indices (P1193016 sorts before P999999), a part without ledger, an orphan ledger."""
+    res = str(tmp_path_factory.mktemp("packed") / "results")
+    F = {}
+    F.update(_write_indexed_part(os.path.join(res, "task_0000", "part_a.tar.gz"),
+                                 [(31, "ok"), (2, "pnlte_failed"), (3, "pnlte_failed"), (1193016, "ok"),
+                                  (999999, "ok"), (14, "ok")]))
+    F.update(_write_indexed_part(os.path.join(res, "task_0000", "part_b.tar.gz"), [(5, "ok"), (4, "ok")],
+                                 link=4))
+    F2 = _write_indexed_part(os.path.join(res, "task_0001", "part_c.tar.gz"), [(6, "ok"), (2, "ok")])
+    F[6] = F2[6]
+    F["2ok"] = F2[2]
+    F.update(_write_indexed_part(os.path.join(res, "task_0001", "part_e.tar.gz"), [(8, "ok")], ledger=False))
+    with open(os.path.join(res, "task_0001", "part_z.idx"), "w") as f:
+        f.write("9 38009.000 ok 61 39000.5 150.0 0.6\n")
+    F3 = _write_indexed_part(os.path.join(res, "task_missing_0000", "part_d.tar.gz"),
+                             [(3, "pnlte_failed"), (7, "ok")])
+    F[7] = F3[7]
+    return dict(res=res, files=F)
+
+
+def _part(packed, tag, name):
+    return os.path.join(packed["res"], tag, name + ".tar.gz")
+
+
+def test_locate_points(packed):
+    """The ledgers locate every point in one part: the first 'ok' record in tag / part / ledger order, else the first
+    record; status filters records; parts without ledgers are not searched (warned), orphan ledgers ignored (warned);
+    unknown points raise KeyError or are left out; tags choose and order the directories."""
+    res = packed["res"]
+    with pytest.warns(UserWarning) as rec:
+        loc = fw.locate_points(res, [2, 3, 4, 5, 6, 7, 31, 1193016, 999999])
+    msgs = " | ".join(str(w.message) for w in rec)
+    assert "1 parts have no ledger" in msgs and "part_e.tar.gz" in msgs and "1 ledgers have no archive" in msgs
+    assert list(loc) == [_part(packed, "task_0000", "part_a"), _part(packed, "task_0000", "part_b"),
+                         _part(packed, "task_0001", "part_c"), _part(packed, "task_missing_0000", "part_d")]
+    assert list(loc.values()) == [[3, 31, 999999, 1193016], [4, 5], [2, 6], [7]]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(KeyError, match=r"2 of 3 points have no record.*\[8, 9\]"):
+            fw.locate_points(res, [8, 9, 4])
+        assert fw.locate_points(res, [8, 9, 4], missing="ignore") == {_part(packed, "task_0000", "part_b"): [4]}
+        with pytest.raises(KeyError, match="no ok record"):
+            fw.locate_points(res, [3], status="ok")
+        assert fw.locate_points(res, 3, status=("pnlte_failed",)) == {_part(packed, "task_0000", "part_a"): [3]}
+        assert fw.locate_points(res, [3], tags=["task_missing_0000", "task_0000"]) == {
+            _part(packed, "task_missing_0000", "part_d"): [3]}
+        assert fw.locate_points(res, [7], tags="task_00*", missing="ignore") == {}
+        logs = []
+        fw.locate_points(res, [2, 3], log=logs.append)
+        assert logs == ["located 2 of 2 points in 2 parts (12 ledger records read; 1 without an ok record)"]
+        with pytest.raises(ValueError, match="non-negative integers"):
+            fw.locate_points(res, [1.5])
+        with pytest.raises(ValueError, match="missing"):
+            fw.locate_points(res, [1], missing="warn")
+    bad = os.path.join(os.path.dirname(res), "bad", "results")
+    _write_indexed_part(os.path.join(bad, "t", "part_x.tar.gz"), [(1, "ok")])
+    with open(os.path.join(bad, "t", "part_x.idx"), "a") as f:
+        f.write("\nnot a meta line\n")
+    with pytest.raises(ValueError, match=r"part_x.idx:3: not a meta.txt line"):
+        fw.locate_points(bad, [1])
+
+
+def _tree(d):
+    """{relative file path: (bytes, mode, mtime)} of the files under d (directories by their files)."""
+    out = {}
+    for root, dirs, files in os.walk(d):
+        dirs[:] = [x for x in dirs if not x.startswith(".")]
+        for f in files:
+            p = os.path.join(root, f)
+            st = os.lstat(p)
+            with open(p, "rb") as fh:
+                out[os.path.relpath(p, d)] = (fh.read(), st.st_mode & 0o7777, int(st.st_mtime))
+    return out
+
+
+def test_extract_points_matches_legacy(packed, tmp_path):
+    """extract_points writes the files (names, bytes, modes under the umask, mtimes) of the frozen fw_imu_extract.sh
+    (GNU tar -x of the listed directories) run on the parts file of the ledgers (the coverage search's format:
+    '<part> P... P...'); serial, fork and spawn alike."""
+    script = _legacy_file("fw_imu_extract.sh")
+    pts = [2, 3, 4, 5, 31, 999999, 1193016]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        loc = fw.locate_points(packed["res"], pts)
+    pf = str(tmp_path / "parts_needed.txt")
+    with open(pf, "w") as f:
+        for part, ii in loc.items():
+            f.write(" ".join([part] + ["P{:06d}".format(i) for i in ii]) + "\n")
+    out = subprocess.run(["bash", script, pf, str(tmp_path / "legacy"), "2"], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().endswith("extracted 7 model directories into {}".format(tmp_path / "legacy"))
+    ref = _tree(str(tmp_path / "legacy"))
+    assert {k.split("/")[0] for k in ref} == {"P{:06d}".format(i) for i in pts}
+    assert ref["P000002/OUT.HEI4026_VTV010"][0] == packed["files"]["2ok"]["OUT.HEI4026_VTV010"][0]     # the ok record
+    assert "P000004/link" in ref                                                                      # tar keeps links
+    del ref["P000004/link"]
+    for sub, kw in (("serial", dict(nproc=1)), ("fork", dict(nproc=2, start_method="fork")),
+                    ("spawn", dict(nproc=3, start_method="spawn", timeout=300))):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            r = fw.extract_points(packed["res"], pts, str(tmp_path / sub), **kw)
+        assert r["extracted"] == sorted(pts) and r["present"] == [] and len(r["parts"]) == 3
+        got = _tree(str(tmp_path / sub))
+        assert got == ref, sub
+        assert not [x for x in os.listdir(str(tmp_path / sub)) if x.startswith(".")]          # no staging left
+    assert {p["skipped_members"] for p in r["parts"]} == {0, 1}                                # the link: skipped
+
+
+def test_extract_points_options(packed, tmp_path):
+    """members (patterns; meta.txt always), restart (present points skipped, parts all of whose points exist not
+    read), overwrite, early stop once the wanted points are out, and the failures: a point the archive lacks, a wrong
+    meta.txt, unsafe names (nothing written outside dest), unknown points (KeyError before anything is written)."""
+    res = packed["res"]
+    dest = str(tmp_path / "out")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        r = fw.extract_points(res, [31, 4], dest, members=fw.PFORMALSOL_FILES, nproc=1)
+        assert sorted(os.listdir(os.path.join(dest, "P000031"))) == sorted(fw.PFORMALSOL_FILES)
+        assert {p["part"]: p["stopped_early"] for p in r["parts"]} == {_part(packed, "task_0000", "part_a"): True,
+                                                                     _part(packed, "task_0000", "part_b"): False}
+        r = fw.extract_points(res, [14], str(tmp_path / "pat"), members=("OUT.*",))
+        assert sorted(os.listdir(str(tmp_path / "pat" / "P000014"))) == ["OUT.HEI4026_VTV010", "OUT.HEI4922_VTV010",
+                                                                        "OUT.HEII4200_VTV010", "meta.txt"]
+        assert not r["parts"][0]["stopped_early"]                                        # the last point of part_a
+        # restart: 31 and 4 present -> only 5 (part_b) and 7 (part_d) are read
+        open(os.path.join(dest, "P000031", "marker"), "w").close()
+        r = fw.extract_points(res, [31, 4, 5, 7], dest, nproc=2)
+        assert r["present"] == [4, 31] and r["extracted"] == [5, 7] and len(r["parts"]) == 2
+        assert os.path.exists(os.path.join(dest, "P000031", "marker"))
+        r = fw.extract_points(res, [31], dest, overwrite=True)
+        assert r["extracted"] == [31] and not os.path.exists(os.path.join(dest, "P000031", "marker"))
+        assert len(os.listdir(os.path.join(dest, "P000031"))) == 1 + len(_MODEL_FILES) + len(LINES) + 1
+        assert fw.extract_points(res, [31, 4, 5, 7], dest)["parts"] == []
+        with pytest.raises(KeyError, match="no record"):
+            fw.extract_points(res, [31, 12345], str(tmp_path / "never"))
+    assert not os.path.exists(str(tmp_path / "never"))
+    # a ledger listing a point its archive lacks; a meta.txt of another point
+    bad = str(tmp_path / "bad" / "results")
+    _write_indexed_part(os.path.join(bad, "t", "part_1.tar.gz"), [(1, "ok"), (2, "ok")])
+    with open(os.path.join(bad, "t", "part_1.idx"), "a") as f:
+        f.write("3 38003.000 ok 61 39000.5 150.0 0.6\n")
+    with pytest.raises(RuntimeError, match=r"do not hold points their ledgers list.*\[3\]"):
+        fw.extract_points(bad, [1, 3], str(tmp_path / "bad_out"))
+    assert os.listdir(str(tmp_path / "bad_out")) == ["P000001"]
+    part = os.path.join(bad, "u", "part_1.tar.gz")
+    os.makedirs(os.path.dirname(part))
+    with tarfile.open(part, "w:gz") as tf:
+        _tar_add(tf, "./P000004/meta.txt", b"5 38000.000 ok 61 39000.5 150.0 0.6\n")
+    with open(part[:-7] + ".idx", "w") as f:
+        f.write("4 38000.000 ok 61 39000.5 150.0 0.6\n")
+    with pytest.raises(RuntimeError, match="holds idx '5', expected 4"):
+        fw.extract_points(bad, [4], str(tmp_path / "bad_meta"), tags=["u"])
+    assert os.listdir(str(tmp_path / "bad_meta")) == []
+    # unsafe names: '..' in a wanted point's member
+    part = os.path.join(bad, "v", "part_1.tar.gz")
+    os.makedirs(os.path.dirname(part))
+    with tarfile.open(part, "w:gz") as tf:
+        _tar_add(tf, "./P000006/meta.txt", b"6 38000.000 ok 61 39000.5 150.0 0.6\n")
+        _tar_add(tf, "./P000006/../../evil.txt", b"evil\n")
+    with open(part[:-7] + ".idx", "w") as f:
+        f.write("6 38000.000 ok 61 39000.5 150.0 0.6\n")
+    with pytest.raises(ValueError, match="unsafe member"):
+        fw.extract_points(bad, [6], str(tmp_path / "evil" / "out"), tags=["v"])
+    assert not os.path.exists(str(tmp_path / "evil" / "evil.txt")) and os.listdir(str(tmp_path / "evil" / "out")) == []
+
+
+def _parts_file(res, pts, path):
+    """The parts file of fw_imu_extract.sh ('<part> P... P...') for points, from the ledgers."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        loc = fw.locate_points(res, pts)
+    with open(path, "w") as f:
+        for part, ii in loc.items():
+            f.write(" ".join([part] + ["P{:06d}".format(i) for i in ii]) + "\n")
+    return path
+
+
+def test_extract_points_hard_links(tmp_path):
+    """Hard links inside a point directory (reviewer: skipped, while tar extracts them): the same tree as the frozen
+    fw_imu_extract.sh (GNU tar; names, bytes, modes, mtimes), the link sharing its target's inode as with tar; counted
+    in files and hard_links. A hard link that leaves its point directory raises ValueError, one whose target members
+    excluded RuntimeError (nothing placed)."""
+    res = str(tmp_path / "results")
+    _write_indexed_part(os.path.join(res, "t", "part_1.tar.gz"), [(1, "ok"), (2, "ok"), (3, "ok")], hardlink=2)
+    pf = _parts_file(res, [2, 3], str(tmp_path / "parts.txt"))
+    out = subprocess.run(["bash", _legacy_file("fw_imu_extract.sh"), pf, str(tmp_path / "legacy"), "1"],
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    ref = _tree(str(tmp_path / "legacy"))
+    assert ref["P000002/MODEL_hl"] == ref["P000002/MODEL"]
+    r = fw.extract_points(res, [2, 3], str(tmp_path / "ours"))
+    assert _tree(str(tmp_path / "ours")) == ref
+    for d in ("legacy", "ours"):
+        st = [os.stat(str(tmp_path / d / "P000002" / f)) for f in ("MODEL", "MODEL_hl")]
+        assert st[0].st_ino == st[1].st_ino and st[0].st_nlink == 2, d
+    p = r["parts"][0]
+    assert p["hard_links"] == 1 and p["files"] == len(ref) and p["skipped_members"] == 0
+    # members: the link without its target
+    with pytest.raises(RuntimeError, match="target was not extracted"):
+        fw.extract_points(res, [2], str(tmp_path / "nolink"), members=("MODEL_hl",))
+    assert os.listdir(str(tmp_path / "nolink")) == []
+    assert sorted(os.listdir(os.path.join(fw.extract_points(res, [2], str(tmp_path / "both"),
+                                                             members=("MODEL*",))["dest"], "P000002"))) == [
+        "MODEL", "MODEL_hl", "meta.txt"]
+    # a hard link to another point's file
+    bad = str(tmp_path / "bad" / "results")
+    part = os.path.join(bad, "u", "part_1.tar.gz")
+    os.makedirs(os.path.dirname(part))
+    with tarfile.open(part, "w:gz") as tf:
+        _tar_add(tf, "./P000004/meta.txt", b"4 38000.000 ok 61 39000.5 150.0 0.6\n")
+        _tar_add(tf, "./P000005/meta.txt", b"5 38000.000 ok 61 39000.5 150.0 0.6\n")
+        ti = tarfile.TarInfo("./P000005/other")
+        ti.type, ti.linkname = tarfile.LNKTYPE, "./P000004/meta.txt"
+        tf.addfile(ti)
+    with open(part[:-7] + ".idx", "w") as f:
+        f.write("4 38000.000 ok 61 39000.5 150.0 0.6\n5 38000.000 ok 61 39000.5 150.0 0.6\n")
+    with pytest.raises(ValueError, match="leaves its point directory"):
+        fw.extract_points(bad, [5], str(tmp_path / "bad_out"))
+    assert os.listdir(str(tmp_path / "bad_out")) == []
+
+
+def test_extract_points_layout_checks(tmp_path):
+    """The archive layout extract_points relies on (reviewer): a wanted point whose files come in two groups is
+    extracted from its first group when reading stops early (the documented reliance on fw_sphere_task.sh's
+    contiguous groups), and raises RuntimeError once the part is read further (stop_early=False, or other wanted
+    points after it), with no partial directory left; a point directory not named P%06d (e.g. 'P7', which a restart
+    could never find present) raises ValueError."""
+    bad = str(tmp_path / "results")
+    part = os.path.join(bad, "t", "part_1.tar.gz")
+    os.makedirs(os.path.dirname(part))
+    with tarfile.open(part, "w:gz") as tf:
+        _tar_add(tf, "./P000005/meta.txt", b"5 38000.000 ok 61 39000.5 150.0 0.6\n")
+        _tar_add(tf, "./P000005/a", b"a\n")
+        _tar_add(tf, "./P000006/meta.txt", b"6 38000.000 ok 61 39000.5 150.0 0.6\n")
+        _tar_add(tf, "./P000005/b", b"b\n")
+    with open(part[:-7] + ".idx", "w") as f:
+        f.write("5 38000.000 ok 61 39000.5 150.0 0.6\n6 38000.000 ok 61 39000.5 150.0 0.6\n")
+    r = fw.extract_points(bad, [5], str(tmp_path / "early"))
+    assert r["parts"][0]["stopped_early"] and sorted(os.listdir(str(tmp_path / "early" / "P000005"))) == [
+        "a", "meta.txt"]
+    for sub, kw in (("full", dict(stop_early=False)), ("both", dict(idx=[5, 6]))):
+        with pytest.raises(RuntimeError, match="P000005 appears again"):
+            fw.extract_points(bad, kw.pop("idx", [5]), str(tmp_path / sub), **kw)
+        assert os.listdir(str(tmp_path / sub)) == [], sub
+    r = fw.extract_points(bad, [6], str(tmp_path / "six"), stop_early=False)
+    assert r["extracted"] == [6] and not r["parts"][0]["stopped_early"]
+    part = os.path.join(bad, "u", "part_1.tar.gz")
+    os.makedirs(os.path.dirname(part))
+    with tarfile.open(part, "w:gz") as tf:
+        _tar_add(tf, "./P7/meta.txt", b"7 38000.000 ok 61 39000.5 150.0 0.6\n")
+    with open(part[:-7] + ".idx", "w") as f:
+        f.write("7 38000.000 ok 61 39000.5 150.0 0.6\n")
+    with pytest.raises(ValueError, match="'P7' of point 7 is not named 'P000007'"):
+        fw.extract_points(bad, [7], str(tmp_path / "unpadded"), tags=["u"])
+    assert os.listdir(str(tmp_path / "unpadded")) == []
+
+
+# ----------------------------------------------------------------------------------------------
 # M424 regressions
 # ----------------------------------------------------------------------------------------------
 @pytest.mark.m424
@@ -1042,6 +1363,66 @@ def test_m424_niter_cap_from_indat():
         ncap += n == cap
     assert nrun >= 40 and ncap >= 30                               # 38 of 40 capped models stop at 300 again
     assert int(np.max(fw.ProfileStore.open(m424_path("run", "profiles.npz")).niter)) == fw.NITER_CAP_M424
+
+
+IMU_RAW = os.environ.get("PPMPY_SYNSPEC_M424_IMU_RAW", "/scratch/ppathak/fastwind_imu/raw")
+SHADOW_M4 = os.environ.get("PPMPY_SYNSPEC_DUMPS_SHADOW_M4",
+                           "/scratch/ppathak/synspec_shadow/m4/dumps_validate_fwresults")
+
+
+def _imu_raw_points():
+    if not os.path.isdir(IMU_RAW) or not os.path.exists(os.path.join(os.path.dirname(IMU_RAW), "parts_needed.txt")):
+        pytest.skip("M424 extracted models not available: {}".format(IMU_RAW))
+    return sorted(int(d[1:]) for d in os.listdir(IMU_RAW) if re.match(r"^P\d+$", d))
+
+
+@pytest.mark.m424
+def test_m424_locate_points_coverage():
+    """locate_points finds the 98 models extracted for the intensity library (fastwind_imu/raw) in exactly the parts
+    of the coverage search (parts_needed.txt, the parts file of fw_imu_extract.sh), from the ledgers of all 41 tags
+    (1 236 546 records: 1 236 544 points and the 2 retried ones; ~4 s)."""
+    pts = _imu_raw_points()
+    res = m424_path("run", "results")
+    logs = []
+    loc = fw.locate_points(res, pts, log=logs.append)
+    ref = {}
+    with open(os.path.join(os.path.dirname(IMU_RAW), "parts_needed.txt")) as f:
+        for line in f:
+            p = line.split()
+            ref[p[0]] = sorted(int(x[1:]) for x in p[1:])
+    assert len(pts) == 98 and loc == ref
+    assert logs == ["located 98 of 98 points in 55 parts (1236546 ledger records read)"]
+
+
+@pytest.mark.m424
+@pytest.mark.slow
+def test_m424_extract_points():
+    """extract_points of 3 models (one per part, 3 workers) writes the files fw_imu_extract.sh wrote into
+    fastwind_imu/raw byte for byte (names, contents, mtimes); a restart reads nothing; members=PFORMALSOL_FILES gives
+    the model files only. Times and sizes printed (parts of 2.5-3.4 GB are streamed up to the wanted point)."""
+    import tempfile
+    pts = [1109400, 28561, 618841]
+    raw_pts = _imu_raw_points()
+    assert set(pts) <= set(raw_pts)
+    res = m424_path("run", "results")
+    os.makedirs(SHADOW_M4, exist_ok=True)
+    root = tempfile.mkdtemp(prefix="extract_", dir=SHADOW_M4)
+    logs = []
+    r = fw.extract_points(res, pts, os.path.join(root, "all"), nproc=3, log=logs.append)
+    print("\n".join(logs))
+    assert r["extracted"] == sorted(pts) and len(r["parts"]) == 3
+    for i in pts:
+        name = "P{:06d}".format(i)
+        got, ref = _tree(os.path.join(root, "all", name)), _tree(os.path.join(IMU_RAW, name))
+        assert sorted(got) == sorted(ref) and len(got) == 14, name
+        for k in got:
+            assert got[k][0] == ref[k][0] and got[k][2] == ref[k][2], (name, k)            # bytes, mtime
+    r2 = fw.extract_points(res, pts, os.path.join(root, "all"))
+    assert r2["present"] == sorted(pts) and r2["parts"] == []
+    r3 = fw.extract_points(res, pts[:1], os.path.join(root, "model"), members=fw.PFORMALSOL_FILES, log=print)
+    d = os.path.join(root, "model", "P{:06d}".format(pts[0]))
+    assert sorted(os.listdir(d)) == sorted(fw.PFORMALSOL_FILES) and r3["parts"][0]["files"] == len(fw.PFORMALSOL_FILES)
+    shutil.rmtree(root)
 
 
 @pytest.mark.m424

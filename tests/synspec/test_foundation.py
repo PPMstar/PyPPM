@@ -129,3 +129,10 @@ def test_npz_member_memmap_profiles():
     p = m424_path("run", "profiles.npz")
     mm = sio.npz_member_memmap(p, "teff")
     np.testing.assert_array_equal(np.asarray(mm), np.load(p)["teff"])
+
+
+def test_make_meta_non_path_inputs(tmp_path):
+    """Non-path input values (lists of directories, labels) are recorded instead of raising."""
+    m = sio.make_meta("synspec.test", inputs=dict(raw=[str(tmp_path), "/nonexistent"], me=__file__, label="x"))
+    assert m["inputs"]["raw"][0]["size"] >= 0 and m["inputs"]["raw"][1] == "/nonexistent"
+    assert m["inputs"]["label"] == "x" and "size" in m["inputs"]["me"]
