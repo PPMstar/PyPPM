@@ -1029,6 +1029,17 @@ def imu_integrator(library, grid=None, lines=None, dtype="float64", fft="precomp
     fingerprints (41-47 s per line of sight), peak RSS 2.84 GB of which ~1.6 GB are clean pages of the
     memory-mapped library.
 
+    Compute node (AMD EPYC 9655, 8 NUMA nodes, 48 'fork' workers, dumps 3200-3439, 2026-10-02, jobs 2484254, 2484281,
+    2484294; every file byte for byte the production one): 80-83 s wall, 14.9-15.5 s per dump and worker, as the
+    legacy fw_disc_dumps.py --method imu (76-79 s, 14.3-14.9 s); without the workers' malloc settings
+    (``tune_malloc=False``) 75 s, 14.5 s (on a login node the settings halve the time: 8 workers 9.6 instead of
+    19.4 s per dump and worker, legacy 333 s of system time). The library FFTs are read for every line of sight, so
+    the run is bound by memory access: with the node's page cache full (no free huge pages; e.g. right after the
+    sample extraction of all dumps read the moms data) both integrators take 2.5 times as long (ppmpy 185 s, 35 s per
+    dump and worker, legacy 199 s, 38 s; long tails up to 90-105 s). That, not the code, made the imu step of the
+    full reproduction (job 2483431, after the samples step) take 873 s instead of the production's 526 s: run the
+    imu step on a node whose memory was not just filled with file pages (first in the job, or a job of its own).
+
     CPU-time limits: a lazy dump takes ~11 s of CPU (batched), so all 1601 M424 dumps in one process (nproc=1)
     would need ~5 h of CPU and pass the login node's ``ulimit -t`` of 3600 s after roughly 300 dumps (the process
     is killed; finished dumps stay). On the login node run lazy modes with nproc >= 2 (pool workers, replaced after

@@ -18,6 +18,7 @@ These modules were written with an interactive work mode in mind, in particular 
    :caption: Contents:
 
    installation
+   synspec/index
 
 Documentation:
 ----------------------------
