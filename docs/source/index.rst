@@ -40,6 +40,8 @@ Documentation:
    ppmpy.synspec.library
    ppmpy.synspec.disc
    ppmpy.synspec.dumps
+   ppmpy.synspec.validate
+   ppmpy.synspec.testing
 
 * :ref:`genindex`
 * :ref:`modindex`

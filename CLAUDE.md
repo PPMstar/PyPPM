@@ -111,7 +111,9 @@ RProf data, the reader uses it instead of computing it.
   (temporal power spectra, FFT or direct DFT), `plotting` (matplotlib imported inside
   functions). M2: `fwresults` (OUT readers, merge/streaming combine,
   ProfileStore), `sphere`, `parallel` (fork/spawn pools, watchdog), `library` (flux
-  library, nodes), `disc` (DiscFlux, exact sums), `dumps` (all-dump driver, collect). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
+  library, nodes), `disc` (DiscFlux, exact sums), `dumps` (all-dump driver, collect). M3: `validate`
+  (V1-V6, hold-out, brute force, EW conservation, `run_validation`), `testing` (toy
+  runs; `python -m ppmpy.synspec.testing` runs `selftest()`, < 1 min, no data). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
   defaults reproduce the M424 products bit for bit, verified by the tests.
 - `Messenger` (in `ppm.py`) — centralised verbosity-controlled output; reader
   classes take a `verbose` int (0=silent … 3=all) and route messages through it.

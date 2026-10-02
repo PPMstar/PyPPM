@@ -1407,3 +1407,342 @@ def status_summary(store, cap=None):
             cpu += tf.sum(dtype=np.float64)
         out["cpu_hours"] = float(cpu / 3600.0)
     return out
+
+
+# ----------------------------------------------------------------------------------------------
+# the premise of the T_eff' library: every model's INDAT.DAT differs only in MODNAM and TEFF
+# ----------------------------------------------------------------------------------------------
+INDAT_SCHEMA = (
+    ("MODNAM",),
+    ("OPTNEUPDATE", "HE_ONE", "ITSTART", "ITMORE"),
+    ("OPTMIXED",),
+    ("TEFF", "LOGG", "RSTAR"),
+    ("RMAX", "TMIN"),
+    ("MDOT", "VMIN", "VINF", "BETA", "VDIV"),
+    ("YHE", "IHE"),
+    ("OPTMOD", "OPTTLUCY", "MEGAS", "ACCEL", "OPTCMF"),
+    ("VTURB", "METALLICITY", "LINES", "LINES_IN_MODEL"),
+    ("ENATCOR", "EXPANSION", "SET_FIRST", "SET_STEP"),
+)
+"""Field names of the fixed first ten lines of a FASTWIND v10 INDAT.DAT, one tuple per line: the list-directed
+READ statements of nlte.f90 (v10.6.4.1, lines 1511-1520), named as in the comments of the M424 template
+(INDAT_M424test.DAT; 'LOG G' -> LOGG, 'VMIN(START)' -> VMIN, 'IHE(START)' -> IHE, METALLICITY = XMET). The lines that
+follow (clumping, optional Hopf parameters, abundances, X-rays) have no fixed layout and are compared whole, as
+fields 'LINE<n>' (see :func:`check_indat_premise`)."""
+
+INDAT_SERIAL_MAX = 50
+"""Parts that :func:`check_indat_premise` with nproc=1 reads in the calling process; more go through one recycled
+worker process (CPU-time limit per process of the login nodes)."""
+
+_INDAT_SPLIT = re.compile(r"[,\s]+")
+_INDAT_LOGICAL = re.compile(r"\.?(T|F|TRUE|FALSE)\.?")
+_INDAT_STRING_FIELDS = ("MODNAM",)
+
+
+def _indat_value(tok):
+    """A list-directed INDAT token: float (Fortran D exponents too), bool (T, F, .TRUE., ...) or the string itself."""
+    try:
+        return float(tok.replace("D", "E").replace("d", "e"))
+    except ValueError:
+        pass
+    if _INDAT_LOGICAL.fullmatch(tok.upper()):
+        return tok.upper().strip(".").startswith("T")
+    return tok
+
+
+def _indat_fields(text, schema=INDAT_SCHEMA):
+    """
+    name -> (value, raw text) of an INDAT.DAT: the first len(names) tokens of each schema line (the rest of the line
+    is FASTWIND's comment and ignored; a missing token or line gives (None, None)); every further non-blank line as
+    'LINE<n>' (1-based) with the tuple of all its token values, comment words included. MODNAM stays a string.
+    """
+    if isinstance(text, (bytes, bytearray)):
+        text = text.decode("latin-1")
+    lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    out = {}
+    for i, names in enumerate(schema):
+        tok = [t for t in _INDAT_SPLIT.split(lines[i].strip()) if t] if i < len(lines) else []
+        for k, nm in enumerate(names):
+            if k >= len(tok):
+                out[nm] = (None, None)
+            else:
+                out[nm] = (tok[k] if nm in _INDAT_STRING_FIELDS else _indat_value(tok[k]), tok[k])
+    for i in range(len(schema), len(lines)):
+        tok = [t for t in _INDAT_SPLIT.split(lines[i].strip()) if t]
+        out["LINE{}".format(i + 1)] = (tuple(_indat_value(t) for t in tok), lines[i].strip())
+    return out
+
+
+def _indat_same(a, b):
+    """Equal INDAT values: same type and value (1. == 1.0, but 1.0 != T); tuples element by element; NaN == NaN."""
+    if isinstance(a, tuple) or isinstance(b, tuple):
+        return (isinstance(a, tuple) and isinstance(b, tuple) and len(a) == len(b)
+                and all(_indat_same(x, y) for x, y in zip(a, b)))
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, float) and a != a and b != b:
+        return True
+    return a == b
+
+
+def _indat_diff(ref, fields):
+    """Names of the fields whose values differ between two _indat_fields records (missing = (None, None))."""
+    names = list(ref) + [k for k in fields if k not in ref]
+    miss = (None, None)
+    return [k for k in names if not _indat_same(ref.get(k, miss)[0], fields.get(k, miss)[0])]
+
+
+def _indat_parts(results_dir, tag):
+    """The parts of one tag, sorted; results_dir and tag taken literally (glob metacharacters such as [ ] escaped,
+    unlike :func:`_parts_of`)."""
+    # PP 2026-10-01: reviewer: a results_dir with [ ] found no parts through _parts_of (left unchanged)
+    return sorted(glob.glob(os.path.join(glob.escape(results_dir), glob.escape(tag), "part_*.tar.gz")))
+
+
+def _indat_tags(results_dir, tags):
+    """Tag directories: None = every subdirectory with parts (sorted); a str = glob pattern; else the given tags."""
+    if tags is None:
+        tags = "*"
+    if isinstance(tags, str):
+        return sorted(os.path.basename(d) for d in glob.glob(os.path.join(glob.escape(results_dir), tags))
+                      if os.path.isdir(d) and _indat_parts(results_dir, os.path.basename(d)))
+    return [str(t) for t in tags]
+
+
+def _indat_part(args):
+    """Compare every INDAT.DAT of one part with the reference record (a check_indat_premise task)."""
+    part, tag, ref, allowed, schema, max_report = args
+    allowed = set(allowed)
+    r = dict(part=part, tag=tag, n_points=0, n_no_indat=0, n_offending=0, differ={}, offending=[], status={},
+             modnam_mismatch=0, teff_meta_mismatch=0, teff_meta_maxdiff=0.0, teff_min=np.inf, teff_max=-np.inf,
+             idx=[])
+    for pdir, files in iter_part_points(part, want=("meta.txt", "INDAT.DAT")):
+        m = parse_meta(files["meta.txt"])
+        r["status"][m["status"]] = r["status"].get(m["status"], 0) + 1
+        if "INDAT.DAT" not in files:
+            r["n_no_indat"] += 1
+            continue
+        f = _indat_fields(files["INDAT.DAT"], schema)
+        r["n_points"] += 1
+        r["idx"].append(m["idx"])
+        diff = _indat_diff(ref, f)
+        for k in diff:
+            r["differ"][k] = r["differ"].get(k, 0) + 1
+        bad = [k for k in diff if k not in allowed]
+        if bad:
+            r["n_offending"] += 1
+            if len(r["offending"]) < max_report:
+                r["offending"].append(dict(idx=m["idx"], pdir=pdir, part=part, tag=tag,
+                                           fields={k: [ref.get(k, (None, None))[1], f.get(k, (None, None))[1]]
+                                                   for k in bad}))
+        # PP 2026-10-01: reviewer: a missing MODNAM and a missing, non-numeric or non-finite TEFF count as
+        # mismatches (they were skipped)
+        modnam = f.get("MODNAM", (None, None))[0]
+        if modnam != pdir:
+            r["modnam_mismatch"] += 1
+        teff = f.get("TEFF", (None, None))[0]
+        if not (isinstance(teff, float) and np.isfinite(teff)):
+            r["teff_meta_mismatch"] += 1
+            continue
+        r["teff_min"], r["teff_max"] = min(r["teff_min"], teff), max(r["teff_max"], teff)
+        d = abs(teff - m["teff"])
+        if np.isfinite(d):
+            r["teff_meta_maxdiff"] = max(r["teff_meta_maxdiff"], d)
+        # INDAT's TEFF is the '%.3f' rounding of meta.txt's T_eff (printed verbatim, awk '%s'), and round(x, 3) is
+        # the same correctly rounded decimal, so the two agree to float parsing
+        if not abs(teff - round(m["teff"], 3)) <= 1e-6:
+            r["teff_meta_mismatch"] += 1
+    return r
+
+
+def check_indat_premise(results_dir, tags=None, max_parts=None, template=None, fields_allowed=("MODNAM", "TEFF"),
+                        schema=INDAT_SCHEMA, max_report=10, nproc=1, start_method=None, timeout=3600.0,
+                        require_indat=True, log=None):
+    """
+    Verify the premise of the T_eff' library on the archived models: every model's INDAT.DAT differs from a
+    reference only in the allowed fields (default MODNAM and TEFF), i.e. the per-point models differ only in T_eff'.
+
+    The packed parts are streamed (:func:`iter_part_points` with ``want=('meta.txt', 'INDAT.DAT')``; nothing is
+    extracted to disk) and each INDAT.DAT is compared field by field with the reference.
+
+    Parameters
+    ----------
+    results_dir: str
+        ``RUN_DIR/results`` (tag directories with ``part_*.tar.gz``).
+    tags: None, str or sequence of str
+        Tag directories to read: None = every subdirectory that holds parts (sorted); a str is a glob pattern
+        (``'task_00[0-3]?'``; a plain tag name matches itself); a sequence lists the tags (a tag without parts reads
+        nothing and is listed in ``empty_tags``).
+    max_parts: int, optional
+        At most this many parts per tag (the first ones in sorted order; default all). M424 parts hold ~800 points
+        each, 2.5-3.4 GB packed with the model files, ~20-40 s each to stream.
+    template: str, optional
+        The reference INDAT.DAT: a file name, or its text (anything containing a newline; e.g. the template the run
+        was made from, M424 project/analysis/fastwind/INDAT_M424test.DAT). Default: the first INDAT.DAT found (the
+        first point of the first part read).
+    fields_allowed: sequence of str
+        Fields that may differ (:data:`INDAT_SCHEMA` names, or 'LINE<n>' for line n > 10).
+    schema: sequence of tuple of str
+        Field names of the fixed leading lines (default :data:`INDAT_SCHEMA`, FASTWIND v10). Tokens beyond a line's
+        names are FASTWIND's comment and ignored; every further line is compared whole (its tokens, comment
+        words included: a changed comment there is reported, which errs on the safe side).
+    max_report: int
+        Offending points reported in detail (the first ones in part order).
+    nproc: int
+        Worker processes, one part per task (:func:`ppmpy.synspec.parallel.make_pool` with maxtasksperchild=8;
+        'fork' or 'spawn' via ``start_method``). The result does not depend on nproc. nproc=1 reads the parts in
+        this process only up to :data:`INDAT_SERIAL_MAX` (50) parts; more go through one worker process that is
+        replaced every 8 parts: an M424 part takes 20-40 s of CPU, so one process streaming ~1500 parts would pass
+        the 3600 s CPU-time limit per process of the Trillium login nodes (``ulimit -t``) after ~100-150 parts and be
+        killed.
+    timeout: float or None
+        Watchdog of the pool [s] per part (:func:`ppmpy.synspec.parallel.imap_watchdog`).
+    require_indat: bool
+        A point with meta.txt but no INDAT.DAT fails the check (default; every point of fw_sphere_point.sh gets its
+        INDAT.DAT, failed ones included). False: such points are only counted (``n_no_indat``).
+    log: callable, optional
+        One line per part read.
+
+    Returns
+    -------
+    dict
+        passed: at least one model read, none offending, no consistency mismatch (MODNAM, TEFF) and, with
+        ``require_indat``, no point without INDAT.DAT; complete (no point without INDAT.DAT); results_dir; tags;
+        empty_tags; parts (read, in order); reference (source 'template' or 'first', point and part for 'first',
+        fields: name -> text); fields_allowed; require_indat; n_points (models with an INDAT.DAT), n_unique
+        (distinct idx), n_no_indat (points with meta.txt but no INDAT.DAT), n_offending (models differing in a
+        field not allowed), n_premise_ok; differ (field -> number of models where it differs from the reference,
+        allowed fields included); offending (up to max_report: idx, pdir, part, tag, fields: name -> [reference
+        text, model text]); status (meta.txt status -> count); consistency: modnam_mismatch (MODNAM missing or not
+        the point's directory name: the INDAT of another point), teff_meta_mismatch (TEFF missing, not a finite
+        number, or not the '%.3f' rounding of meta.txt's T_eff, to 1e-6 K: the model would sit in the library under
+        another T_eff' than its own, since :func:`merge_task` takes the label from meta.txt) and teff_meta_maxdiff
+        (largest |TEFF - meta.txt T_eff| [K], <= 5e-4 from the rounding), teff_range (min, max of TEFF) [K];
+        wall [s].
+
+    Notes
+    -----
+    Values are compared as FASTWIND reads them (list-directed): numbers as floats (``1.`` equals ``1.0``, Fortran
+    ``D`` exponents allowed), logicals (T, F, .TRUE., ...) as booleans, anything else as text; MODNAM as text.
+    Note that :func:`iter_part_points` drops a point directory without meta.txt, so ``want`` must include it (with
+    ``want=('INDAT.DAT',)`` alone nothing would be yielded).
+
+    Validation: synthetic parts in tests/synspec/test_testing.py (a changed LOGG or VINF, an extra line, a missing
+    INDAT.DAT, a MODNAM other than the directory or missing, a TEFF other than meta.txt's, not a number or NaN, each
+    of these alone failing the verdict; meta.txt T_eff with more decimals and exact '%.3f' ties; equal values
+    written differently; glob metacharacters in the paths; serial = 2 workers = one recycled worker). M424 (marker
+    m424, slow; 2026-10-01): the first part of task_0000, task_0039 and
+    task_missing_0000 (1503 models, T_eff 36 669-38 861 K): every INDAT.DAT differs from the template
+    (INDAT_M424test.DAT) in MODNAM and TEFF only, MODNAM is the directory name and TEFF the T_eff of meta.txt; 16 s
+    with 3 workers, 24 s serially (warm page cache), 64 MB.
+    """
+    # PP 2026-10-01: new (task: verify that the archived INDATs differ only in MODNAM and TEFF, the premise of the
+    # T_eff' library of the all-dump method; fw_sphere_point.sh writes INDAT.DAT from the template by replacing line 1
+    # and the first value of line 4)
+    import time
+    T0 = time.time()
+    results_dir = os.fspath(results_dir)
+    tag_list = _indat_tags(results_dir, tags)
+    parts, empty = [], []
+    for t in tag_list:
+        p = _indat_parts(results_dir, t)
+        if max_parts is not None:
+            p = p[:max(int(max_parts), 0)]
+        if not p:
+            empty.append(t)
+        parts += [(x, t) for x in p]
+    max_report = max(int(max_report), 0)
+    if template is not None:
+        template = os.fspath(template)
+        if "\n" in template:
+            text, path = template, None
+        else:
+            path = os.path.abspath(template)
+            with open(path, "rb") as fh:
+                text = fh.read()
+        ref = _indat_fields(text, schema)
+        reference = dict(source="template", path=path)
+    else:
+        ref, reference = None, dict(source="first")
+        for part, _ in parts:
+            gen = iter_part_points(part, want=("meta.txt", "INDAT.DAT"))
+            try:
+                for pdir, files in gen:
+                    if "INDAT.DAT" in files:
+                        ref = _indat_fields(files["INDAT.DAT"], schema)
+                        reference.update(part=part, pdir=pdir, idx=parse_meta(files["meta.txt"])["idx"])
+                        break
+            finally:
+                gen.close()                               # stops the stream (and closes the archive) at once
+            if ref is not None:
+                break
+    allowed = tuple(str(k) for k in fields_allowed)
+    out = dict(passed=False, complete=False, results_dir=results_dir, tags=tag_list, empty_tags=empty,
+               parts=[p for p, _ in parts], reference=reference, fields_allowed=list(allowed),
+               require_indat=bool(require_indat), n_points=0, n_unique=0, n_no_indat=0, n_offending=0,
+               n_premise_ok=0, differ={}, offending=[], status={},
+               consistency=dict(modnam_mismatch=0, teff_meta_mismatch=0, teff_meta_maxdiff=0.0, teff_range=None),
+               wall=0.0)
+    if ref is None:
+        out["reference"]["fields"] = None
+        out["wall"] = time.time() - T0
+        return out
+    reference["fields"] = {k: v[1] for k, v in ref.items()}
+    tasks = [(p, t, ref, allowed, tuple(tuple(x) for x in schema), max_report) for p, t in parts]
+    res = [None] * len(tasks)
+
+    def _done(i, r):
+        res[i] = r
+        if log is not None:
+            log("{} {}: {} models, {} offending{}".format(r["tag"], os.path.basename(r["part"]), r["n_points"],
+                                                         r["n_offending"], "; differ: {}".format(r["differ"])
+                                                         if r["differ"] else ""))
+
+    nproc = max(1, min(int(nproc), len(tasks)))
+    if nproc <= 1 and len(tasks) <= INDAT_SERIAL_MAX:
+        for i, a in enumerate(tasks):
+            _done(i, _indat_part(a))
+    else:                                                 # PP 2026-10-01: reviewer: nproc=1 with many parts too
+        from . import parallel as par
+        par.login_node_warning(nproc)
+        with par.make_pool(nproc, maxtasksperchild=8, start_method=start_method) as pool:
+            for i, r in par.imap_watchdog(pool, _indat_part_indexed, list(enumerate(tasks)), timeout=timeout):
+                _done(i, r)
+    idx, tmin, tmax = [], np.inf, -np.inf
+    names = list(ref)
+    for r in res:
+        for k in ("n_points", "n_no_indat", "n_offending"):
+            out[k] += r[k]
+        for k, c in r["differ"].items():
+            out["differ"][k] = out["differ"].get(k, 0) + c
+            if k not in names:
+                names.append(k)
+        for k, c in r["status"].items():
+            out["status"][k] = out["status"].get(k, 0) + c
+        if len(out["offending"]) < max_report:
+            out["offending"] += r["offending"][:max_report - len(out["offending"])]
+        c = out["consistency"]
+        c["modnam_mismatch"] += r["modnam_mismatch"]
+        c["teff_meta_mismatch"] += r["teff_meta_mismatch"]
+        c["teff_meta_maxdiff"] = max(c["teff_meta_maxdiff"], r["teff_meta_maxdiff"])
+        tmin, tmax = min(tmin, r["teff_min"]), max(tmax, r["teff_max"])
+        idx += r["idx"]
+    out["differ"] = {k: out["differ"][k] for k in names if k in out["differ"]}
+    out["n_unique"] = int(np.unique(np.asarray(idx, dtype=np.int64)).size)
+    out["n_premise_ok"] = out["n_points"] - out["n_offending"]
+    if np.isfinite(tmin):
+        out["consistency"]["teff_range"] = [float(tmin), float(tmax)]
+    c = out["consistency"]
+    out["complete"] = bool(out["n_no_indat"] == 0)
+    # PP 2026-10-01: reviewer: the verdict ignored the consistency counts and the missing INDATs
+    out["passed"] = bool(out["n_points"] > 0 and out["n_offending"] == 0 and c["teff_meta_mismatch"] == 0
+                         and c["modnam_mismatch"] == 0 and (out["complete"] or not require_indat))
+    out["wall"] = time.time() - T0
+    return out
+
+
+def _indat_part_indexed(item):
+    i, a = item
+    return i, _indat_part(a)

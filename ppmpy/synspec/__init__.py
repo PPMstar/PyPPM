@@ -25,6 +25,8 @@ parallel     process pools for laptops and nodes (fork or spawn), stall watchdog
 library      T_eff' flux library (streamed), interpolation nodes, wavelength-rounding correction
 disc         DiscFlux (FFT disc integration), exact per-point sums, nearest-bin and brute-force references
 dumps        per-dump driver for all dumps (restartable, rank split), time-series collection
+validate     validation routines V1-V6, hold-out, brute force, EW conservation, run_validation, reports
+testing      synthetic toy runs (library, sphere, profiles) and selftest() (no data needed)
 
 Every module imports only numpy and scipy at load time (plotting imports matplotlib
 inside its functions); nothing here imports ppmpy.ppm at module level.

@@ -60,3 +60,19 @@ fw_disc_dumps.py                    the tests execute line 55 (NAME, from "NAME 
                                     files byte for byte with dumps.run_disc_dumps (flux, smooth, lamfix variants)
 fw_disc.py                          lib_nodes, DiscFlux, lam_corrections (cache), diagnostics, los8, Y, VSHIFT via the
                                     process() lines above
+
+Added for test_validate.py (M3, 2026-10-01):
+fw_disc_dumps_validate.py           validation V1, V3-V6 of the all-dump method; run as a whole script (fw_disc.RUN,
+                                    SAMPLES, DISC_DUMPS patched to tmp; --no-imu --dumps 3201,3203 --nsub 400 --ranges)
+                                    on a synthetic run on the M424 grid; its validate.npz is compared bit for bit with
+                                    validate.v1_exact / v3_tails / v4_nearest / v5_node_merging / v6_rounding
+fw_disc_validate.py                 the first library-vs-exact check (nearest-bin library vs per-point sums with
+                                    continuous shifts on fw_disc.directions(ndir)); run as a whole script (--ndir 2;
+                                    fd.library(dT=...) / fd.load_run() given fd.RUN, whose defaults are bound at import)
+                                    on the same synthetic run; its last direction's Fx, Fl are compared bit for bit with
+                                    validate.exact_continuous and validate.NearestBin through v1_exact
+Used by test_validate.py (no new copies):
+fw_disc_holdout.py                  run as a whole script (Pool -> builtin map; --nproc 2 --block 500) on the same
+                                    synthetic run; its holdout.npz is compared bit for bit with validate.v2_holdout
+                                    (serial, fork, spawn; library file or built in the pass)
+fw_disc.py                          DiscImu (V1 of the intensity method on M424, slow), and the module both scripts import
