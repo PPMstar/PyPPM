@@ -151,6 +151,26 @@ recommendation rules (reference, checks, per-phase rows and imu replicas exclude
 per-point models reproduces their profiles (lam, fcont, fnorm of profiles.npz) and their intensity-library rows
 (imu_library_dT10.npz: Ic, Il, s, rmax, nnode, teff_rep) bit for bit.
 
+Library extension
+-----------------
+A run whose T_eff' range exceeds a per-point library (M484: 32 552-39 979 K vs the M424 library's 35 402-38 905 K) keeps
+the per-point library where it has models and adds library-mode nodes beyond it: :func:`extend_flux_library` (base
+FluxLibrary + node models -> one FluxLibrary: the base bins bit for bit, one bin per node outside; seam rule: a node is
+used only when its whole bin lies outside the base's filled range [t_lo, t_hi), so no T_eff' is counted twice; nodes
+overlapping the range are left out), which declares its node bins single (``params['single_bins']``) so that
+:func:`ppmpy.synspec.library.lib_nodes` / :func:`ppmpy.synspec.dumps.flux_integrator` merge with nmin only the base bins
+(the base's own nodes, bit for bit) and keep every node; :func:`extend_imu_library` (the base intensity library's rows
+plus one representative node model per node bin outside); :func:`flux_seam_check` and :func:`imu_seam_check` (node
+models placed just inside the base range against the base bin there, and against the extended library's interpolation
+nodes, the static error the integrator makes there: variant 'nodes'). An extended library can be extended again (the
+earlier node bins stay single); lib_nodes' smoothing stays on its side of the seam; a lamfix correction is assembled
+per bin by :func:`extend_correction`. Tests: tests/synspec/test_library_extend.py.
+
+PP 2026-10-02: review fixes of the extension: chained extensions keep the earlier node bins single; a node library
+given as a FluxLibrary is checked (lines, lref, grid, dtype); node T_eff' inside the base range raise; model_idx None
+when unknown; line order checked by the continuum at the seam (base_lines for a base recording none); seam check
+variant 'nodes'; extend_correction.
+
 PP 2026-10-02: new (M7, library mode). PP 2026-10-02: review fixes: V8 check rows never recommended, node phases with
 the worst phase deciding, the intensity library from the flux library's models (replicas not averaged), nudged
 models kept in their node, offset warning without a plan, select / offsets / teff_span validation, idx collisions;
@@ -166,15 +186,17 @@ import warnings
 import numpy as np
 
 from .fwresults import LEDGER_SUFFIX, POINT_DIR, TEFF_NUDGE, TEFF_NUDGE_MAX, ProfileStore, read_ledger
-from .library import (IMU_LAYOUT, FluxLibrary, Representatives, build_imu_library, find_candidates, lib_nodes,
-                      teff_bins)
+from .library import (IMU_LAYOUT, SINGLE_BINS_KEY, FluxLibrary, Representatives, build_imu_library, find_candidates,
+                      lib_nodes, node_pairs, single_bins_record, teff_bins)
 from .spectral import LineSet, VelocityGrid
 
 __all__ = ["NodePlan", "plan_teff_nodes", "teff_span", "read_node_plan", "existing_indices", "select_node_models",
            "node_representatives", "flux_library_from_models", "library_nodes", "imu_library_from_models",
            "library_from_models", "NodeLibrary", "sparse_library_test", "SparseLibraryTest", "V8_DTS", "V8_REPLICAS",
            "V8_PHASES", "REPLICA_STEP", "NUDGED", "MAX_NODES", "MAX_REL_SPAN", "PLAN_KIND", "LIBRARY_FILE",
-           "IMU_LIBRARY_FILE", "REPRESENTATIVES_FILE", "REPORT_FILE"]
+           "IMU_LIBRARY_FILE", "REPRESENTATIVES_FILE", "REPORT_FILE", "base_range", "extend_flux_library",
+           "extended_nodes", "extend_correction", "flux_seam_check", "extend_imu_library", "imu_seam_check",
+           "EXTENSION_KEY", "SEAM_TOL"]
 
 REPLICA_STEP = "bin"
 """Default T_eff' spacing of the replicas of a node: 'bin' = dT / R, the replicas spread evenly over the node's bin
@@ -2383,3 +2405,1094 @@ def _sparse_imu(st, samples, dl0, cfg, mu, tn, pn, grid, lineset, plan_of, dTs0,
             rows_out.append(row)
             del integ, im, a, lib, sub
     return rows_out
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# library extension: a per-point library plus library-mode nodes beyond its T_eff' range
+# ----------------------------------------------------------------------------------------------------------------
+EXTENSION_KEY = "extension"
+"""``FluxLibrary.params`` / ``ImuLibrary.params`` key of the extension record (:func:`extend_flux_library`)."""
+SEAM_TOL = 1e-6
+"""Tolerance of the seam [in units of the node spacing dT]: a node bin whose upper edge lies within SEAM_TOL dT of the
+base library's lower T_eff' end (or whose lower edge lies that close to its upper end) still counts as outside; its
+edge is replaced by the base library's edge (no gap bin)."""
+
+
+def _as_flux_library(lib):
+    if isinstance(lib, FluxLibrary):
+        return lib
+    if isinstance(lib, (str, os.PathLike)):
+        return FluxLibrary.load(lib)
+    raise ValueError("the base library must be a FluxLibrary or the path of its .npz, got {!r}".format(
+        type(lib).__name__))
+
+
+def base_range(base):
+    """
+    The T_eff' range a per-point (base) flux library covers: its first to its last filled bin.
+
+    Parameters
+    ----------
+    base: FluxLibrary or mapping
+        edges, count.
+
+    Returns
+    -------
+    b0, b1: int
+        First filled bin and last filled bin + 1.
+    t_lo, t_hi: float
+        ``edges[b0]``, ``edges[b1]`` [K]: the seam of :func:`extend_flux_library` (M424 library_dT10.npz: bins 0 .. 351,
+        35 400-38 910 K).
+    """
+    # PP 2026-10-02: new (library extension)
+    cnt = np.asarray(base["count"])
+    e = np.asarray(base["edges"], dtype=np.float64)
+    f = np.flatnonzero(cnt > 0)
+    if f.size == 0:
+        raise ValueError("the base library holds no models")
+    b0, b1 = int(f[0]), int(f[-1]) + 1
+    return b0, b1, float(e[b0]), float(e[b1])
+
+
+def _names_of(x):
+    """Line names of a LineSet, a str or a sequence (also a numpy array); None stays None."""
+    if x is None:
+        return None
+    if isinstance(x, str):
+        return [x]
+    return [str(v) for v in getattr(x, "names", x)]
+
+
+def _same_lref(a, lr):
+    a = np.atleast_1d(np.asarray(a, dtype=np.float64))
+    return a.shape == lr.shape and np.allclose(a, lr, rtol=0, atol=1e-9)
+
+
+def _check_base(base, grid, names, lr, what="the base library", base_lines=None):
+    """
+    The lines and grid a library records (the base, or a prebuilt node library) against the node models' lines
+    (names, lr) and the given grid, where the library records them; ``base_lines`` (names or a LineSet) asserts the
+    lines of a library that records none.
+
+    Returns
+    -------
+    bool
+        Whether the line identity was checked (the library records its lines or lref, or base_lines was given); False
+        for the legacy M424 library_dT10.npz without base_lines.
+    """
+    # PP 2026-10-02: new (library extension); 'what' and base_lines, array-valued params['lines'] (reviewer)
+    y = np.asarray(getattr(grid, "y", grid), dtype=np.float64)
+    if base.ny != y.size or base.nl != len(names):
+        raise ValueError("{} has {} lines x {} grid points, the node models {} lines x {} points".format(
+            what, base.nl, base.ny, len(names), y.size))
+    lp = base.params or {}
+    if all(k in lp for k in ("ny", "y0", "y1")) and (int(lp["ny"]), float(lp["y0"]), float(lp["y1"])) != (
+            y.size, float(y[0]), float(y[-1])):
+        raise ValueError("{}'s grid ({} points {:g}..{:g} km/s) differs from the given grid".format(
+            what, lp["ny"], lp["y0"], lp["y1"]))
+    if lp.get("lref") is not None and not _same_lref(lp["lref"], lr):
+        raise ValueError("{}'s lref {} differ from the node models' {}".format(
+            what, np.asarray(lp["lref"]).tolist(), lr.tolist()))
+    rec = _names_of(lp.get("lines"))
+    if rec is not None and rec != list(names):
+        raise ValueError("{}'s lines {} differ from the node models' {}".format(what, rec, list(names)))
+    checked = rec is not None or lp.get("lref") is not None
+    if base_lines is not None:
+        bl = _names_of(base_lines)
+        if bl != list(names):
+            raise ValueError("base_lines {} differ from the node models' lines {}".format(bl, list(names)))
+        blr = getattr(base_lines, "lref", None)
+        if blr is not None and not _same_lref(blr, lr):
+            raise ValueError("base_lines' lref {} differ from the node models' {}".format(
+                np.asarray(blr).tolist(), lr.tolist()))
+        checked = True
+    return checked
+
+
+def _seam_continuum_check(base, b0, b1, nlib, low, high, names):
+    """
+    Line order at the seam: per line, the continuum flux F_c of the node nearest each seam must match the same line's
+    F_c in the base's end bin better than any other line's (|ln F_c ratio|). The M424 lines' F_c differ by 15-60 %,
+    a seam node's from the base end bin by <~0.3 % (M484), so lines in another order show up; lines with equal
+    continua (ties) pass.
+    """
+    # PP 2026-10-02: new (reviewer: the legacy M424 base records no lines; nothing enforced their order)
+    nl = len(names)
+    if nl < 2:
+        return
+    sides = []
+    fl = np.flatnonzero(low & nlib.filled)
+    if fl.size:
+        sides.append(("lower", float(nlib.tmean[fl[-1]]), nlib.fc[fl[-1]], float(base.tmean[b0]), base.fc[b0]))
+    fh = np.flatnonzero(high & nlib.filled)
+    if fh.size:
+        sides.append(("upper", float(nlib.tmean[fh[0]]), nlib.fc[fh[0]], float(base.tmean[b1 - 1]), base.fc[b1 - 1]))
+    for side, tn, fcn, tb, fcb in sides:
+        fcn, fcb = np.asarray(fcn, dtype=np.float64), np.asarray(fcb, dtype=np.float64)
+        if not (np.all(np.isfinite(fcn)) and np.all(np.isfinite(fcb)) and np.all(fcn > 0) and np.all(fcb > 0)):
+            continue
+        L = np.abs(np.log(fcn[:, None] / fcb[None, :]))
+        for j in range(nl):
+            k = int(np.argmin(np.where(np.arange(nl) == j, np.inf, L[j])))
+            if L[j, k] < L[j, j]:
+                raise ValueError(
+                    "line order at the {} seam: the continuum flux of {} of the node at {:.1f} K ({:.5g}) matches "
+                    "the base library's {} ({:.5g}, bin at {:.1f} K) better than its own ({:.5g}): are the base's "
+                    "lines in another order than the node models' {}?".format(side, names[j], tn, fcn[j], names[k],
+                                                                           fcb[k], tb, fcb[j], list(names)))
+
+
+def _node_flux(store, grid, lineset, plan, dT, offset, edges, select, cap_ok, cap, prof_dtype, unplanned, nudged,
+               nproc):
+    """The node models' flux library (one bin per node; :func:`flux_library_from_models`), or the given one."""
+    if isinstance(store, FluxLibrary):
+        return store
+    return flux_library_from_models(_as_store(store), grid, lineset, plan=plan, dT=dT, offset=offset, edges=edges,
+                                    select=select, cap_ok=cap_ok, cap=cap, prof_dtype=prof_dtype, unplanned=unplanned,
+                                    nudged=nudged, nproc=nproc)
+
+
+def _store_lines(store, lref, lines):
+    """(names, lr, lineset, store) of a store or of a prebuilt node FluxLibrary (its names: the given LineSet's or
+    ``lines``, else the ones it records; checked against the library by :func:`_check_base`)."""
+    if isinstance(store, FluxLibrary):
+        lr = np.atleast_1d(np.asarray(getattr(lref, "lref", lref), dtype=np.float64))
+        given = _names_of(lref) if isinstance(lref, LineSet) else None
+        if lines is not None:
+            gl = _names_of(lines)
+            if given is not None and gl != given:
+                raise ValueError("lines {} differ from the LineSet's {}".format(gl, given))
+            given = gl
+        names = given if given is not None else _names_of((store.params or {}).get("lines"))
+        if names is None:
+            names = ["line{}".format(j) for j in range(lr.size)]
+        if len(names) != lr.size:
+            raise ValueError("{} line names but {} reference wavelengths".format(len(names), lr.size))
+        return names, lr, None, store
+    st = _as_store(store)
+    names, lr = _lines_of(st, lref, lines)
+    lineset = lref if isinstance(lref, LineSet) else LineSet(names, lr)
+    return names, lr, lineset, st
+
+
+def _classify_nodes(ne, t_lo, t_hi, dT):
+    """Node bins below (whole bin <= t_lo), above (whole bin >= t_hi) and overlapping [t_lo, t_hi) (within the seam
+    tolerance)."""
+    tol = SEAM_TOL * dT
+    low = ne[1:] <= t_lo + tol
+    high = ne[:-1] >= t_hi - tol
+    return low, high, ~(low | high), tol
+
+
+def _nearest_fill(ok):
+    """For every bin the nearest filled bin (the lower one on a tie), as FluxLibrary.build's fill_empty."""
+    filled = np.flatnonzero(ok)
+    return np.array([filled[np.argmin(np.abs(filled - i))] for i in range(ok.size)], dtype=np.int64)
+
+
+_LINES_UNCHECKED = "the base library records no lines or lref"
+_OVERLAP = "overlap the base library's range"
+
+
+def extend_flux_library(base, store, grid, lref, plan=None, dT=None, offset=0.0, edges=None, select=None, cap_ok=True,
+                        cap=None, prof_dtype=None, unplanned="raise", lines=None, nudged=NUDGED, nproc=1,
+                        base_lines=None):
+    """
+    A per-point flux library extended beyond its T_eff' range by library-mode node models.
+
+    Seam rule. The base library covers [t_lo, t_hi) = [edges[b0], edges[b1]) from its first to its last filled bin
+    (:func:`base_range`). The node models are binned one bin per node (:func:`flux_library_from_models`: the plan's
+    bins, or nodes at offset + k dT). A node is used only when its whole bin lies outside the base range (upper edge
+    <= t_lo, or lower edge >= t_hi, within :data:`SEAM_TOL` dT); the extended library is then
+
+        [node bins below] [gap bin] [base bins b0 .. b1 - 1, unchanged] [gap bin] [node bins above]
+
+    Every T_eff' belongs to exactly one bin, so nothing is counted twice: node models inside the base range, and the
+    whole node of a bin that overlaps it (e.g. a node at 35 397 K with a 10 K bin over a seam at 35 400 K), are left
+    out (they serve the seam check, :func:`flux_seam_check`; recorded in ``params['extension']['seam_nodes']``). A gap
+    bin (empty, count 0) fills the space between the last node bin and the seam when they do not touch (node bins
+    not aligned with the base edges); the linear interpolation in T_eff' then runs from the last node to the first
+    base node across it. With nodes at the base bins' centres (M424: dT 10 K, offset 5 K; edges at multiples of
+    10 K) the node bins touch the seam and there are no gap bins. A node whose mean T_eff' lies inside the base range
+    although its bin does not (retry nudges across the seam kept in their node, nudged='keep') raises: use
+    nudged='drop'; single node models inside the range whose node mean lies outside it are left in with a warning.
+
+    The base bins are the base library's arrays bit for bit (edges, tmean, count, prof, fc; prof in its dtype),
+    including the copies in its empty bins. The base bins outside [b0, b1) (empty end bins, only with custom edges)
+    are dropped. Node bins hold the replica means of their node (as :func:`flux_library_from_models`); empty node and
+    gap bins get count 0, the bin centre as tmean and a copy of the nearest filled bin of the extended library (the
+    lower one on a tie), as :meth:`FluxLibrary.build` fills empty bins.
+
+    Interpolation nodes: the library declares its node and gap bins as single bins (``params['single_bins']``, with
+    the record of its bins: :func:`ppmpy.synspec.library.single_bins_record`), so
+    :func:`ppmpy.synspec.library.lib_nodes` (and :func:`ppmpy.synspec.dumps.flux_integrator`, which calls it) merges
+    with nmin only the base bins, exactly as for the base library alone (M424: nmin 20, the base's 245 nodes), and
+    keeps every node bin as a node of its own: nmin must not merge single-model nodes (module notes on nmin). The
+    base's sparse tails stay merged, so near the seam the node spacing jumps from the node dT to the base's merged
+    tail nodes (M424: 35 829 K is the first base node; nodes below 35 400 K interpolate to it; the static error
+    there: :func:`flux_seam_check` variant 'nodes'). lib_nodes' smoothing (smooth > 0) stays on each side of the
+    seam (the base nodes are the base's smoothed nodes bit for bit, the node runs are smoothed over their own nodes),
+    and a per-bin correction (corr, the lamfix variant) needs the node models' corrections in the node bins
+    (:func:`extend_correction`).
+
+    Extending again. The base may itself be an extended library (tails from separate FASTWIND jobs, or nodes added
+    later for another run): its single bins (earlier node and gap bins) stay single in the result, so lib_nodes keeps
+    every node bin of every step (nodes = base-library nodes + all node bins).
+
+    Parameters
+    ----------
+    base: FluxLibrary or str
+        The per-point library (M424: library_dT10.npz), or an extended library.
+    store: ProfileStore, str, mapping or FluxLibrary
+        The node models: profiles.npz of :func:`ppmpy.synspec.fwresults.combine` of the library-mode run (or any
+        store with idx, teff, status, lam, fcont, fnorm, lines); or their flux library
+        (:func:`flux_library_from_models`, e.g. built once for the seam check too): its recorded lines, lref and grid
+        are checked against lref (and ``lines``) and the grid like the base's; its profiles are cast to the result's
+        dtype (float32 -> float64 is exact; float64 -> float32 rounds them: a UserWarning, pass
+        prof_dtype=np.float64 to keep them).
+    grid: VelocityGrid or np.ndarray
+        The velocity grid of both (checked against the base's recorded grid).
+    lref: LineSet or array-like
+        Reference wavelengths of the store's lines (checked against the base's recorded lref and lines).
+    plan, dT, offset, edges, select, cap_ok, cap, unplanned, lines, nudged, nproc:
+        The node bins and models (:func:`flux_library_from_models`). For a plan of tails plus seam nodes (M484
+        runs_fastwind_nodes.py: nodes every 10 K at offset 5 K, not contiguous), give dT and offset (the plan's) or
+        a :class:`NodePlan` read from its points.npz.
+    prof_dtype: dtype, optional
+        Profile dtype of the result (default the base's, float32 for M424). float64 with a float32 base widens the
+        base bins exactly; float32 with a float64 base is refused (it would change the base bits).
+    base_lines: LineSet or sequence of str, optional
+        The lines of a base that records neither lines nor lref (the legacy M424 library_dT10.npz: pass the M424
+        LineSet): checked against the node models' lines. Without it such a base gets a UserWarning; in any case the
+        continuum flux of the nodes next to each seam must match the base end bins' line by line (line order).
+
+    Returns
+    -------
+    FluxLibrary
+        nb = node bins below + gap + base bins + gap + node bins above; ``dT`` = the base's bin width (the node bins
+        have the node spacing: params['extension']['node_dT']). ``params``: mode 'extended', lines, lref, ny, y0, y1,
+        dv (the grid, for :func:`ppmpy.synspec.dumps.flux_integrator`), :data:`ppmpy.synspec.library.SINGLE_BINS_KEY`
+        (node and gap bins, also those of an extended base) with its layout record, model_idx and model_bin (the node
+        models used and their bins: the candidates of :func:`extend_imu_library`; None when a prebuilt node library
+        does not record them), n_nudged_kept, and :data:`EXTENSION_KEY`: base_range [t_lo, t_hi], base_bins [b0, b1]
+        (in the base), base_slice [i0, i1] (in the result), base_nb, base_params, base_source, base_single (single
+        bins carried over from an extended base), node_dT, node_offset, node_nb (bins of the node library),
+        node_bins / node_source (bins in the result and in the node library), gap_bins, n_low, n_high (filled node
+        bins below / above), low_range, high_range (their node T_eff'), seam_nodes (T_eff' of the filled node bins
+        left out), seam_models, line_identity_checked, plan. Save it with :meth:`FluxLibrary.save` (the record goes
+        to '_meta' and comes back with :meth:`FluxLibrary.load`, so the saved file keeps its single bins).
+
+    Raises
+    ------
+    ValueError
+        Lines, lref or grid of the base (or of a prebuilt node library) and the node models differ; the line order at
+        a seam (continuum flux); no node bin outside the base range; a node's mean T_eff' inside the base range, or
+        node T_eff' not increasing across the seam (retry nudges across the seam with nudged='keep': use 'drop'); a
+        lossy dtype.
+
+    Warns
+    -----
+    UserWarning
+        Node models left out at the seam (inside the base range); single node models inside the base range (nudged,
+        their node mean outside); a base without recorded lines and no base_lines; a float64 node library rounded to
+        float32. Nodes without models are reported in the record.
+    """
+    # PP 2026-10-02: new (library extension for runs whose T_eff' range exceeds the per-point library, M484)
+    # PP 2026-10-02: review fixes: single bins of an extended base carried over; a node FluxLibrary checked like the
+    # base (lines, lref, grid; dtype warning); node means inside the base range raise; model_idx None when unknown;
+    # base_lines and the continuum line-order check
+    base = _as_flux_library(base)
+    from .library import _single_mask
+    bmask = _single_mask(base, None, base.nb)           # an extended base: its single bins (record validated)
+    names, lr, lineset, store = _store_lines(store, lref, lines)
+    checked = _check_base(base, grid, names, lr, base_lines=base_lines)
+    if not checked:
+        warnings.warn("{}: line identity unchecked (pass base_lines, e.g. the M424 LineSet; the continuum flux at the "
+                      "seam is checked line by line)".format(_LINES_UNCHECKED), stacklevel=2)
+    bdt = np.dtype(base.prof.dtype)
+    pdt = bdt if prof_dtype is None else np.dtype(prof_dtype)
+    if pdt not in (np.dtype(np.float32), np.dtype(np.float64)):
+        raise ValueError("prof_dtype must be float32 or float64, got {}".format(pdt))
+    if pdt.itemsize < bdt.itemsize:
+        raise ValueError("prof_dtype {} would round the base library's {} profiles".format(pdt, bdt))
+    nlib = _node_flux(store, grid, lineset, plan, dT, offset, edges, select, cap_ok, cap, pdt, unplanned, nudged, nproc)
+    if nlib is store:                                   # a prebuilt node library: check what it records
+        _check_base(nlib, grid, names, lr, what="the node library")
+        if np.dtype(nlib.prof.dtype).itemsize > pdt.itemsize:
+            warnings.warn("the node library's {} profiles are rounded to {} (the base's dtype); pass "
+                          "prof_dtype=np.float64 to keep them".format(nlib.prof.dtype, pdt), stacklevel=2)
+    if nlib.prof.shape[1:] != base.prof.shape[1:]:
+        raise ValueError("node library profiles {} do not match the base's {}".format(nlib.prof.shape[1:],
+                                                                                  base.prof.shape[1:]))
+    b0, b1, t_lo, t_hi = base_range(base)
+    ne = nlib.edges
+    ndT = float(np.min(np.diff(ne)))
+    low, high, inside, tol = _classify_nodes(ne, t_lo, t_hi, ndT)
+    filled_n = nlib.filled
+    if not (filled_n & (low | high)).any():
+        raise ValueError("no node model lies outside the base library's range {:.3f}-{:.3f} K (node bins {:.3f}-{:.3f} "
+                         "K)".format(t_lo, t_hi, ne[0], ne[-1]))
+    _seam_continuum_check(base, b0, b1, nlib, low, high, names)
+    seam = filled_n & inside
+    if seam.any():
+        warnings.warn("{} node bins ({} models, T_eff' {}) {} {:.1f}-{:.1f} K: left out of the extended library (seam "
+                      "check: flux_seam_check)".format(
+                          int(seam.sum()), int(nlib.count[seam].sum()),
+                          ", ".join("{:.1f}".format(x) for x in nlib.tmean[seam][:10]), _OVERLAP, t_lo, t_hi),
+                      stacklevel=2)
+    L = int(low.sum())
+    H0 = int(np.flatnonzero(high)[0]) if high.any() else ne.size - 1
+    # the bins of the result: (lower edge, kind, source) with kind 'n' node, 'g' gap, 'b' base
+    lo_e, kind, srcb = [], [], []
+    if L:
+        lo_e += [float(x) for x in ne[:L]]
+        kind += ["n"] * L
+        srcb += list(range(L))
+        if ne[L] < t_lo - tol:
+            lo_e.append(float(ne[L]))
+            kind.append("g")
+            srcb.append(-1)
+    i0 = len(lo_e)
+    lo_e += [float(x) for x in base.edges[b0:b1]]
+    kind += ["b"] * (b1 - b0)
+    srcb += list(range(b0, b1))
+    i1 = len(lo_e)
+    top = t_hi
+    if high.any():
+        first = t_hi                                    # the first node bin above starts at the seam ...
+        if ne[H0] > t_hi + tol:                         # ... or after a gap bin [t_hi, ne[H0])
+            lo_e.append(t_hi)
+            kind.append("g")
+            srcb.append(-1)
+            first = float(ne[H0])
+        nh = ne.size - 1 - H0
+        lo_e += [first] + [float(x) for x in ne[H0 + 1:-1]]
+        kind += ["n"] * nh
+        srcb += list(range(H0, ne.size - 1))
+        top = float(ne[-1])
+    E = np.array(lo_e + [top], dtype=np.float64)
+    E[i0:i1 + 1] = base.edges[b0:b1 + 1]                # the base edges, bit for bit
+    if not np.all(np.diff(E) > 0):
+        raise ValueError("the extended bins do not increase (node bins vs base range {}-{} K)".format(t_lo, t_hi))
+    nb = E.size - 1
+    kind = np.array(kind)
+    srcb = np.array(srcb, dtype=np.int64)
+    nl, ny = base.prof.shape[1:]
+    tmean = np.zeros(nb)
+    count = np.zeros(nb)
+    prof = np.zeros((nb, nl, ny), dtype=pdt)
+    fc = np.zeros((nb, nl))
+    isb, isn = kind == "b", kind == "n"
+    tmean[isb], count[isb] = base.tmean[b0:b1], base.count[b0:b1]
+    prof[isb], fc[isb] = base.prof[b0:b1], base.fc[b0:b1]
+    tmean[isn], count[isn] = nlib.tmean[srcb[isn]], nlib.count[srcb[isn]]
+    prof[isn], fc[isn] = nlib.prof[srcb[isn]], nlib.fc[srcb[isn]]
+    ok = count > 0
+    ar = np.arange(nb)
+    lowb, highb = isn & (ar < i0), isn & (ar >= i1)
+    bad = ok & ((lowb & (tmean >= t_lo)) | (highb & (tmean < t_hi)))
+    if bad.any():
+        raise ValueError("{} node T_eff' ({} K) lie inside the base library's range {:.3f}-{:.3f} K (retry nudges "
+                         "across the seam kept in their node, nudged='keep'?): no T_eff' may be counted twice; use "
+                         "nudged='drop'".format(int(bad.sum()), ", ".join("{:.3f}".format(x) for x in tmean[bad][:10]),
+                                                t_lo, t_hi))
+    if np.any(np.diff(tmean[ok]) <= 0):
+        raise ValueError("the node T_eff' do not increase across the seam (a node model nudged into the base range? "
+                         "use nudged='drop')")
+    ext_empty = ~ok & ~isb                              # node bins without models and gap bins
+    if ext_empty.any():
+        near = _nearest_fill(ok)
+        centres = 0.5 * (E[:-1] + E[1:])
+        for i in np.flatnonzero(ext_empty):
+            tmean[i] = centres[i]
+            prof[i], fc[i] = prof[near[i]], fc[near[i]]
+    # the node models used and their bins in the result (None when the node library does not record them)
+    np_ = nlib.params or {}
+    mi, mb = np_.get("model_idx"), np_.get("model_bin")
+    pos = {int(s): i for i, s in enumerate(srcb) if kind[i] == "n"}
+    model_idx = model_bin = None
+    if mi is not None and mb is not None:
+        model_idx, model_bin = [], []
+        for i, b in zip(mi, mb):
+            if int(b) in pos:
+                model_idx.append(int(i))
+                model_bin.append(pos[int(b)])
+        if lineset is not None and model_idx:           # single models inside the base range (their node outside)
+            tm = dict(zip(np.asarray(store.idx, dtype=np.int64).tolist(),
+                          np.asarray(store.teff, dtype=np.float64).tolist()))
+            tin = [(i, tm[i]) for i, b in zip(model_idx, model_bin)
+                   if i in tm and ((b < i0 and tm[i] >= t_lo) or (b >= i1 and tm[i] < t_hi))]
+            if tin:
+                warnings.warn("{} node models have T_eff' inside the base library's range {:.1f}-{:.1f} K (retry "
+                              "nudges kept in their node; idx/T {}); their nodes' mean T_eff' lie outside it. "
+                              "nudged='drop' leaves them out".format(
+                                  len(tin), t_lo, t_hi, ", ".join("{}/{:.1f}".format(i, t) for i, t in tin[:10])),
+                              stacklevel=2)
+    yv = np.asarray(getattr(grid, "y", grid), dtype=np.float64)
+    # single bins: this step's node and gap bins plus the single bins of an extended base (shifted)
+    carried = [] if bmask is None else [i0 + int(b) - b0 for b in np.flatnonzero(bmask) if b0 <= b < b1]
+    single = sorted(set(int(i) for i in np.flatnonzero(~isb)) | set(carried))
+    nf_low = int((ok & lowb).sum())
+    nf_high = int((ok & highb).sum())
+    tl = tmean[ok & lowb]
+    th = tmean[ok & highb]
+    ext = dict(base_range=[t_lo, t_hi], base_bins=[b0, b1], base_slice=[i0, i1], base_nb=int(base.nb),
+               base_params=dict(base.params or {}),
+               base_source=(base.inputs or {}).get("source") or (base.inputs or {}).get("profiles"),
+               base_single=len(carried), node_dT=float(nlib.dT), node_offset=np_.get("offset"),
+               node_nb=int(nlib.nb), node_bins=[int(i) for i in np.flatnonzero(isn)],
+               node_source=[int(s) for s in srcb[isn]], gap_bins=[int(i) for i in np.flatnonzero(kind == "g")],
+               n_low=nf_low, n_high=nf_high, low_range=[float(tl[0]), float(tl[-1])] if tl.size else None,
+               high_range=[float(th[0]), float(th[-1])] if th.size else None,
+               seam_nodes=[float(x) for x in nlib.tmean[seam]], seam_models=int(nlib.count[seam].sum()),
+               missing_nodes=[float(x) for x in 0.5 * (E[:-1] + E[1:])[isn & ~ok]], seam_tol=float(tol),
+               node_models=int(count[isn].sum()), plan=np_.get("plan"), node_source_file=(nlib.inputs or {}).get(
+                   "profiles"), line_identity_checked=bool(checked))
+    params = dict(mode="extended", dT=float(base.dT), lines=list(names), lref=lr.tolist(), ny=int(yv.size),
+                  y0=float(yv[0]), y1=float(yv[-1]), dv=float(yv[1] - yv[0]), prof_dtype=pdt.name,
+                  model_idx=model_idx, model_bin=model_bin,
+                  n_nudged_kept=int(np_.get("n_nudged_kept", 0) or 0), replicas=np_.get("replicas"))
+    params.update(single_bins_record(single, E))
+    params[EXTENSION_KEY] = ext
+    inputs = {}
+    if ext["base_source"]:
+        inputs["base"] = ext["base_source"]
+    if ext["node_source_file"]:
+        inputs["nodes"] = ext["node_source_file"]
+    return FluxLibrary(E, tmean, count, prof, fc, base.dT, params=params, inputs=inputs)
+
+
+def extended_nodes(ext, nmin=20, smooth=0.0, corr=None):
+    """
+    The interpolation nodes of an extended library: :func:`ppmpy.synspec.library.lib_nodes` with the library's single
+    bins (nmin merges the base bins only; every node bin is a node; the smoothing stays on each side of the seam), the
+    loaded BLAS limited to 1 thread (as :func:`ppmpy.synspec.dumps.flux_integrator`, which gives the same nodes from
+    the library or its file).
+
+    Raises
+    ------
+    ValueError
+        The library declares no single bins (not made by :func:`extend_flux_library`).
+    """
+    # PP 2026-10-02: new (library extension)
+    from .dumps import _blas_limit
+    if not (getattr(ext, "params", None) or {}).get(SINGLE_BINS_KEY):
+        raise ValueError("the library declares no single bins: not an extended library (extend_flux_library)")
+    with _blas_limit(1):
+        return lib_nodes(ext, nmin=nmin, smooth=smooth, corr=corr)
+
+
+def extend_correction(ext, base_corr, node_corr=None, key="corr"):
+    """
+    The per-bin profile correction of an extended library (:func:`ppmpy.synspec.library.lib_nodes` ``corr``; the
+    lamfix variant, :func:`ppmpy.synspec.library.wavelength_rounding_correction`), assembled bin by bin: the base
+    library's correction in the base bins (rows b0 .. b1 - 1 -> i0 .. i1 - 1, unchanged bits, so lib_nodes gives the
+    base's corrected nodes bit for bit), the node library's correction in the node bins (its rows
+    ``params['extension']['node_source']``), zero in empty node bins and gap bins (as for empty bins). A correction
+    acts per bin and never across the seam.
+
+    Parameters
+    ----------
+    ext: FluxLibrary
+        The extended library (:func:`extend_flux_library`).
+    base_corr: np.ndarray, str or os.PathLike
+        (base nb, nl, ny) correction of the base library (M424: lamfix_dT10.npz; a path is read with ``key``). For an
+        extension of an extension: the earlier extended library's assembled correction.
+    node_corr: np.ndarray, optional
+        (node nb, nl, ny) correction of the node library the extension was made from (:func:`flux_library_from_models`
+        with the same arguments; e.g. ``wavelength_rounding_correction(nlib, node_representatives(nlib, candidates),
+        lines, grid)``, which needs a representative with OUT and OUT_IMU files in every filled node bin, seam nodes
+        included). None: zero in the node bins (uncorrected nodes; a UserWarning).
+    key: str
+        Member of a base_corr file.
+
+    Returns
+    -------
+    np.ndarray
+        (ext nb, nl, ny) float64.
+
+    Raises
+    ------
+    ValueError
+        ext not an extended library; shapes that do not match the base or the node library.
+    """
+    # PP 2026-10-02: new (reviewer: corr on an extended library needs the node models' corrections)
+    rec = (getattr(ext, "params", None) or {}).get(EXTENSION_KEY)
+    if not isinstance(ext, FluxLibrary) or rec is None:
+        raise ValueError("ext must be the extended FluxLibrary of extend_flux_library")
+    if isinstance(base_corr, (str, os.PathLike)):
+        with np.load(os.fspath(base_corr)) as z:
+            base_corr = z[key]
+    base_corr = np.asarray(base_corr)
+    b0, b1 = rec["base_bins"]
+    i0, i1 = rec["base_slice"]
+    nl, ny = ext.prof.shape[1:]
+    if base_corr.shape != (rec["base_nb"], nl, ny):
+        raise ValueError("base_corr must have the base library's shape ({}, {}, {}), got {}".format(
+            rec["base_nb"], nl, ny, base_corr.shape))
+    out = np.zeros((ext.nb, nl, ny))
+    out[i0:i1] = base_corr[b0:b1]
+    nbins = np.asarray(rec["node_bins"], dtype=np.int64)
+    src = np.asarray(rec["node_source"], dtype=np.int64)
+    if node_corr is None:
+        if (ext.count[nbins] > 0).any():
+            warnings.warn("no node correction: the node bins stay uncorrected", stacklevel=2)
+    else:
+        node_corr = np.asarray(node_corr)
+        nnb = rec.get("node_nb")
+        if node_corr.ndim != 3 or node_corr.shape[1:] != (nl, ny) or (nnb is not None and node_corr.shape[0] != nnb) \
+                or (src.size and src.max() >= node_corr.shape[0]):
+            raise ValueError("node_corr must have the node library's shape ({}, {}, {}), got {}".format(
+                nnb, nl, ny, node_corr.shape))
+        filled = ext.count[nbins] > 0
+        out[nbins[filled]] = node_corr[src[filled]]
+    return out
+
+
+def _window(y, vwin):
+    return np.ones(y.size, bool) if vwin is None else np.abs(y) <= float(vwin)
+
+
+def _dew(dF, y, lref, m):
+    """EW difference [A] of a profile difference dF = F_base - F_node over the window (lambda = lref exp(y / c))."""
+    from .conventions import C_KMS
+    from .library import _trapz
+    lam = lref * np.exp(y[m] / C_KMS)
+    return float(_trapz(dF[m], lam))
+
+
+def _seam_table(rows, names, labels=("bin",)):
+    """One row per seam node: T_eff', models, base bin, the extended library's bracketing nodes ('nodes'), and max|dF|
+    per variant and line."""
+    labels = [lab for lab in labels if rows and ("max_dF_" + lab) in rows[0]]
+    head = ["{}:{}".format(lab, n) for lab in labels for n in names]
+    out = ["node T_eff' [K]  models  base bin (T, models)    interp. nodes [K]      " +
+           "  ".join("{:>16s}".format(h[:16]) for h in head)]
+    for r in rows:
+        nt = r.get("nodes_t")
+        out.append("{:14.3f}  {:6d}  {:4d} ({:9.3f}, {:6d})  {:>21s}  ".format(
+            r["t"], r["count"], r["base_bin"], r["base_tmean"], r["base_count"],
+            "{:.1f}-{:.1f}".format(*nt) if nt else "-") +
+            "  ".join("{:16.2e}".format(x) for lab in labels for x in r["max_dF_" + lab]))
+    return "\n".join(out)
+
+
+def _quiet_extension(*a, **k):
+    """extend_flux_library without its expected warnings (seam nodes, unchecked line identity)."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*" + _OVERLAP)
+        warnings.filterwarnings("ignore", message=_LINES_UNCHECKED)
+        return extend_flux_library(*a, **k)
+
+
+def flux_seam_check(base, store, grid, lref, plan=None, dT=None, offset=0.0, edges=None, select=None, cap_ok=True,
+                    cap=None, unplanned="raise", lines=None, nudged=NUDGED, vwin=None, nproc=1, ext=None, nmin=20,
+                    smooth=0.0, corr=None, base_lines=None):
+    """
+    The seam check of a library extension: node models inside the base library's range against the base library
+    there and against the extended library's interpolation (static rest-frame profiles, no Doppler shifts; the
+    analogue of V8's max|dF0| for one node).
+
+    For every filled node bin that overlaps the base range (the nodes :func:`extend_flux_library` leaves out, e.g.
+    the seam nodes planned just inside each end of the per-point library): its profile (replica mean, float64)
+    against
+
+    * 'bin': the base bin that holds the node's mean T_eff';
+    * 'interp': the base bins interpolated linearly in T_eff' to it (between the filled bins bracketing it by tmean,
+      clamped at the ends; removes the T_eff' offset within the bin);
+    * 'nodes': the interpolant the integrator uses at that T_eff': the extended library's interpolation nodes
+      (:func:`extended_nodes` with nmin, smooth, corr; the seam node itself is not one of them) as
+      :class:`ppmpy.synspec.disc.DiscFlux` combines them, line flux and continuum linear in T_eff' between the
+      nodes k0, k1 of :func:`ppmpy.synspec.library.node_pairs`: F = ((1 - a) F_c,0 f_0 + a F_c,1 f_1) / ((1 - a)
+      F_c,0 + a F_c,1), the F0 of a uniform star at that T_eff'. Near a seam whose base tail is merged (M424: no
+      base node between 35 400 K and 35 829 K) this is the static error of the points between the last node outside
+      and the first base node, which 'bin' (one sparse bin) does not measure.
+
+    Parameters
+    ----------
+    base, store, grid, lref, plan, dT, offset, edges, select, cap_ok, cap, unplanned, lines, nudged, nproc,
+    base_lines:
+        As :func:`extend_flux_library`.
+    vwin: float, optional
+        Window |y| <= vwin [km/s] of max|dF| and dEW (default the whole grid).
+    ext: FluxLibrary, optional
+        The extended library ('nodes'); default ``extend_flux_library`` of base and store with the same arguments.
+        Without node models outside the base range there is none: 'nodes' is left out (NaN in the summary).
+    nmin, smooth, corr:
+        The integrator's nodes (:func:`extended_nodes`; M424 runs: nmin 20).
+
+    Returns
+    -------
+    dict
+        lines; vwin; base_range; nodes: per node dict(t, count, base_bin, base_tmean, base_count, max_dF_<v>
+        (nl,), dEW_<v> (nl,) [A, EW_node - EW_ref], dfc_<v> (nl,) (F_c,node / F_c,ref - 1) for v in bin, interp,
+        nodes; nodes_t (the two interpolation nodes' T_eff'), nodes_a (weight of the upper one)); summary dict(n_nodes,
+        max_dF_<v>, max_abs_dEW_<v>, max_abs_dfc_<v> (nl,) per variant; NaN without nodes); nmin, smooth, corr (the
+        options of the 'nodes' variant); n_interp_nodes (None without an extended library); table (text).
+
+    Notes
+    -----
+    A node is a single FASTWIND model (or a few replicas), a base bin the mean of the per-point models in it (M424:
+    ~3 500 per bin in the middle, a few in the tails), so the bin comparison shows the single-model artefacts (the
+    EW(T_eff') sawtooth of the continuum sampling, the per-model frequency grids, the 0.01 A wavelength rounding;
+    V8: a static floor of 1-3e-5 in the disc-integrated profiles, ~8e-5 without Doppler shifts) plus the T_eff'
+    difference within the bin; convergence noise is ~0.5 % rms in EW per model.
+    """
+    # PP 2026-10-02: new (library extension: seam check); variant 'nodes' (reviewer: compare with the interpolant the
+    # integrator uses, not only with the base bin)
+    base = _as_flux_library(base)
+    names, lr, lineset, store_ = _store_lines(store, lref, lines)
+    _check_base(base, grid, names, lr, base_lines=base_lines)
+    nlib = _node_flux(store_, grid, lineset, plan, dT, offset, edges, select, cap_ok, cap, np.float64, unplanned,
+                      nudged, nproc)
+    if nlib is store_:
+        _check_base(nlib, grid, names, lr, what="the node library")
+    b0, b1, t_lo, t_hi = base_range(base)
+    ne = nlib.edges
+    low, high, inside, _ = _classify_nodes(ne, t_lo, t_hi, float(np.min(np.diff(ne))))
+    en = None
+    if ext is None and (nlib.filled & (low | high)).any():
+        ext = _quiet_extension(base, store, grid, lref, plan=plan, dT=dT, offset=offset, edges=edges, select=select,
+                               cap_ok=cap_ok, cap=cap, unplanned=unplanned, lines=lines, nudged=nudged, nproc=nproc,
+                               base_lines=base_lines)
+    if ext is not None:
+        en = extended_nodes(ext, nmin=nmin, smooth=smooth, corr=corr)
+        if en.nn < 2:
+            en = None
+    y = np.asarray(getattr(grid, "y", grid), dtype=np.float64)
+    m = _window(y, vwin)
+    f = np.flatnonzero(base.count > 0)
+    tf = base.tmean[f]
+    rows = []
+    for k in np.flatnonzero(inside & nlib.filled):
+        t = float(nlib.tmean[k])
+        P = np.asarray(nlib.prof[k], dtype=np.float64)
+        bb = int(teff_bins(t, base.edges))
+        Pb = np.asarray(base.prof[bb], dtype=np.float64)
+        j = int(np.clip(np.searchsorted(tf, t) - 1, 0, max(f.size - 2, 0)))
+        if f.size > 1:
+            a = float(np.clip((t - tf[j]) / (tf[j + 1] - tf[j]), 0.0, 1.0))
+            Pi = (1.0 - a) * base.prof[f[j]].astype(np.float64) + a * base.prof[f[j + 1]].astype(np.float64)
+            fci = (1.0 - a) * base.fc[f[j]] + a * base.fc[f[j + 1]]
+        else:
+            Pi, fci = Pb, base.fc[bb]
+        r = dict(t=t, count=int(nlib.count[k]), node_bin=int(k), base_bin=bb, base_tmean=float(base.tmean[bb]),
+                 base_count=int(base.count[bb]))
+        refs = [("bin", Pb, base.fc[bb]), ("interp", Pi, fci)]
+        if en is not None:
+            k0, k1, an = (np.asarray(x).item() for x in node_pairs(en.t, t))
+            w0, w1 = (1.0 - an) * en.fc[k0], an * en.fc[k1]       # DiscFlux: F_line and F_c linear in T_eff'
+            fcn = w0 + w1
+            Pn = (w0[:, None] * en.prof[k0] + w1[:, None] * en.prof[k1]) / fcn[:, None]
+            r["nodes_t"] = [float(en.t[k0]), float(en.t[k1])]
+            r["nodes_a"] = float(an)
+            refs.append(("nodes", Pn, fcn))
+        for lab, Q, fq in refs:
+            d = Q - P                                        # F_ref - F_node
+            r["max_dF_" + lab] = [float(np.abs(d[j_][m]).max()) for j_ in range(lr.size)]
+            r["dEW_" + lab] = [_dew(d[j_], y, lr[j_], m) for j_ in range(lr.size)]
+            r["dfc_" + lab] = [float(nlib.fc[k, j_] / fq[j_] - 1.0) for j_ in range(lr.size)]
+        rows.append(r)
+    nlr = lr.size
+
+    def agg(key, absval=False):
+        if not rows or key not in rows[0]:
+            return [float("nan")] * nlr
+        A = np.array([r[key] for r in rows])
+        return (np.abs(A) if absval else A).max(axis=0).tolist()
+
+    summary = dict(n_nodes=len(rows))
+    for lab in ("bin", "interp", "nodes"):
+        summary.update({"max_dF_" + lab: agg("max_dF_" + lab), "max_abs_dEW_" + lab: agg("dEW_" + lab, True),
+                        "max_abs_dfc_" + lab: agg("dfc_" + lab, True)})
+    return dict(lines=list(names), vwin=vwin, base_range=[t_lo, t_hi], nodes=rows, summary=summary,
+                nmin=nmin, smooth=float(smooth), corr=corr is not None, n_interp_nodes=None if en is None else en.nn,
+                table=_seam_table(rows, names, ("bin", "interp", "nodes")) if rows else
+                "(no node inside the base range)")
+
+
+# -- intensity library ---------------------------------------------------------------------------------------------
+def _ray_weights(s):
+    """Weights w of F = int_0^1 I(s) 2 s ds = sum_k w_k I_k for I linear in s between the nodes s (increasing, 0 .. 1;
+    exact for the piecewise-linear I; mu = sqrt(1 - s^2), 2 mu dmu = -2 s ds)."""
+    s = np.asarray(s, dtype=np.float64)
+    w = np.zeros(s.size)
+    s0, s1 = s[:-1], s[1:]
+    h = s1 - s0
+    A = (s1 ** 2 - s0 ** 2) / 2.0
+    B = (s1 ** 3 - s0 ** 3) / 3.0
+    w[:-1] += 2.0 * (s1 * A - B) / h
+    w[1:] += 2.0 * (B - s0 * A) / h
+    return w
+
+
+def _imu_row_flux(imu, b, j):
+    """F_line / F_cont (ny,) and F_cont (ny,) of bin b, line j of an intensity library (I linear in s, exact)."""
+    n = int(np.asarray(imu["nnode"])[b, j])
+    s = np.asarray(imu["s"])[b, j, :n]
+    w = _ray_weights(s)
+    Ic = np.asarray(imu["Ic"][b, j, :n], dtype=np.float64)
+    Il = np.asarray(imu["Il"][b, j, :n], dtype=np.float64)
+    fc = w @ Ic
+    return (w @ Il) / fc, fc
+
+
+def _imu_sources(st, ok, names, flux_view, imu_runs, layout, imu_dirs, results_dir, extract_dir, suffix, check,
+                 allow_missing, nproc, log):
+    """Candidates (idx, teff, dir) with the OUT_IMU (and, with check, OUT) files among the usable models ``ok`` of the
+    store (as :func:`imu_library_from_models`)."""
+    teff = np.asarray(st.teff, dtype=np.float64)
+    idx = np.asarray(st.idx, dtype=np.int64)
+    sources = sum(x is not None for x in (imu_runs, imu_dirs, results_dir))
+    if sources != 1:
+        raise ValueError("give exactly one source of OUT_IMU files: imu_runs, imu_dirs or results_dir (+ extract_dir)")
+    need = _imu_names(names, suffix, check)
+    if results_dir is not None:
+        if extract_dir is None:
+            raise ValueError("results_dir needs extract_dir (where the representatives are extracted)")
+        pre = node_representatives(flux_view, [(int(i), float(t), "") for i, t in zip(idx[ok], teff[ok])],
+                                   allow_missing=True)
+        from .fwresults import extract_points
+        extract_points(results_dir, [int(i) for i in pre.idx], extract_dir, members=["OUT_IMU.*", "OUT.*"],
+                       nproc=nproc, log=log)
+        imu_runs, layout = extract_dir, POINT_DIR
+    cands = []
+    if imu_runs is not None:
+        for i, t in zip(idx[ok], teff[ok]):
+            d = os.path.join(os.fspath(imu_runs), layout.format(idx=int(i)))
+            if all(os.path.exists(os.path.join(d, f)) for f in need):
+                cands.append((int(i), float(t), d))
+    else:
+        known = dict(zip(idx[ok].tolist(), teff[ok].tolist()))
+        for i, t, d in find_candidates(imu_dirs, require=("meta.txt",) + tuple(need)):
+            if i in known:
+                if abs(t - known[i]) > _TEFF_TOL:
+                    raise ValueError("{}: meta.txt T_eff' {} differs from the store's {}".format(d, t, known[i]))
+                cands.append((i, known[i], d))
+    return cands
+
+
+def _part_view(flux, keep):
+    """A FluxLibrary sharing flux's bins and params whose count is zero outside ``keep`` (node_representatives)."""
+    cnt = np.where(keep, flux.count, 0.0)
+    return FluxLibrary(flux.edges, flux.tmean, cnt, flux.prof, flux.fc, flux.dT, params=flux.params)
+
+
+def _runs_of(bins):
+    """Contiguous runs [a, b) of sorted bin indices."""
+    bins = np.asarray(bins, dtype=np.int64)
+    if bins.size == 0:
+        return []
+    cut = np.flatnonzero(np.diff(bins) != 1) + 1
+    return [(int(g[0]), int(g[-1]) + 1) for g in np.split(bins, cut)]
+
+
+def extend_imu_library(base_imu, ext, store, grid=None, lref=None, imu_runs=None, layout=IMU_LAYOUT, imu_dirs=None,
+                       results_dir=None, extract_dir=None, suffix="VTV010", check=True, allow_missing=False,
+                       select=None, cap_ok=True, cap=None, lines=None, nproc=1, log=None):
+    """
+    The intensity library of an extended flux library: the base intensity library's rows in the base bins, one
+    representative node model per node bin outside (the node model closest to the node's mean T_eff';
+    :func:`node_representatives`; replicas are not averaged, as :func:`imu_library_from_models`).
+
+    Parameters
+    ----------
+    base_imu: ImuLibrary or str
+        The per-point intensity library made for the base flux library (M424: /scratch/ppathak/fastwind_imu/
+        imu_library_dT10.npz; memory-mapped when a path). Its bins must be the base flux library's (edges, count of
+        the base slice; checked).
+    ext: FluxLibrary
+        The extended flux library (:func:`extend_flux_library`): its bins, the node models it used (params model_idx,
+        model_bin) and the extension record.
+    store: ProfileStore, str or mapping
+        The node models (idx, teff, status).
+    grid: VelocityGrid, optional
+        Default the base intensity library's recorded grid, else the M424 grid (must have the libraries' ny).
+    lref: LineSet or array-like, optional
+        Reference wavelengths (default the extended flux library's params['lref']).
+    imu_runs, layout, imu_dirs, results_dir, extract_dir, suffix, check, allow_missing, select, cap_ok, cap, lines,
+    nproc, log:
+        The OUT_IMU files of the node models and the checks (:func:`imu_library_from_models`).
+
+    Returns
+    -------
+    imu: ImuLibrary
+        Bins = the extended flux library's (edges, tmean, count). Base bins: the base rows bit for bit (src, idx_rep,
+        teff_rep, rmax, nnode, s, Ic, Il; src shifted to the new bin numbers; s padded with NaN and Ic, Il with 0 when
+        a node model keeps more rays than the base's K). Node bins with a representative: its rows, made by
+        :func:`ppmpy.synspec.library.build_imu_library` (the same arithmetic as the per-point and library-mode
+        intensity libraries). Empty node and gap bins: src = the nearest bin with a representative (lower on a tie)
+        and copies of its rows. ``params``: lines, lref, grid (recorded), K, mode 'extended', the extension record
+        (also n_rep, the representatives' idx), replicas_averaged False.
+    checks: dict
+        bins (result bins of the node representatives), max_dF, dEW (n, nl; the flux check against each model's OUT
+        files, None without check) and summary per line.
+    reps: Representatives
+        The node representatives (bins of the result).
+
+    Raises
+    ------
+    ValueError
+        Bins of base_imu other than the base flux library's; no OUT_IMU source or none of the node models has OUT_IMU
+        files; filled node bins without one (unless allow_missing); representatives' T_eff' not increasing across the
+        seam (DiscImu needs it).
+
+    Notes
+    -----
+    Memory: the result's Ic and Il (nb nl K ny x 4 bytes x 2: M424 bins with tails of a few hundred nodes, 2-4 GB) plus
+    the node rows while they are built (one contiguous run of node bins at a time); the base rows are copied from the
+    (memory-mapped) base file. The result can be saved with :meth:`ImuLibrary.save` and passed to
+    :func:`ppmpy.synspec.dumps.imu_integrator`.
+    """
+    # PP 2026-10-02: new (library extension: intensity library)
+    from .library import ImuLibrary
+    if isinstance(base_imu, (str, os.PathLike)):
+        base_imu = ImuLibrary.load(base_imu, mmap=True)
+    rec = (getattr(ext, "params", None) or {}).get(EXTENSION_KEY)
+    if not isinstance(ext, FluxLibrary) or rec is None:
+        raise ValueError("ext must be the extended FluxLibrary of extend_flux_library")
+    b0, b1 = rec["base_bins"]
+    i0, i1 = rec["base_slice"]
+    if base_imu.edges.size - 1 != rec["base_nb"] or not np.array_equal(np.asarray(base_imu.edges[b0:b1 + 1]),
+                                                                       ext.edges[i0:i1 + 1]):
+        raise ValueError("the base intensity library's bins differ from the base flux library's (edges)")
+    if not np.array_equal(np.asarray(base_imu.count[b0:b1]), ext.count[i0:i1]):
+        raise ValueError("the base intensity library was made for another flux library (counts differ)")
+    bsrc = np.asarray(base_imu.src)[b0:b1]
+    if bsrc.size and (bsrc.min() < b0 or bsrc.max() >= b1):
+        raise ValueError("base intensity bins inside the base range take their rows from bins outside it")
+    st = _as_store(store)
+    lr_ext = np.asarray(ext.params.get("lref"), dtype=np.float64)
+    names, lr = _lines_of(st, lr_ext if lref is None else lref, lines)
+    ext_lines = _names_of(ext.params.get("lines"))
+    if not _same_lref(lr_ext, lr) or (ext_lines is not None and ext_lines != list(names)):
+        raise ValueError("lines / lref differ from the extended flux library's")
+    nl = len(names)
+    if base_imu.nl != nl:
+        raise ValueError("the base intensity library has {} lines, the node models {}".format(base_imu.nl, nl))
+    if grid is None:
+        grid = base_imu.grid if base_imu.grid is not None else VelocityGrid()
+    y = np.asarray(getattr(grid, "y", grid), dtype=np.float64)
+    if y.size != base_imu.ny or y.size != ext.ny:
+        raise ValueError("grid of {} points, the libraries have {} / {}".format(y.size, base_imu.ny, ext.ny))
+    ok = _usable(st, select, cap_ok, cap)
+    nb = ext.nb
+    node_bins = np.asarray(rec["node_bins"], dtype=np.int64)
+    is_node = np.zeros(nb, bool)
+    is_node[node_bins] = True
+    view = _part_view(ext, is_node)
+    mi = ext.params.get("model_idx")
+    cnt = np.asarray(ext.count)
+    if mi is not None:                                  # None: no record; the candidates' bins by their T_eff'
+        # PP 2026-10-02: a clear error when the recorded node models are not in the store (reviewer)
+        ok &= np.isin(np.asarray(st.idx, dtype=np.int64), np.asarray(mi, dtype=np.int64))
+        if not ok.any() and (cnt[is_node] > 0).any():
+            raise ValueError("none of the extended library's {} node models (params['model_idx']) is a usable model of "
+                             "the store: the node models of another run?".format(len(mi)))
+    if np.any(cnt[is_node] > 1):
+        warnings.warn("{} of {} node bins hold several models (up to {}): the intensity library keeps one "
+                      "representative per node".format(int((cnt[is_node] > 1).sum()), int((cnt[is_node] > 0).sum()),
+                                                       int(cnt[is_node].max())), stacklevel=2)
+    cands = _imu_sources(st, ok, names, view, imu_runs, layout, imu_dirs, results_dir, extract_dir, suffix, check,
+                         allow_missing, nproc, log)
+    if not cands:
+        raise ValueError("no node model has OUT_IMU files: run FASTWIND with the intensity formal build "
+                         "(--formal-build v10.6_HHe_imu) or rerun pformalsol (python3 -m ppmpy.synspec.fastwind "
+                         "rerun-formal)")
+    reps = node_representatives(view, cands, allow_missing=allow_missing)
+    # node rows, one contiguous run of non-base bins at a time
+    parts = []
+    nonbase = list(range(0, i0)) + list(range(i1, nb))
+    chk_bins, chk_dF, chk_dEW = [], [], []
+    for a, b in _runs_of(nonbase):
+        sel = (reps.bins >= a) & (reps.bins < b)
+        if not sel.any():
+            continue
+        rp = Representatives(reps.bins[sel] - a, reps.idx[sel], reps.teff[sel], [reps.dirs[k] for k in
+                                                                                 np.flatnonzero(sel)])
+        sub = dict(edges=ext.edges[a:b + 1], tmean=ext.tmean[a:b], count=view.count[a:b])
+        part, pchk = build_imu_library(rp, sub, names, y, lref=lr, runs_dir=None, suffix=suffix, check=check,
+                                       allow_missing=True)
+        parts.append((a, b, part))
+        chk_bins += (np.asarray(pchk["bins"]) + a).tolist()
+        if check:
+            chk_dF.append(pchk["max_dF"])
+            chk_dEW.append(pchk["dEW"])
+        if log is not None:
+            log("node bins {}..{}: {} representatives, K {}".format(a, b - 1, int(sel.sum()), part.K))
+    K = max([int(base_imu.K)] + [p.K for _, _, p in parts])
+    Kb = int(base_imu.K)
+    S = np.full((nb, nl, K), np.nan, dtype=np.asarray(base_imu.s).dtype)
+    IC = np.zeros((nb, nl, K, base_imu.ny), dtype=base_imu.Ic.dtype)
+    IL = np.zeros((nb, nl, K, base_imu.ny), dtype=base_imu.Il.dtype)
+    RM = np.zeros((nb, nl), dtype=np.asarray(base_imu.rmax).dtype)
+    NN = np.zeros((nb, nl), dtype=np.asarray(base_imu.nnode).dtype)
+    src = np.full(nb, -1, dtype=np.asarray(base_imu.src).dtype)
+    idx_rep = np.zeros(nb, dtype=np.asarray(base_imu.idx_rep).dtype)
+    teff_rep = np.zeros(nb, dtype=np.asarray(base_imu.teff_rep).dtype)
+    # base rows, bit for bit
+    S[i0:i1, :, :Kb] = base_imu.s[b0:b1]
+    IC[i0:i1, :, :Kb] = base_imu.Ic[b0:b1]
+    IL[i0:i1, :, :Kb] = base_imu.Il[b0:b1]
+    RM[i0:i1], NN[i0:i1] = base_imu.rmax[b0:b1], base_imu.nnode[b0:b1]
+    src[i0:i1] = bsrc - b0 + i0
+    idx_rep[i0:i1], teff_rep[i0:i1] = base_imu.idx_rep[b0:b1], base_imu.teff_rep[b0:b1]
+    # node rows (the bins with their own representative)
+    for a, b, p in parts:
+        own = np.flatnonzero(np.asarray(p.src) == np.arange(p.nb))
+        for k in own:
+            i = a + int(k)
+            Kp = p.K
+            S[i, :, :Kp], IC[i, :, :Kp], IL[i, :, :Kp] = p.s[k], p.Ic[k], p.Il[k]
+            RM[i], NN[i] = p.rmax[k], p.nnode[k]
+            src[i], idx_rep[i], teff_rep[i] = i, p.idx_rep[k], p.teff_rep[k]
+    # empty node / gap bins: the nearest bin with a representative (own rows), lower on a tie
+    own_all = np.flatnonzero(src == np.arange(nb))
+    for i in np.flatnonzero(src < 0):
+        s_ = int(own_all[np.argmin(np.abs(own_all - i))])
+        src[i] = s_
+        S[i], IC[i], IL[i], RM[i], NN[i] = S[s_], IC[s_], IL[s_], RM[s_], NN[s_]
+        idx_rep[i], teff_rep[i] = idx_rep[s_], teff_rep[s_]
+    u = np.unique(src)
+    if np.any(np.diff(teff_rep[u]) <= 0):
+        raise ValueError("the representatives' T_eff' do not increase across the seam")
+    gp = base_imu.params or {}
+    params = dict(gp)
+    params.update(mode="extended", lines=list(names), lref=lr.tolist(), ny=int(y.size), y0=float(y[0]),
+                  y1=float(y[-1]), dv=float(y[1] - y[0]),
+                  grid=grid.to_dict() if hasattr(grid, "to_dict") else gp.get("grid"), K=int(K),
+                  replicas_averaged=False, n_rep=int(len(reps)),
+                  max_models_per_node=int(cnt[is_node].max()) if is_node.any() else 0)
+    params[EXTENSION_KEY] = dict(rec, base_imu_source=base_imu.path, base_imu_params=gp,
+                                 rep_idx=[int(i) for i in reps.idx], rep_bins=[int(b) for b in reps.bins])
+    inputs = dict(base_imu=base_imu.path) if base_imu.path else {}
+    imu = ImuLibrary(ext.edges, ext.tmean, ext.count, src, idx_rep, teff_rep, RM, NN, S, IC, IL, params=params,
+                     inputs=inputs)
+    summary = {}
+    if check and chk_dF:
+        dF, dE = np.concatenate(chk_dF), np.concatenate(chk_dEW)
+        for j, ln in enumerate(names):
+            summary[ln] = dict(max_dF=float(np.nanmax(dF[:, j])), max_abs_dEW=float(np.nanmax(np.abs(dE[:, j]))))
+    checks = dict(lines=list(names), bins=np.asarray(chk_bins, dtype=np.int64),
+                  max_dF=np.concatenate(chk_dF) if check and chk_dF else None,
+                  dEW=np.concatenate(chk_dEW) if check and chk_dEW else None, summary=summary)
+    return imu, checks, reps
+
+
+def imu_seam_check(base_imu, store, grid, lref, plan=None, dT=None, offset=0.0, edges=None, imu_runs=None,
+                   layout=IMU_LAYOUT, imu_dirs=None, results_dir=None, extract_dir=None, suffix="VTV010", select=None,
+                   cap_ok=True, cap=None, unplanned="raise", lines=None, nudged=NUDGED, vwin=None, nproc=1, log=None,
+                   ext_imu=None):
+    """
+    The seam check of an intensity-library extension: node models inside the base range against the base library's
+    representative of the bin that holds them ('bin'), and, given the extended intensity library, against its
+    interpolation at their T_eff' ('nodes'). Static rest-frame flux profiles from the intensities: F = int I 2 s ds
+    with I linear in s, exact; the flux the intensity method integrates for a uniform star at rest.
+
+    Parameters
+    ----------
+    base_imu: ImuLibrary or str
+        The per-point intensity library.
+    store, grid, lref, plan, dT, offset, edges, select, cap_ok, cap, unplanned, lines, nudged, nproc:
+        The node models and their bins (:func:`flux_library_from_models`).
+    imu_runs, layout, imu_dirs, results_dir, extract_dir, suffix, log:
+        Their OUT_IMU files (:func:`imu_library_from_models`).
+    vwin: float, optional
+        Window |y| <= vwin [km/s] (default the whole grid).
+    ext_imu: ImuLibrary, optional
+        The extended intensity library (:func:`extend_imu_library`): variant 'nodes', the integrator's interpolant
+        (:class:`ppmpy.synspec.disc.DiscImu`: nodes = the bins with their own representative at teff_rep, linear in
+        T_eff', :func:`ppmpy.synspec.library.node_pairs`): F = ((1 - a) F_l,0 + a F_l,1) / ((1 - a) F_c,0 + a F_c,1),
+        the static profile of a uniform star at that T_eff'.
+
+    Returns
+    -------
+    dict
+        As :func:`flux_seam_check` ('bin', and 'nodes' with ext_imu): nodes with t (the node representative's
+        T_eff'), idx, base_bin, base_src, base_teff (the base representative's T_eff'), base_idx, max_dF_<v>, dEW_<v>,
+        dfc_<v> (continuum flux at the line centre), nodes_t, nodes_a; summary; table.
+    """
+    # PP 2026-10-02: new (library extension: intensity seam check); variant 'nodes' with ext_imu (reviewer)
+    from .library import ImuLibrary
+    if isinstance(base_imu, (str, os.PathLike)):
+        base_imu = ImuLibrary.load(base_imu, mmap=True)
+    st = _as_store(store)
+    names, lr = _lines_of(st, lref, lines)
+    lineset = lref if isinstance(lref, LineSet) else LineSet(names, lr)
+    nlib = flux_library_from_models(st, grid, lineset, plan=plan, dT=dT, offset=offset, edges=edges, select=select,
+                                    cap_ok=cap_ok, cap=cap, prof_dtype=np.float64, unplanned=unplanned, nudged=nudged,
+                                    nproc=nproc)
+    b0, b1, t_lo, t_hi = base_range(base_imu)
+    _, _, inside, _ = _classify_nodes(nlib.edges, t_lo, t_hi, float(np.min(np.diff(nlib.edges))))
+    keep = inside & nlib.filled
+    y = np.asarray(getattr(grid, "y", grid), dtype=np.float64)
+    m = _window(y, vwin)
+    ic = int(np.argmin(np.abs(y)))
+    un = tun = None
+    if ext_imu is not None:
+        if ext_imu.ny != y.size or ext_imu.nl != len(names):
+            raise ValueError("ext_imu has {} lines x {} points, the node models {} x {}".format(
+                ext_imu.nl, ext_imu.ny, len(names), y.size))
+        un = np.unique(np.asarray(ext_imu.src))
+        tun = np.asarray(ext_imu.teff_rep, dtype=np.float64)[un]
+        if un.size < 2:
+            un = None
+    rows = []
+    if keep.any():
+        view = _part_view(nlib, keep)
+        ok = _usable(st, select, cap_ok, cap) & np.isin(np.asarray(st.idx, dtype=np.int64),
+                                                        np.asarray(nlib.params.get("model_idx"), dtype=np.int64))
+        cands = _imu_sources(st, ok, names, view, imu_runs, layout, imu_dirs, results_dir, extract_dir, suffix, False,
+                             True, nproc, log)
+        reps = node_representatives(view, cands, allow_missing=True)
+        for a, b in _runs_of(reps.bins):
+            sel = (reps.bins >= a) & (reps.bins < b)
+            rp = Representatives(reps.bins[sel] - a, reps.idx[sel], reps.teff[sel],
+                                 [reps.dirs[k] for k in np.flatnonzero(sel)])
+            sub = dict(edges=nlib.edges[a:b + 1], tmean=nlib.tmean[a:b], count=view.count[a:b])
+            part, _ = build_imu_library(rp, sub, names, y, lref=lr, runs_dir=None, suffix=suffix, check=False,
+                                        allow_missing=True)
+            for k in range(part.nb):
+                if int(part.src[k]) != k:
+                    continue
+                t = float(part.teff_rep[k])
+                bb = int(teff_bins(t, base_imu.edges))
+                sb = int(base_imu.src[bb])
+                r = dict(t=t, idx=int(part.idx_rep[k]), count=int(nlib.count[a + k]), base_bin=bb,
+                         base_src=sb, base_teff=float(base_imu.teff_rep[sb]), base_idx=int(base_imu.idx_rep[sb]),
+                         base_tmean=float(base_imu.tmean[bb]), base_count=int(base_imu.count[bb]),
+                         max_dF_bin=[], dEW_bin=[], dfc_bin=[])
+                if un is not None:
+                    k0, k1, an = (np.asarray(x).item() for x in node_pairs(tun, t))
+                    r.update(nodes_t=[float(tun[k0]), float(tun[k1])], nodes_a=float(an), max_dF_nodes=[],
+                             dEW_nodes=[], dfc_nodes=[])
+                for j in range(len(names)):
+                    fn, fc = _imu_row_flux(part, k, j)
+                    fb, fcb = _imu_row_flux(base_imu, sb, j)
+                    d = fb - fn
+                    r["max_dF_bin"].append(float(np.abs(d[m]).max()))
+                    r["dEW_bin"].append(_dew(d, y, lr[j], m))
+                    r["dfc_bin"].append(float(fc[ic] / fcb[ic] - 1.0))
+                    if un is not None:
+                        f0, c0 = _imu_row_flux(ext_imu, int(un[k0]), j)
+                        f1, c1 = _imu_row_flux(ext_imu, int(un[k1]), j)
+                        ci = (1.0 - an) * c0 + an * c1
+                        d = ((1.0 - an) * f0 * c0 + an * f1 * c1) / ci - fn
+                        r["max_dF_nodes"].append(float(np.abs(d[m]).max()))
+                        r["dEW_nodes"].append(_dew(d, y, lr[j], m))
+                        r["dfc_nodes"].append(float(fc[ic] / ci[ic] - 1.0))
+                rows.append(r)
+    nlr = len(names)
+
+    def agg(key, absval=False):
+        if not rows or key not in rows[0]:
+            return [float("nan")] * nlr
+        A = np.array([r[key] for r in rows])
+        return (np.abs(A) if absval else A).max(axis=0).tolist()
+
+    summary = dict(n_nodes=len(rows))
+    for lab in ("bin", "nodes"):
+        summary.update({"max_dF_" + lab: agg("max_dF_" + lab), "max_abs_dEW_" + lab: agg("dEW_" + lab, True),
+                        "max_abs_dfc_" + lab: agg("dfc_" + lab, True)})
+    return dict(lines=list(names), vwin=vwin, base_range=[t_lo, t_hi], nodes=rows, summary=summary,
+                table=_seam_table(rows, names, ("bin", "nodes")) if rows else "(no node inside the base range)")

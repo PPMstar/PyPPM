@@ -71,6 +71,16 @@ and fw_disc_los.py (the streamed exact sums, the library by-product and the chec
 comments per function.
 PP 2026-10-02: intensity method ported from fw_disc.py (DiscImu) and fw_disc_imu.py (nearest-bin integration,
 uniform-star check); new: the lazy and float32 modes, line subsets, blockwise set-up FFTs, fingerprint, pickling.
+PP 2026-10-02: opt-in sub-grid Doppler shifts, ``deposit='linear'`` of :class:`DiscFlux` and :class:`DiscImu`: each
+point's histogram weight is split between the two neighbouring shift steps s0 = floor(x), s0 + 1 with weights 1 - w1,
+w1 (x = -c ln(1 - v/c) / dv, w1 = x - s0; :meth:`VelocityGrid.shift_steps`), i.e. the shifted profile is
+interpolated linearly between grid steps (error O(dv^2) instead of O(dv) for smooth profiles); the FFT machinery is
+unchanged. Needed when the line-of-sight velocities are not >> dv (M487, IGW only: ~0.5 km/s on the 1 km/s grid, where
+whole steps put almost every point at shift 0). The default 'nearest' is the code of the M424 products, bit for bit.
+'linear' is exact for the node profiles taken as piecewise linear between grid points; how the real profiles behave
+between grid points is a separate, resolution-limited systematic (DiscFlux notes). Reviewer:
+:meth:`DiscFlux.with_deposit` and :meth:`DiscImu.with_deposit` (the other deposit without a new set-up, for the
+validation's rounded-shift references).
 """
 import hashlib
 import json
@@ -92,7 +102,7 @@ from .diagnostics import DIAG_KEYS, diagnostics_array, line_diagnostics
 from .io import file_identity, make_meta, npz_member_memmap, save_npz
 from .library import FluxLibrary, _file_identity, _share, _unshare, node_pairs, teff_bins, teff_edges
 from .sphere import _los_vectors, disc_weights, los_velocity, project_los
-from .spectral import LineSet, VelocityGrid, interp_rows, y_of_lam
+from .spectral import LineSet, VelocityGrid, check_deposit, interp_rows, y_of_lam
 
 __all__ = ["DiscFlux", "integrate_exact_stream", "integrate_exact", "integrate_library_nearest", "save_disc_los",
            "LEGACY_DIAG_KW", "DISC_LOS_KEYS", "PAD_TOL", "INTERP_BYTES", "TEFF_MATCH_TOL", "WORKER_MALLOC",
@@ -248,11 +258,20 @@ class DiscFlux:
         nodes of lib_nodes(nmin=20) with or without the lamfix correction have exactly 0 there, those with
         smooth=335 (the flux_sm335 run) up to 1.78e-15 (the local-linear weights do not sum to exactly 1).
         0 demands exact zeros (the default before 2026-10-01). The check changes no result.
+    deposit: {'nearest', 'linear'}
+        Doppler shifts as whole grid steps ('nearest', default: the M424 products, bit for bit) or split between
+        the two neighbouring steps s0 = floor(x), s0 + 1 with weights 1 - w1, w1 ('linear',
+        :meth:`VelocityGrid.shift_steps`): H_k(s0) += mu (1 - a) (1 - w1), H_k(s0 + 1) += mu (1 - a) w1 (node k0;
+        likewise with a for k1), i.e. linear interpolation of each shifted profile between grid steps. Use
+        'linear' when the line-of-sight velocities are not >> dv. F0, vmean and vsig do not depend on it (H0 to
+        rounding).
 
     Attributes
     ----------
     t, fc: np.ndarray
         Node T_eff' (nn,) and continuum flux (nn, nl) (the arrays of ``nodes``, not copied).
+    deposit: str
+        The deposit option.
     pad_depth: float
         The largest |depth| of the node profiles at |y| > vmax - vshift (0 for exact zeros).
     pad_tol: float
@@ -291,10 +310,41 @@ class DiscFlux:
     -----
     Memory: P and Dhat, nl nn (ny + L + 2) x 8 bytes (M424: 245 nodes, 3 lines: 69 MB). A call needs a few
     arrays of the number of visible points and the (nn, 2 vs + 1) histogram and its FFT.
+
+    Sub-grid shifts (deposit='linear'; tests/synspec/test_linear_deposit.py): exact for the node profiles taken as
+    piecewise linear between their grid points, to rounding: equal to the brute force with continuous shifts and
+    that interpolation model (:func:`ppmpy.synspec.validate.brute_force` with continuous=True: every point's profile
+    evaluated at y + x by linear interpolation between its grid values): M424 dumps 3200, 4000 on 20 000-point
+    subsets of the 8 lines of sight <= 4.3e-15 ('nearest': 2.2e-6 - 4.9e-5), M487 dump 3200 (IGW only, v_los rms
+    0.45 km/s) <= 4.9e-15 ('nearest': 6.8e-4 / 8.0e-5 / 1.0e-3 for the lines 4026 / 4200 / 4922, about half the
+    velocity signal max|F - F0| of 1.3e-3 / 1.7e-4 / 2.5e-3). A single point with v = 0.3 km/s gives the linearly
+    interpolated shifted profile, 'nearest' the unshifted one; against an analytically shifted smooth profile the
+    error falls as dv^2 ('linear') and dv ('nearest'). With deposit='nearest' the M424 flux products are reproduced
+    bit for bit as before.
+
+    That agreement is with a reference of the same interpolation model; it does not make 'linear' exact relative to
+    a continuous shift of the true line profiles. The node profiles are FASTWIND profiles, sampled more coarsely than
+    the 1 km/s grid and interpolated linearly onto it, so they are piecewise linear with kinks (M424 flux nodes:
+    |second differences| of median 6e-8 in the line cores but isolated kinks up to 6.7e-3, e.g. the core of
+    lambda4026 at y = 0). For shifts well below dv (M487) the profile change F - F0 is then partly second order
+    (broadening) and concentrated at those kinks, and depends on how the profiles are interpolated between grid
+    points: :func:`ppmpy.synspec.validate.brute_force` with continuous='cubic' (Catmull-Rom) gives that sensitivity.
+    M487 with the M424 flux nodes, 20 000-point subsets of lines of sight 1-2, lines 4026 / 4200 / 4922 (measured
+    2026-10-02; the reviewer's FFT cubic deposit on all points gave the same to two digits): dump 3200, linear minus
+    cubic max 3.4e-4 / 1.2e-5 / 3.0e-4 = 41 / 16 / 28 % of max|F - F0| 8.4e-4 / 7.7e-5 / 1.1e-3 (rms over |y| <= 600
+    km/s 18 / 6 / 20 %); time-variable parts, linear (nearest) minus cubic: F(3201) - F(3200) 6.6e-6 / 2.5e-7 /
+    6.5e-6 (1.1e-5 / 9.3e-7 / 9.5e-6) of 4.2e-5 / 1.1e-5 / 7.3e-5, F(3300) - F(3200) 5.4e-5 / 2.4e-6 / 4.2e-5
+    (2.3e-4 / 2.7e-5 / 4.3e-4) of 1.06e-3 / 1.4e-4 / 1.8e-3. 'linear' is 2-5 times closer than 'nearest', but static
+    and second-order features of a sub-km/s F - F0 are limited by the line sampling of the library, not by the
+    deposit (a library on finer wavelength sampling would be needed): report linear vs cubic as a systematic.
     """
 
-    def __init__(self, nodes, grid=None, pad_tol=PAD_TOL):
+    deposit = "nearest"          # PP 2026-10-02: class default (instances set it; objects pickled before the option)
+
+    def __init__(self, nodes, grid=None, pad_tol=PAD_TOL, deposit="nearest"):
         # PP 2026-10-01: ported from fw_disc.py:373-379 (DiscFlux.__init__); Y.size -> grid.ny, VSHIFT -> grid.nshift
+        # PP 2026-10-02: deposit (opt-in sub-grid shifts)
+        self.deposit = check_deposit(deposit)
         grid = _grid(grid)
         pad_tol = float(pad_tol)
         if not pad_tol >= 0.0:
@@ -325,8 +375,35 @@ class DiscFlux:
         self.Dhat = sfft.rfft(d, n=self.L, axis=-1)                                              # (nl, nn, nf)
 
     def __repr__(self):
-        return "DiscFlux(nn={}, nl={}, {}, T {:.0f}-{:.0f} K)".format(self.nn, self.nl, self.grid, self.t[0],
-                                                                       self.t[-1])
+        return "DiscFlux(nn={}, nl={}, {}, T {:.0f}-{:.0f} K{})".format(
+            self.nn, self.nl, self.grid, self.t[0], self.t[-1],
+            "" if self.deposit == "nearest" else ", deposit=" + self.deposit)
+
+    def with_deposit(self, deposit):
+        """
+        This integrator with another Doppler-shift deposit, without a new set-up: a shallow copy that shares every
+        array (the node spectra P, Dhat do not depend on the deposit). :mod:`ppmpy.synspec.validate` runs the
+        library checks (V1, V2, V4, V5), whose references round the shifts, on the 'nearest' twin of a 'linear'
+        integrator.
+
+        Parameters
+        ----------
+        deposit: {'nearest', 'linear'}
+
+        Returns
+        -------
+        DiscFlux
+            ``self`` for its own deposit, else the copy (bit for bit a DiscFlux built with that deposit from the same
+            nodes).
+        """
+        # PP 2026-10-02: new (reviewer: V1, V4, V5 compared a 'linear' integrator with rounded-shift references)
+        deposit = check_deposit(deposit)
+        if deposit == self.deposit:
+            return self
+        new = object.__new__(type(self))
+        new.__dict__.update(self.__dict__)
+        new.deposit = deposit
+        return new
 
     def pairs(self, teff, mode="clamp"):
         """
@@ -364,15 +441,25 @@ class DiscFlux:
         vmean, vsig: np.ndarray
             (nl,) mean and rms of v weighted by mu F_c (interpolated F_c of each point).
         n_clip: int
-            Visible points whose |shift| exceeded nshift (clipped to it).
+            Visible points whose |shift| exceeded nshift (clipped to it; 'nearest': |rint(x)| > nshift, 'linear':
+            |x| > nshift, x = -c ln(1 - v/c) / dv).
         """
         # PP 2026-10-01: ported from fw_disc.py:384-400 (DiscFlux.__call__), same operation order
+        # PP 2026-10-02: deposit='linear' (the weights of each point split between steps s0 and s0 + 1)
         vis = mu > 0
         m, v, k0, k1, a = mu[vis], v[vis], k0[vis], k1[vis], a[vis]
-        s, clip = self.grid.shift_steps(v)
-        H = np.bincount(np.concatenate([k0, k1]) * self.nv + np.concatenate([s, s]) + self.vs,
-                        weights=np.concatenate([m * (1.0 - a), m * a]),
-                        minlength=self.nn * self.nv).reshape(self.nn, self.nv)
+        if self.deposit == "nearest":
+            s, clip = self.grid.shift_steps(v)
+            H = np.bincount(np.concatenate([k0, k1]) * self.nv + np.concatenate([s, s]) + self.vs,
+                            weights=np.concatenate([m * (1.0 - a), m * a]),
+                            minlength=self.nn * self.nv).reshape(self.nn, self.nv)
+        else:
+            s0, w1, clip = self.grid.shift_steps(v, deposit="linear")
+            wa, wb = m * (1.0 - a), m * a
+            H = np.bincount(np.concatenate([k0, k1, k0, k1]) * self.nv
+                            + np.concatenate([s0, s0, s0 + 1, s0 + 1]) + self.vs,
+                            weights=np.concatenate([wa * (1.0 - w1), wb * (1.0 - w1), wa * w1, wb * w1]),
+                            minlength=self.nn * self.nv).reshape(self.nn, self.nv)
         H0 = H.sum(axis=1)
         den = self.fc.T @ H0                                                                     # (nl,)
         F0 = np.einsum("k,jky->jy", H0, self.P) / den[:, None] if novel else None
@@ -1507,6 +1594,12 @@ class DiscImu:
         computed inside it; :meth:`integrate_los` computes each row once for all lines of sight of a dump.
     chunk: int
         Histogram rows per FFT block (legacy 128; sets the accumulation order, hence the last bits).
+    deposit: {'nearest', 'linear'}
+        Doppler shifts as whole grid steps ('nearest', default: the M424 imu products, bit for bit) or split between
+        the two neighbouring steps s0 = floor(x), s0 + 1 with weights 1 - w1, w1 ('linear',
+        :meth:`VelocityGrid.shift_steps`): each of a point's four (node, ray) weights goes to the histogram at s0
+        times 1 - w1 and at s0 + 1 times w1, i.e. linear interpolation of the shifted intensities between grid
+        steps (as :class:`DiscFlux`). F0 and the velocity moments do not depend on it (F0 to rounding).
 
     Attributes
     ----------
@@ -1537,7 +1630,7 @@ class DiscImu:
         {} (no flux-library node options).
     path: str or None
         The library file (None for a mapping without a 'path').
-    dtype, fft, chunk:
+    dtype, fft, chunk, deposit:
         The options.
 
     Raises
@@ -1641,14 +1734,17 @@ class DiscImu:
     """
     method = "imu"
     CHUNK = 128
+    deposit = "nearest"          # PP 2026-10-02: class default (instances set it; objects pickled before the option)
 
-    def __init__(self, lib, grid=None, lines=None, dtype="float64", fft="precomputed", chunk=CHUNK):
+    def __init__(self, lib, grid=None, lines=None, dtype="float64", fft="precomputed", chunk=CHUNK, deposit="nearest"):
         # PP 2026-10-02: ported from fw_disc.py:413-435 (DiscImu.__init__): node selection np.unique(src), the padding
         # of s beyond nnode into (1, 2), Sflat and its assertion, the edge-padded rfft of length
         # next_fast_len(ny + 2 vshift + nv - 1); Y.size -> grid.ny, VSHIFT -> grid.nshift, ny // 2 -> grid.icentre,
         # range(3) -> the library's lines; new: dtype, fft, chunk, lines, blockwise FFTs (same bits), checks
         # PP 2026-10-02 (reviewer): a dict grid, any spelling of the dtype, the grid recorded in a file's '_meta',
         # grids compared by their points only (vshift is free), a memory-mapped ImuLibrary pickled as its file
+        # PP 2026-10-02: deposit (opt-in sub-grid shifts)
+        self.deposit = check_deposit(deposit)
         if isinstance(grid, dict):
             grid = VelocityGrid(**grid)
         if grid is not None:
@@ -1678,7 +1774,8 @@ class DiscImu:
                                                                      lgrid.ny, lgrid.y[0], lgrid.y[-1]))
         grid = _grid(grid)
         self.grid, self.dtype, self.fft, self.chunk = grid, dtype, fft, int(chunk)
-        self._init_args = dict(lines=lines, dtype=dtype, fft=fft, chunk=int(chunk), grid=grid.to_dict())
+        self._init_args = dict(lines=lines, dtype=dtype, fft=fft, chunk=int(chunk), grid=grid.to_dict(),
+                               deposit=self.deposit)
         self.path = path
         # pickled as a recipe (file name, identity, options) when built from a file, or from an ImuLibrary whose
         # intensities are memory maps of its file (ImuLibrary.load(mmap=True)); else as the arrays
@@ -1776,8 +1873,35 @@ class DiscImu:
 
     # ---- helpers ----
     def __repr__(self):
-        return "DiscImu(nn={}, K={}, nl={}, built={}, {}, fft={}, dtype={}, T {:.0f}-{:.0f} K)".format(
-            self.nn, self.K, self.nl, list(self.built), self.grid, self.fft, self.dtype, self.t[0], self.t[-1])
+        return "DiscImu(nn={}, K={}, nl={}, built={}, {}, fft={}, dtype={}{}, T {:.0f}-{:.0f} K)".format(
+            self.nn, self.K, self.nl, list(self.built), self.grid, self.fft, self.dtype,
+            "" if self.deposit == "nearest" else ", deposit=" + self.deposit, self.t[0], self.t[-1])
+
+    def with_deposit(self, deposit):
+        """
+        This integrator with another Doppler-shift deposit, without a new set-up (as :meth:`DiscFlux.with_deposit`):
+        a shallow copy that shares the library spectra and sources (the deposit is read at call time only); its
+        pickling recipe and fingerprint carry the new deposit.
+
+        Parameters
+        ----------
+        deposit: {'nearest', 'linear'}
+
+        Returns
+        -------
+        DiscImu
+            ``self`` for its own deposit, else the copy (bit for bit a DiscImu built with that deposit and the same
+            options).
+        """
+        # PP 2026-10-02: new (validate: the checks with rounded-shift references run on the 'nearest' twin)
+        deposit = check_deposit(deposit)
+        if deposit == self.deposit:
+            return self
+        new = object.__new__(type(self))
+        new.__dict__.update(self.__dict__)
+        new.deposit = deposit
+        new._init_args = dict(self._init_args, deposit=deposit)
+        return new
 
     def _line_list(self, lines, all_lines=False):
         """Line indices (sorted, unique) of a lines argument; default all lines (constructor) or the built ones."""
@@ -1850,16 +1974,24 @@ class DiscImu:
         x0, x1 = sf[i * self.K + kk] - 10.0 * i, sf[i * self.K + kk + 1] - 10.0 * i
         return kk, np.clip((s - x0) / (x1 - x0), 0.0, 1.0)
 
-    def _hist(self, j, m, s, sh, k0, k1, a):
-        """rows, weights (4 per point) and the velocity histogram H (nn K, nv) of line j."""
+    def _hist(self, j, m, s, sh, k0, k1, a, w1=None):
+        """rows, weights (4 per point) and the velocity histogram H (nn K, nv) of line j; with the upper-step weights
+        w1 (deposit 'linear', sh = the lower steps s0) every weight is split between s0 (1 - w1) and s0 + 1 (w1)."""
         # PP 2026-10-02: ported from fw_disc.py:461-465 (the rows, weights and bincount of __call__)
+        # PP 2026-10-02: w1 (deposit='linear'); the returned rows, wts (velocity moments) are the unsplit ones
         kA, tA = self._rays(k0, s, j)
         kB, tB = self._rays(k1, s, j)
         rows = np.concatenate([k0 * self.K + kA, k0 * self.K + kA + 1, k1 * self.K + kB, k1 * self.K + kB + 1])
         wts = np.concatenate([m * (1 - a) * (1 - tA), m * (1 - a) * tA, m * a * (1 - tB), m * a * tB])
         nr = self.nn * self.K
-        H = np.bincount(rows * self.nv + np.tile(sh, 4) + self.vs, weights=wts,
-                        minlength=nr * self.nv).reshape(nr, self.nv)
+        if w1 is None:
+            H = np.bincount(rows * self.nv + np.tile(sh, 4) + self.vs, weights=wts,
+                            minlength=nr * self.nv).reshape(nr, self.nv)
+        else:
+            sh4, w14 = np.tile(sh, 4), np.tile(w1, 4)
+            H = np.bincount(np.concatenate([rows * self.nv + sh4, rows * self.nv + sh4 + 1]) + self.vs,
+                            weights=np.concatenate([wts * (1.0 - w14), wts * w14]),
+                            minlength=nr * self.nv).reshape(nr, self.nv)
         return rows, wts, H
 
     def _vmoments(self, j, rows, wts, vv):
@@ -1988,8 +2120,12 @@ class DiscImu:
                 raise ValueError("{} visible points have a non-finite T_eff' weight a (a NaN T_eff'?)".format(
                     int(bad.sum())))
         s = np.sqrt(np.clip(1.0 - m ** 2, 0.0, 1.0))
-        sh, clip = self.grid.shift_steps(v)
-        return dict(m=m, v=v, k0=k0, k1=k1, a=a, s=s, sh=sh, n_clip=int(clip.sum()))
+        if self.deposit == "nearest":
+            sh, clip = self.grid.shift_steps(v)
+            w1 = None
+        else:
+            sh, w1, clip = self.grid.shift_steps(v, deposit="linear")      # PP 2026-10-02: sub-grid shifts
+        return dict(m=m, v=v, k0=k0, k1=k1, a=a, s=s, sh=sh, w1=w1, n_clip=int(clip.sum()))
 
     # ---- the disc integral ----
     def __call__(self, mu, v, k0, k1, a, novel=True, lines=None):
@@ -2017,7 +2153,8 @@ class DiscImu:
         vmean, vsig: np.ndarray
             (nl,) mean and rms of v weighted by mu I_c(mu) at the line centre.
         n_clip: int
-            Visible points whose |shift| exceeded nshift (clipped to it).
+            Visible points whose |shift| exceeded nshift (clipped to it; 'linear': |x| > nshift, see
+            :meth:`VelocityGrid.shift_steps`).
 
         Raises
         ------
@@ -2032,7 +2169,7 @@ class DiscImu:
         vm, sd = np.full(self.nl, np.nan), np.full(self.nl, np.nan)
         vv = np.tile(p["v"], 4)
         for j in lines:
-            rows, wts, H = self._hist(j, p["m"], p["s"], p["sh"], p["k0"], p["k1"], p["a"])
+            rows, wts, H = self._hist(j, p["m"], p["s"], p["sh"], p["k0"], p["k1"], p["a"], p["w1"])
             H0 = H.sum(axis=1)
             vm[j], sd[j] = self._vmoments(j, rows, wts, vv)
             del rows, wts
@@ -2100,7 +2237,7 @@ class DiscImu:
         for j in lines:
             Hs, H0s = [], []
             for k, p in enumerate(P):
-                rows, wts, H = self._hist(j, p["m"], p["s"], p["sh"], p["k0"], p["k1"], p["a"])
+                rows, wts, H = self._hist(j, p["m"], p["s"], p["sh"], p["k0"], p["k1"], p["a"], p["w1"])
                 vm[k, j], sd[k, j] = self._vmoments(j, rows, wts, np.tile(p["v"], 4))
                 del rows, wts
                 Hs.append(H)
@@ -2134,10 +2271,14 @@ class DiscImu:
         the built lines; in lazy mode it is computed on the first call, reading the library once).
         """
         # PP 2026-10-02: new
-        return dict(cls="ppmpy.synspec.disc.DiscImu", method=self.method, fft=self.fft, dtype=self.dtype,
-                    chunk=self.chunk, grid=self.grid.to_dict(), lines=list(self.built), nl=self.nl, nn=self.nn,
-                    K=self.K, t_range=[float(self.t[0]), float(self.t[-1])], library_sha256=self._library_sha256(),
-                    lref=None if self.lref is None else [float(x) for x in self.lref])
+        # PP 2026-10-02: 'deposit' only when not 'nearest' (the records of the nearest runs stay as they were)
+        rec = dict(cls="ppmpy.synspec.disc.DiscImu", method=self.method, fft=self.fft, dtype=self.dtype,
+                   chunk=self.chunk, grid=self.grid.to_dict(), lines=list(self.built), nl=self.nl, nn=self.nn,
+                   K=self.K, t_range=[float(self.t[0]), float(self.t[-1])], library_sha256=self._library_sha256(),
+                   lref=None if self.lref is None else [float(x) for x in self.lref])
+        if self.deposit != "nearest":
+            rec["deposit"] = self.deposit
+        return rec
 
     def memory(self):
         """

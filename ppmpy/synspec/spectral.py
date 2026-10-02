@@ -8,10 +8,26 @@ All profiles are handled on a uniform velocity grid y = c ln(lambda / lambda_ref
 PP 2026-10-01: ported from the project's fw_disc.py (Y, LREF, interp_rows, lam_of_y,
 shift_steps); the defaults reproduce the M424 grid (dv 1 km/s, |y| <= 2700 km/s,
 shifts up to 400 km/s).
+PP 2026-10-02: opt-in sub-grid Doppler shifts (``shift_steps(v, deposit='linear')``: the lower
+step and the weight of the upper one, i.e. linear interpolation of the shifted profile between
+grid steps; for line-of-sight velocities well below dv, e.g. the IGW-only run M487 with
+~0.5 km/s on the 1 km/s grid). The default 'nearest' is unchanged (whole steps).
 """
 import numpy as np
 
 from .conventions import C_KMS
+
+DEPOSITS = ("nearest", "linear")
+"""Doppler-shift deposits of :meth:`VelocityGrid.shift_steps` and the disc integrators: 'nearest' (whole grid steps,
+the M424 production) and 'linear' (each point split between the two neighbouring steps)."""
+
+
+def check_deposit(deposit):
+    """The deposit name (one of :data:`DEPOSITS`); ValueError otherwise."""
+    # PP 2026-10-02: new (sub-grid Doppler shifts)
+    if not isinstance(deposit, str) or deposit not in DEPOSITS:
+        raise ValueError("deposit must be one of {}, got {!r}".format(DEPOSITS, deposit))
+    return deposit
 
 
 class LineSet:
@@ -91,19 +107,65 @@ class VelocityGrid:
         """Wavelengths of the grid for a line with zero point lref [Angstrom]."""
         return lam_of_y(self.y, lref)
 
-    def shift_steps(self, v):
+    def shift_steps(self, v, deposit="nearest"):
         """
-        Doppler shift of v [km/s, > 0 towards the observer] in grid steps.
+        Doppler shift of v [km/s, > 0 towards the observer] in grid steps: x = -c ln(1 - v/c) / dv.
+
+        Parameters
+        ----------
+        v: array-like
+            Line-of-sight velocities [km/s].
+        deposit: {'nearest', 'linear'}
+            'nearest' (default, the M424 production): the nearest whole step. 'linear': the lower step
+            s0 = floor(x) and the weight w1 = x - s0 of the upper step s0 + 1 (the lower one gets 1 - w1); a
+            profile shifted by (1 - w1) at s0 plus w1 at s0 + 1 is the profile shifted by x with linear
+            interpolation between the grid points.
 
         Returns
         -------
-        s: np.ndarray of int64
-            ``rint(-c ln(1 - v/c) / dv)``, clipped to +-nshift.
-        clipped: np.ndarray of bool
-            True where the shift exceeded nshift.
+        'nearest': (s, clipped)
+            s: np.ndarray of int64
+                ``rint(x)``, clipped to +-nshift.
+            clipped: np.ndarray of bool
+                True where the shift exceeded nshift (|rint(x)| > nshift).
+        'linear': (s0, w1, clipped)
+            s0: np.ndarray of int64
+                floor(x), in [-nshift, nshift - 1].
+            w1: np.ndarray of float64
+                Weight of step s0 + 1, in [0, 1].
+            clipped: np.ndarray of bool
+                True where |x| > nshift; clipped as 'nearest': x >= nshift gives s0 = nshift - 1, w1 = 1 (all
+                weight at +nshift), x <= -nshift gives s0 = -nshift, w1 = 0 (nshift = 0: s0 = 0, w1 = 0).
+
+        Raises
+        ------
+        ValueError
+            'linear' with a non-finite shift (v not finite or v >= c), or an unknown deposit.
         """
-        s = np.rint(-C_KMS * np.log(1.0 - np.asarray(v) / C_KMS) / self.dv).astype(np.int64)
-        return np.clip(s, -self.nshift, self.nshift), np.abs(s) > self.nshift
+        # PP 2026-10-02: deposit='linear' added (sub-grid shifts); 'nearest' is the original code, same bits
+        if deposit == "nearest":
+            s = np.rint(-C_KMS * np.log(1.0 - np.asarray(v) / C_KMS) / self.dv).astype(np.int64)
+            return np.clip(s, -self.nshift, self.nshift), np.abs(s) > self.nshift
+        check_deposit(deposit)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            x = -C_KMS * np.log(1.0 - np.asarray(v, dtype=np.float64) / C_KMS) / self.dv
+        if not np.all(np.isfinite(x)):
+            raise ValueError("{} velocities give a non-finite Doppler shift (not finite, or >= c)".format(
+                int(np.sum(~np.isfinite(x)))))
+        f = np.floor(x)
+        w1 = x - f
+        s0 = f.astype(np.int64)
+        n = self.nshift
+        hi, lo = x >= n, x <= -n
+        if n > 0:
+            s0 = np.where(hi, n - 1, s0)
+            w1 = np.where(hi, 1.0, w1)
+        else:
+            s0 = np.where(hi, 0, s0)
+            w1 = np.where(hi, 0.0, w1)
+        s0 = np.where(lo, -n, s0)
+        w1 = np.where(lo, 0.0, w1)
+        return s0, w1, np.abs(x) > n
 
     def check_zero_padding(self, depth, tol=0.0):
         """

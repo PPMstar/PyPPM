@@ -22,8 +22,9 @@ shifts) on the same sphere of points. The per-dump sphere samples (sphere_sample
 Files
 -----
 ``<outdir>/<name>/dNNNN.npz``
-    One per dump: the members :data:`DUMP_KEYS` in this order with the legacy dtypes (F, F0 float32), then the
-    ``extra_fields``, then '_meta' with ``meta=True``. Without extras and '_meta' (the default) the file equals
+    One per dump: the members :data:`DUMP_KEYS` in this order with the legacy dtypes (F, F0 float32), then
+    'deposit' (str; runs with sub-grid Doppler shifts only), then the ``extra_fields``, then '_meta' with
+    ``meta=True``. Without extras and '_meta' (the default) the file equals
     the one fw_disc_dumps.py writes for the same numbers byte for byte. Written to ``dNNNN.tmp<pid>.npz`` and
     renamed (atomic); a worker killed while writing leaves that temporary behind (listed, never read).
 ``<outdir>/<name>/_run.json`` (:data:`RUN_FILE`)
@@ -88,11 +89,20 @@ AVX512 Trillium nodes; see the library and sphere module notes for what is hardw
 
 PP 2026-10-01: ported from the project's fw_disc_dumps.py (process(), the driver) and fw_disc_collect.py; see the
 provenance comments per function.
+PP 2026-10-02: opt-in sub-grid Doppler shifts: ``deposit='linear'`` of :func:`flux_integrator`, :func:`imu_integrator`
+and :func:`run_disc_dumps` (:class:`ppmpy.synspec.disc.DiscFlux` / :class:`ppmpy.synspec.disc.DiscImu`); such runs are
+named with the suffix '_lin' (:func:`run_fields`: flux_lin, imu_lin, imu_lazy_lin, ...), record the deposit in their
+run record (params 'deposit' and the integrator's identity) and never adopt a record-less (legacy) directory. Runs with
+the default 'nearest' keep their names, records and files. Reviewer: the deposit is also a member of every per-dump
+file of a 'linear' run (a record-less directory of either deposit is refused by the other), a complete directory
+given by name is checked for the requested deposit, a deposit among the factory's positional arguments is seen, and
+the ``deposit`` parameter of :func:`run_disc_dumps` comes after ``log`` (positional order as before the option).
 """
 import contextlib
 import datetime
 import errno
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -111,7 +121,7 @@ from .disc import PAD_TOL, WORKER_MALLOC, DiscFlux, DiscImu, _spill, _tune_mallo
 from .fwresults import _NpzStream, _meta_array, _npz_layout, _pid_alive
 from .io import file_identity, make_meta, npz_member_memmap, save_npz
 from .library import FluxLibrary, _share, _unshare, coverage, lib_nodes
-from .spectral import LineSet, VelocityGrid
+from .spectral import LineSet, VelocityGrid, check_deposit
 from .sphere import _los_vectors, los_velocity, project_los
 
 __all__ = ["load_sample", "sample_path", "dump_path", "disc_dump", "dump_arrays", "run_fields", "flux_integrator",
@@ -333,6 +343,9 @@ def _integ_info(integ):
     info = dict(cls="{}.{}".format(_modname(cls), cls.__qualname__), nn=int(t.size),
                 t_range=[float(t[0]), float(t[-1])], node_params=_norm(dict(getattr(integ, "node_params", None) or {})),
                 arrays=[k for k, _ in arrays], sha256=_sha256(*(np.asarray(v) for _, v in arrays)))
+    dep = _integ_deposit(integ)
+    if dep != "nearest":
+        info["deposit"] = dep          # PP 2026-10-02: sub-grid shifts (absent for 'nearest': records as before)
     if callable(custom):
         rec = _norm(custom())
         if isinstance(integ, DiscImu) and isinstance(rec, dict):
@@ -341,6 +354,62 @@ def _integ_info(integ):
             rec.pop("lref", None)
         info["custom"] = rec
     return info
+
+
+def _integ_deposit(integ):
+    """The Doppler-shift deposit of an integrator: its ``deposit`` attribute, 'nearest' where it has none."""
+    # PP 2026-10-02: new (sub-grid shifts)
+    dep = getattr(integ, "deposit", "nearest")
+    return "nearest" if dep is None else check_deposit(dep)
+
+
+def _factory_deposit(factory, args, kwargs):
+    """
+    (given, default): the deposit a factory gets from its keyword or positional arguments (None if not given) and
+    the default of its ``deposit`` parameter (None if it has none, or no signature).
+    """
+    # PP 2026-10-02: new (reviewer: a deposit in factory_args was not seen by the conflict check)
+    given = kwargs.get("deposit")
+    try:
+        sig = inspect.signature(factory)
+    except (TypeError, ValueError):
+        return given, None
+    par_ = sig.parameters.get("deposit")
+    default = None if par_ is None or par_.default is inspect.Parameter.empty else par_.default
+    if given is None and par_ is not None and args:
+        try:
+            given = sig.bind_partial(*args).arguments.get("deposit")
+        except TypeError:
+            pass
+    return given, default
+
+
+def _dir_deposit(ddir):
+    """
+    The deposit of the results in a per-dump directory: its run record's params['deposit'], else the member
+    'deposit' of its first per-dump file ('nearest' where absent: the records and files of 'nearest' runs have
+    none); None for a directory without either.
+    """
+    # PP 2026-10-02: new (reviewer: an explicit name with all dumps present returned before any check)
+    rec = read_run_record(ddir)
+    if rec is not None:
+        return str(rec["params"].get("deposit", "nearest"))
+    have = _present_dumps(ddir)
+    if not have:
+        return None
+    return _stored_constants(dump_path(os.path.dirname(ddir), os.path.basename(ddir), have[0]))["deposit"]
+
+
+def _check_dir_deposit(ddir, want, n):
+    """Raise unless the deposit of the results present in ddir (:func:`_dir_deposit`) is ``want`` (None: no
+    check)."""
+    if want is None:
+        return
+    have = _dir_deposit(ddir)
+    if have is not None and have != want:
+        raise ValueError("{}: all {} dumps are present, but computed with deposit {!r}, not the requested {!r}: use "
+                         "another name (name=None gives each deposit its own) or output directory".format(
+                             ddir, n, have, want))
 
 
 class _NoFingerprint(Exception):
@@ -394,6 +463,13 @@ def _inputs_fingerprint(factory, args, kwargs):
     mod = _modname(factory, None) if getattr(factory, "__module__", None) else None
     if not qual or not mod or "<" in qual:
         return None
+    if factory is flux_integrator:
+        # PP 2026-10-02: an explicit default deposit (keyword, or the 8th positional argument) and an omitted one are
+        # the same run
+        if dict(kwargs).get("deposit") == "nearest":
+            kwargs = {k: v for k, v in dict(kwargs).items() if k != "deposit"}
+        if len(tuple(args)) == 8 and tuple(args)[7] == "nearest":
+            args = tuple(args)[:7]
     if factory is imu_integrator:
         # PP 2026-10-02: reviewer: lref only labels the lines (the run's params record it), so giving it to the factory
         # or to run_disc_dumps is the same run
@@ -445,10 +521,10 @@ def _check_extra(extra):
     if not isinstance(extra, dict):
         raise TypeError("extra_fields must be a dict or a callable returning a dict, got {}".format(
             type(extra).__name__))
-    clash = [k for k in extra if k in DUMP_KEYS or k == "_meta" or not isinstance(k, str) or not k]
+    clash = [k for k in extra if k in DUMP_KEYS or k in ("_meta", "deposit") or not isinstance(k, str) or not k]
     if clash:
-        raise ValueError("extra field names must be non-empty strings other than the legacy members and '_meta': {}"
-                         .format(clash))
+        raise ValueError("extra field names must be non-empty strings other than the legacy members, 'deposit' and "
+                         "'_meta': {}".format(clash))
     obj = [k for k, v in extra.items() if np.asarray(v).dtype.hasobject]
     if obj:
         raise ValueError("extra fields must be numeric, boolean or string arrays (no objects, which np.savez would "
@@ -755,12 +831,14 @@ def run_fields(integ, name=None):
         correction) + '_sm<smooth:g>' (with smoothing), e.g. 'flux', 'flux_lamfix', 'flux_sm335'; for a
         :class:`ppmpy.synspec.disc.DiscImu` whose options differ from the legacy integrator's (:func:`_imu_mode`)
         further '_lazy' (fft='lazy'), '_f32' (dtype='float32'), '_c<chunk>' (chunk != 128) and '_l<j>-<k>' (only
-        lines j, k built), e.g. 'imu_lazy', 'imu_lazy_f32'; the default options keep 'imu'.
+        lines j, k built), e.g. 'imu_lazy', 'imu_lazy_f32'; the default options keep 'imu'; then '_lin' for an
+        integrator with deposit='linear' (sub-grid Doppler shifts), e.g. 'flux_lin', 'imu_lin', 'imu_lazy_lin'.
 
     Returns
     -------
     dict
-        method (str), name (str), lamfix (bool), smooth (float), nmin (int).
+        method (str), name (str), lamfix (bool), smooth (float), nmin (int); and deposit (str) for an integrator
+        whose deposit is not 'nearest' (absent otherwise: the fields of the legacy runs).
     """
     # PP 2026-10-01: ported from fw_disc_dumps.py:55 (NAME) and :102-105 (method, lamfix, smooth, nmin of np.savez;
     # nmin = a.nmin if method == "flux" else 0)
@@ -777,12 +855,31 @@ def run_fields(integ, name=None):
     if name is None:
         name = method + ("_lamfix" if lamfix else "") + ("_sm{:g}".format(smooth) if smooth else "")
         # PP 2026-10-02: reviewer: every DiscImu mode defaulted to 'imu' (the legacy directory)
-        name += "".join("_" + _MODE_TAG[k](v) for k, v in _imu_mode(integ))
-    return dict(method=method, name=_check_name(name), lamfix=lamfix, smooth=smooth, nmin=nmin)
+        # PP 2026-10-02: _run_mode: plus '_lin' for deposit='linear'
+        name += "".join("_" + _MODE_TAG[k](v) for k, v in _run_mode(integ))
+    out = dict(method=method, name=_check_name(name), lamfix=lamfix, smooth=smooth, nmin=nmin)
+    dep = _integ_deposit(integ)
+    if dep != "nearest":
+        out["deposit"] = dep          # PP 2026-10-02: the per-dump files of sub-grid runs record it (dump_arrays)
+    return out
 
 
 _MODE_TAG = dict(fft=str, dtype=lambda v: "f32" if v == "float32" else str(v), chunk="c{}".format,
-                 lines=lambda v: "l" + "-".join(str(j) for j in v))
+                 lines=lambda v: "l" + "-".join(str(j) for j in v), deposit=lambda v: "lin" if v == "linear" else v)
+
+
+def _run_mode(integ):
+    """
+    The options of an integrator that differ from the legacy ones: those of :func:`_imu_mode`, then ('deposit',
+    'linear') for sub-grid Doppler shifts (any integrator with that ``deposit`` attribute); [] for the legacy options.
+    Sets the default run name (:func:`run_fields`) and refuses the adoption of record-less legacy directories.
+    """
+    # PP 2026-10-02: new (sub-grid shifts)
+    out = _imu_mode(integ)
+    dep = _integ_deposit(integ)
+    if dep != "nearest":
+        out.append(("deposit", dep))
+    return out
 
 
 def _imu_mode(integ):
@@ -824,7 +921,7 @@ def dump_arrays(result, fields, extra=None):
     dict
         name -> value for :func:`ppmpy.synspec.io.save_npz`: dump, n_lo, n_hi, nmin int64; t_s, smooth,
         diag_vwin float; method, name str; lamfix bool; F, F0 float32; the rest as computed (float64, n_clip
-        int64).
+        int64); then 'deposit' (str) when ``fields`` has a deposit other than 'nearest' (:func:`run_fields`).
     """
     # PP 2026-10-01: ported from fw_disc_dumps.py:102-105 (the members, order and dtypes of np.savez)
     if result.get("dump") is None:
@@ -838,11 +935,15 @@ def dump_arrays(result, fields, extra=None):
                wout=result["wout"], n_clip=np.asarray(result["n_clip"], dtype=np.int64), teff_mean=result["teff_mean"],
                teff_std=result["teff_std"], teff_min=result["teff_min"], teff_max=result["teff_max"],
                nmin=np.int64(fields["nmin"]), node_range=result["node_range"])
+    if fields.get("deposit", "nearest") != "nearest":
+        # PP 2026-10-02: sub-grid shifts only (the files of 'nearest' runs stay byte for byte as before)
+        out["deposit"] = str(check_deposit(fields["deposit"]))
     out.update(_check_extra(extra))
     return out
 
 
-def flux_integrator(library, nmin=20, smooth=0.0, corr=None, corr_key="corr", grid=None, pad_tol=PAD_TOL):
+def flux_integrator(library, nmin=20, smooth=0.0, corr=None, corr_key="corr", grid=None, pad_tol=PAD_TOL,
+                    deposit="nearest"):
     """
     The integrator of a flux run: library -> :func:`ppmpy.synspec.library.lib_nodes` ->
     :class:`ppmpy.synspec.disc.DiscFlux`. A module-level factory for :func:`run_disc_dumps` (picklable, so
@@ -863,6 +964,9 @@ def flux_integrator(library, nmin=20, smooth=0.0, corr=None, corr_key="corr", gr
         :meth:`ppmpy.synspec.library.FluxLibrary.build`; the legacy library_dT10.npz records none).
     pad_tol: float
         :class:`ppmpy.synspec.disc.DiscFlux` zero-padding tolerance.
+    deposit: {'nearest', 'linear'}
+        :class:`ppmpy.synspec.disc.DiscFlux` Doppler-shift deposit: whole grid steps (default, the M424 runs) or
+        sub-grid shifts ('linear'; run name suffix '_lin', :func:`run_fields`).
 
     Returns
     -------
@@ -907,7 +1011,7 @@ def flux_integrator(library, nmin=20, smooth=0.0, corr=None, corr_key="corr", gr
                                  lp["ny"], lp["y0"], lp["y1"], g, g.ny, g.y[0], g.y[-1]))
     with _blas_limit(1):
         nodes = lib_nodes(lib, nmin=nmin, smooth=smooth, corr=corr)
-    integ = DiscFlux(nodes, grid=grid, pad_tol=pad_tol)
+    integ = DiscFlux(nodes, grid=grid, pad_tol=pad_tol, deposit=deposit)     # PP 2026-10-02: deposit
     if lp.get("lref") is not None:
         lr = np.atleast_1d(np.asarray(lp["lref"], dtype=np.float64))
         if lr.shape != (integ.nl,):
@@ -955,7 +1059,8 @@ def _imu_line_indices(library, lines, lref):
     return out
 
 
-def imu_integrator(library, grid=None, lines=None, dtype="float64", fft="precomputed", chunk=DiscImu.CHUNK, lref=None):
+def imu_integrator(library, grid=None, lines=None, dtype="float64", fft="precomputed", chunk=DiscImu.CHUNK, lref=None,
+                   deposit="nearest"):
     """
     The integrator of an intensity ('imu') run: :class:`ppmpy.synspec.disc.DiscImu` of an intensity library. A
     module-level factory for :func:`run_disc_dumps` (as :func:`flux_integrator`): 'fork' workers share the
@@ -991,6 +1096,9 @@ def imu_integrator(library, grid=None, lines=None, dtype="float64", fft="precomp
         messages then take the lines from the integrator. lref does not change the profiles: the run record keeps it
         in its params (lref) only, not in the integrator's identity, so giving it here or to :func:`run_disc_dumps`
         is the same run.
+    deposit: {'nearest', 'linear'}
+        :class:`ppmpy.synspec.disc.DiscImu` Doppler-shift deposit: whole grid steps (default, the production imu
+        run) or sub-grid shifts ('linear'; run name suffix '_lin', :func:`run_fields`).
 
     Returns
     -------
@@ -1050,7 +1158,8 @@ def imu_integrator(library, grid=None, lines=None, dtype="float64", fft="precomp
     # PP 2026-10-02: new (the factory of the imu run; fw_disc_dumps.py:68: INT = fd.DiscImu(), lref = fd.LREF)
     lines = _imu_line_indices(library, lines, lref)
     with _blas_limit(1):
-        integ = DiscImu(library, grid=grid, lines=lines, dtype=dtype, fft=fft, chunk=chunk)
+        integ = DiscImu(library, grid=grid, lines=lines, dtype=dtype, fft=fft, chunk=chunk,
+                        deposit=deposit)                 # PP 2026-10-02: deposit
     if lref is not None:
         names, lr = _lref_of(lref)
         if lr.shape != (integ.nl,):
@@ -1231,11 +1340,14 @@ def _present_tmp(src):
 
 
 def _stored_constants(path):
-    """The run constants (_RUN_CONST) and the profile shape (nlos, nl, ny) stored in a per-dump file."""
+    """The run constants (_RUN_CONST), the deposit ('nearest' where the file has none) and the profile shape
+    (nlos, nl, ny) stored in a per-dump file."""
+    # PP 2026-10-02: deposit (reviewer: a 'nearest' run adopted a record-less 'linear' directory)
     with np.load(path) as r:
         c = dict(method=str(r["method"]), name=str(r["name"]), lamfix=bool(r["lamfix"]), smooth=float(r["smooth"]),
                  nmin=int(r["nmin"]), diag_vwin=float(r["diag_vwin"]), diag_keys=[str(k) for k in r["diag_keys"]],
-                 node_range=[float(x) for x in r["node_range"]])
+                 node_range=[float(x) for x in r["node_range"]],
+                 deposit=str(r["deposit"]) if "deposit" in r.files else "nearest")
     c["shape"] = list(_npz_layout(path)["F"][0])
     return c
 
@@ -1357,7 +1469,8 @@ def _check_run_record(ddir, params, info, expect, _log, mode=None):
 def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args, theta, phi, los, nproc=1, rank=0,
                    nranks=1, maxtasksperchild=20, timeout=900.0, overwrite=False, start_method=None, extra_fields=None,
                    lref=None, factory_kwargs=None, pattern=SAMPLE_PATTERN, project_method="matmul", diag_vwin=None,
-                   diag_keys=DIAG_KEYS, meta=False, tmpdir=None, tune_malloc=None, batch=None, log=None):
+                   diag_keys=DIAG_KEYS, meta=False, tmpdir=None, tune_malloc=None, batch=None, log=None,
+                   deposit=None):
     """
     Disc-integrated profiles of many dumps (port of fw_disc_dumps.py): one file per dump in ``outdir/name``.
 
@@ -1464,6 +1577,19 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
         run record.
     log: callable, optional
         log(message) for progress messages (e.g. print), with the legacy per-dump lines.
+    deposit: {None, 'nearest', 'linear'}
+        Doppler-shift deposit of the integrator (give it by keyword: it is the last parameter). None (default): the
+        factory's (its 'deposit' argument in ``factory_args`` / ``factory_kwargs``, else its default: 'nearest' for
+        :func:`flux_integrator` and :func:`imu_integrator`). 'linear' (sub-grid shifts) is passed to the factory as
+        the keyword ``deposit`` (so 'spawn' workers build the same integrator) unless the factory already gets it;
+        a deposit given to the factory (keyword or position) that differs raises ValueError (conflicting options).
+        The built integrator's ``deposit`` attribute ('nearest' where it has none) must equal it (ValueError
+        otherwise). A 'linear' run is named with the suffix '_lin' (name=None; :func:`run_fields`), records
+        params['deposit'] = 'linear' and the deposit in the integrator's identity and in every per-dump file (member
+        'deposit'), and does not adopt a record-less (legacy) directory; 'nearest' runs record nothing new (their run
+        records and files are those of the code before the option). With an explicit ``name`` whose dumps are all
+        present, the deposit of the directory (run record, else its first per-dump file) must be the requested one
+        (ValueError otherwise; checked where the requested deposit is known without building the integrator).
 
     Returns
     -------
@@ -1535,6 +1661,18 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
     nproc = int(nproc)
     if extra_fields is not None and not callable(extra_fields):
         _check_extra(extra_fields)
+    # PP 2026-10-02: new (sub-grid shifts): passed to the factory, checked on the built integrator; reviewer: a
+    # deposit among the factory's positional arguments is seen too, and the requested deposit (known without
+    # building the integrator) is checked against a complete directory
+    given, fdefault = _factory_deposit(integ_factory, factory_args, factory_kwargs)
+    if deposit is not None:
+        check_deposit(deposit)
+        if given is not None and given != deposit:
+            raise ValueError("deposit={!r} conflicts with the factory's deposit argument {!r} (factory_kwargs or "
+                             "factory_args)".format(deposit, given))
+        if given is None and deposit != "nearest":
+            factory_kwargs["deposit"] = deposit
+    want_dep = deposit if deposit is not None else (given if given is not None else fdefault)
     keys = _diag_keys(diag_keys)
     samples_dir = os.path.realpath(os.fspath(samples_dir))
     outdir = os.path.abspath(os.fspath(outdir))
@@ -1554,6 +1692,7 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
         _check_name(name)
         todo = _todo(name)
         if not todo:
+            _check_dir_deposit(os.path.join(outdir, name), want_dep, len(mine))
             _log("{}: {} dumps (rank {}/{}), all present in {}".format(name, len(mine), rank, nranks,
                                                                       os.path.join(outdir, name)))
             return _summary(name, todo)
@@ -1565,11 +1704,17 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
         tb = time.time()
         integ = integ_factory(*factory_args, **factory_kwargs)
         tb = time.time() - tb
+        dep = _integ_deposit(integ)
+        if deposit is not None and dep != deposit:
+            raise ValueError("the integrator built by {} has deposit {!r}, not the requested {!r} (does the factory "
+                             "take a 'deposit' keyword?)".format(getattr(integ_factory, "__name__", integ_factory), dep,
+                                                                 deposit))
         fields = run_fields(integ, name)
         name = fields["name"]
         use_batch = _use_batch(integ, batch)                # ValueError for batch=True without integrate_los
         todo = _todo(name)
         if not todo:
+            _check_dir_deposit(os.path.join(outdir, name), dep, len(mine))
             _log("{}: {} dumps (rank {}/{}), all present".format(name, len(mine), rank, nranks))
             return _summary(name, todo, fields=fields)
         gone = [d for d in todo if not os.path.exists(sample_path(samples_dir, d, pattern))]
@@ -1607,6 +1752,8 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
                       samples=dict(dir=samples_dir, pattern=pattern),
                       points=dict(n=int(N), sha256=_sha256(theta64, phi64)), integrator=integ_par,
                       extra_fields=_extra_desc(extra_fields))
+        if dep != "nearest":
+            params["deposit"] = dep                     # PP 2026-10-02: absent for 'nearest' (records as before)
         factory = "{}.{}".format(_modname(integ_factory),
                                  getattr(integ_factory, "__qualname__", type(integ_factory).__name__))
         info = dict(names=names, factory=factory,
@@ -1621,8 +1768,9 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
         os.makedirs(ddir, exist_ok=True)
         expect = dict(method=fields["method"], name=name, lamfix=fields["lamfix"], smooth=fields["smooth"],
                       nmin=fields["nmin"], diag_vwin=vwin_rec, diag_keys=list(keys),
-                      node_range=[float(tnodes[0]), float(tnodes[-1])], shape=[L.shape[0], lr.size, grid.ny])
-        run_file, _ = _check_run_record(ddir, params, info, expect, _log, mode=_imu_mode(integ))
+                      node_range=[float(tnodes[0]), float(tnodes[-1])], shape=[L.shape[0], lr.size, grid.ny],
+                      deposit=dep)
+        run_file, _ = _check_run_record(ddir, params, info, expect, _log, mode=_run_mode(integ))
         _ACTIVE_DIRS[ddir] = _ACTIVE_DIRS.get(ddir, 0) + 1
         stack.callback(_release_dir, ddir)
         stale = _present_tmp(ddir)

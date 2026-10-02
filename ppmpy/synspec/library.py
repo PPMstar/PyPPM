@@ -73,6 +73,10 @@ node_pairs), fw_disc_los.py (its library by-product), fw_disc_holdout.py (hold-o
 fw_disc_dumps.py (n_lo, n_hi, wout); see the provenance comments per function.
 PP 2026-10-02: intensity library ported from fw_imu_library.py (candidates, representatives, build,
 flux check) and fw_disc.py (r_outer, flux_from_p, imu_from_rays); see the section 'intensity library'.
+PP 2026-10-02: :func:`lib_nodes` ``single`` (bins that are nodes of their own; declared by the extended libraries of
+:func:`ppmpy.synspec.libmode.extend_flux_library`), opt-in: libraries without the declaration merge as before.
+PP 2026-10-02: review fixes: the smoothing of lib_nodes stays within the stretches of single / merged nodes; the
+declaration records its bin layout (:func:`single_bins_record`) and lib_nodes checks it.
 """
 import glob
 import mmap
@@ -839,7 +843,141 @@ class LibraryNodes:
             self.nn, self.t[0], self.t[-1], self.count.sum(), self.params)
 
 
-def lib_nodes(lib, nmin=20, smooth=0.0, corr=None):
+SINGLE_BINS_KEY = "single_bins"
+"""``FluxLibrary.params`` key of the bins that are interpolation nodes of their own (:func:`lib_nodes` ``single``;
+written by :func:`ppmpy.synspec.libmode.extend_flux_library` for the bins of library-mode node models)."""
+SINGLE_NB_KEY = "single_bins_nb"
+"""``FluxLibrary.params`` key of the number of bins the declared single bins belong to (:data:`SINGLE_BINS_KEY`)."""
+SINGLE_EDGES_KEY = "single_bins_edges"
+"""``FluxLibrary.params`` key of the lower edges [K] of the declared single bins (:data:`SINGLE_BINS_KEY`): with
+:data:`SINGLE_NB_KEY` the record of the bin layout the indices belong to (checked by :func:`lib_nodes`)."""
+
+
+def single_bins_record(bins, edges):
+    """
+    The params entries that declare single bins (:data:`SINGLE_BINS_KEY`) with the record of their bin layout
+    (:data:`SINGLE_NB_KEY`, :data:`SINGLE_EDGES_KEY`), so that a library rebuilt with other bins but the same params
+    cannot apply the indices to the wrong bins (:func:`lib_nodes` raises).
+
+    Parameters
+    ----------
+    bins: array-like of int
+        Single bin indices.
+    edges: array-like
+        (nb + 1,) bin edges of the library they belong to [K].
+
+    Returns
+    -------
+    dict
+    """
+    # PP 2026-10-02: new (reviewer: single_bins carried no record of their bin layout)
+    e = np.asarray(edges, dtype=np.float64)
+    b = sorted(int(i) for i in np.asarray(bins, dtype=np.int64).reshape(-1))
+    if b and (b[0] < 0 or b[-1] >= e.size - 1):
+        raise ValueError("single bins must lie in 0 .. {}".format(e.size - 2))
+    return {SINGLE_BINS_KEY: b, SINGLE_NB_KEY: int(e.size - 1), SINGLE_EDGES_KEY: [float(e[i]) for i in b]}
+
+
+def _lib_edges(lib):
+    e = getattr(lib, "edges", None)
+    if e is None:
+        try:
+            e = lib["edges"]
+        except (KeyError, TypeError, ValueError):
+            return None
+    return np.asarray(e, dtype=np.float64)
+
+
+def _single_mask(lib, single, nb):
+    """The (nb,) bool mask of the bins that form nodes of their own, or None (legacy merging). A declaration in
+    ``lib.params`` is checked against its layout record (:func:`single_bins_record`) where it has one."""
+    # PP 2026-10-02: new (library extension: nmin applies to the per-point bins only)
+    # PP 2026-10-02: the declaration's layout record (number of bins, lower edges) is checked (reviewer)
+    if single is False:
+        return None
+    if single is None:
+        params = getattr(lib, "params", None)
+        single = params.get(SINGLE_BINS_KEY) if isinstance(params, dict) else None
+        if single is None:
+            return None
+        rnb, redges = params.get(SINGLE_NB_KEY), params.get(SINGLE_EDGES_KEY)
+        if rnb is not None and int(rnb) != nb:
+            raise ValueError("the library declares single bins for {} bins but has {} (params copied to a library "
+                             "with other bins? pass single= explicitly or drop params['{}'])".format(
+                                 int(rnb), nb, SINGLE_BINS_KEY))
+        if redges is not None:
+            e = _lib_edges(lib)
+            sb = np.asarray(single, dtype=np.int64).reshape(-1)
+            if (e is not None and (len(redges) != sb.size or (sb.size and (sb.min() < 0 or sb.max() >= nb)) or
+                                   not np.array_equal(e[sb], np.asarray(redges, dtype=np.float64)))):
+                raise ValueError("the library's declared single bins do not have their recorded lower edges (params "
+                                 "copied to a library with other bins? pass single= explicitly)")
+    s = np.asarray(single)
+    if s.dtype == bool:
+        if s.shape != (nb,):
+            raise ValueError("a bool single must have shape (nb,) = ({},), got {}".format(nb, s.shape))
+        m = s.copy()
+    else:
+        s = s.reshape(-1)
+        if s.size and (s.dtype.kind not in "iu" or s.min() < 0 or s.max() >= nb):
+            raise ValueError("single must be a bool mask (nb,) or bin indices in 0 .. nb - 1 = {}".format(nb - 1))
+        m = np.zeros(nb, bool)
+        m[s.astype(np.int64)] = True
+    return m if m.any() else None
+
+
+def _node_groups(cnt, nmin, single=None):
+    """
+    The library bins of every node (:func:`lib_nodes`). single None: the legacy rule (fw_disc.lib_nodes). With a mask:
+    every filled single bin is a node of its own; the other bins are merged as by the legacy rule within each run of
+    consecutive non-single bins (a run's leftover joins the run's last node, or is a node of its own), never across a
+    single bin.
+    """
+    if single is None:
+        # PP 2026-10-01: ported from fw_disc.py:299-349 (lib_nodes; the legacy merging, unchanged)
+        groups, cur, c = [], [], 0.0
+        for b in np.where(cnt > 0)[0]:
+            cur.append(b)
+            c += cnt[b]
+            if c >= nmin:
+                groups.append(cur)
+                cur, c = [], 0.0
+        if cur:
+            if groups:
+                groups[-1] = groups[-1] + cur
+            else:
+                groups.append(cur)
+        return groups
+    # PP 2026-10-02: new (library extension)
+    groups, run, cur, c = [], [], [], 0.0
+
+    def close():
+        if cur:
+            if run:
+                run[-1] = run[-1] + cur
+            else:
+                run.append(list(cur))
+        groups.extend(run)
+
+    for b in range(cnt.size):
+        if single[b]:
+            close()
+            run, cur, c = [], [], 0.0
+            if cnt[b] > 0:
+                groups.append([b])
+            continue
+        if not cnt[b] > 0:
+            continue
+        cur.append(b)
+        c += cnt[b]
+        if c >= nmin:
+            run.append(cur)
+            cur, c = [], 0.0
+    close()
+    return groups
+
+
+def lib_nodes(lib, nmin=20, smooth=0.0, corr=None, single=None):
     """
     T_eff' interpolation nodes from a flux library (port of fw_disc.lib_nodes).
 
@@ -857,21 +995,42 @@ def lib_nodes(lib, nmin=20, smooth=0.0, corr=None):
         W > 0 [K]: replace every node's profile and F_c by a local-linear fit in T_eff' over the nodes
         within +-W/2 (weights = model counts); nodes with fewer than 3 neighbours, or a degenerate fit,
         keep their values. W = 335 K (one period of the M424 EW(T_eff') sawtooth of the continuum
-        sampling) removes the sawtooth while keeping linear trends.
+        sampling) removes the sawtooth while keeping linear trends. With single bins in force the window never
+        crosses from the nodes of single bins to the merged nodes or back: the fit of a node uses only the nodes of
+        its stretch (maximal run of consecutive nodes of one kind). So the merged nodes of an extended library's
+        base bins are the base library's smoothed nodes bit for bit (one-sided at the seam, as at the base's own
+        ends), and each run of library-mode nodes is smoothed over its own nodes.
     corr: np.ndarray, optional
         (nb, nl, ny) additive per-bin profile correction, added to the bin profiles (in float64) before
-        merging, e.g. :func:`wavelength_rounding_correction` (the legacy ``lamfix=True``).
+        merging, e.g. :func:`wavelength_rounding_correction` (the legacy ``lamfix=True``). It acts per bin, never
+        across bins: for an extended library the base rows must be the base library's correction (then the base
+        nodes are its corrected nodes bit for bit) and the node rows the node models' own corrections
+        (:func:`ppmpy.synspec.libmode.extend_correction`).
+    single: None, False, bool mask (nb,) or bin indices, optional
+        Bins that are interpolation nodes of their own: never merged with a neighbour, and the merging of the
+        other bins (nmin) runs separately in every stretch between them (a leftover joins the stretch's last
+        node); the smoothing (``smooth``) stays within the stretches too. None (default): the library's own
+        declaration, ``lib.params['single_bins']`` (:data:`SINGLE_BINS_KEY`; written by
+        :func:`ppmpy.synspec.libmode.extend_flux_library` for the library-mode node bins, whose single models nmin
+        must not merge; ValueError when its layout record, :func:`single_bins_record`, does not match the library's
+        bins), else none; libraries without it (every per-point library, the M424 library_dT10.npz, legacy dicts and
+        NpzFiles) are merged and smoothed exactly as before. False: ignore a declaration (legacy merging and
+        smoothing). An explicit mask or index list is not checked against a record.
 
     Returns
     -------
     LibraryNodes
+        ``params`` gain 'single' (number of single bins) only when single bins are in force.
 
     Validation
     ----------
     M424 library_dT10.npz, nmin=20: 245 nodes, 35829-38891 K; equal bit for bit to the frozen legacy
-    code for (nmin=20), (nmin=20, smooth=335) and (nmin=20, corr=lamfix) (test_library.py).
+    code for (nmin=20), (nmin=20, smooth=335) and (nmin=20, corr=lamfix) (test_library.py). single:
+    tests/synspec/test_library_extend.py (the base bins of an extended library give the base library's nodes bit
+    for bit, every single bin is a node).
     """
     # PP 2026-10-01: ported from fw_disc.py:299-349 (lib_nodes); lamfix=True -> corr=lam_corrections(lib)
+    # PP 2026-10-02: single (library extension; the grouping moved to _node_groups, its legacy branch unchanged)
     cnt = np.asarray(lib["count"])
     tmean = np.asarray(lib["tmean"])
     bfc = np.asarray(lib["fc"])
@@ -882,18 +1041,8 @@ def lib_nodes(lib, nmin=20, smooth=0.0, corr=None):
             raise ValueError("corr must have the shape of the library profiles {}, got {}".format(
                 bprof.shape, corr.shape))
         bprof = bprof + corr
-    groups, cur, c = [], [], 0.0
-    for b in np.where(cnt > 0)[0]:
-        cur.append(b)
-        c += cnt[b]
-        if c >= nmin:
-            groups.append(cur)
-            cur, c = [], 0.0
-    if cur:
-        if groups:
-            groups[-1] = groups[-1] + cur
-        else:
-            groups.append(cur)
+    smask = _single_mask(lib, single, cnt.size)
+    groups = _node_groups(cnt, nmin, smask)
     if not groups:
         raise ValueError("the library holds no models")
     nn = len(groups)
@@ -907,9 +1056,21 @@ def lib_nodes(lib, nmin=20, smooth=0.0, corr=None):
         prof[i] = np.tensordot(w, bprof[g], axes=1) / n[i]
         fc[i] = w @ bfc[g] / n[i]
     if smooth > 0:
+        # PP 2026-10-02: with single bins in force the window stays within a stretch (reviewer: smoothing across the
+        # seam of an extended library changed the base nodes); without them one stretch, the legacy loop unchanged
+        if smask is None:
+            stretch = None
+        else:
+            kind = np.array([bool(smask[g[0]]) for g in groups], dtype=np.int8)
+            stretch = np.split(np.arange(nn), np.flatnonzero(np.diff(kind) != 0) + 1)
+            stretch = {int(i): st for st in stretch for i in st}
         ps, fs_ = np.empty_like(prof), np.empty_like(fc)
         for i in range(nn):
-            k = np.where(np.abs(t - t[i]) <= smooth / 2)[0]
+            if stretch is None:
+                k = np.where(np.abs(t - t[i]) <= smooth / 2)[0]
+            else:
+                st = stretch[i]
+                k = st[np.abs(t[st] - t[i]) <= smooth / 2]
             w, dt = n[k], t[k] - t[i]
             S0, S1, S2 = w.sum(), w @ dt, w @ dt ** 2
             det = S0 * S2 - S1 ** 2
@@ -922,6 +1083,8 @@ def lib_nodes(lib, nmin=20, smooth=0.0, corr=None):
             fs_[i] = wk @ fc[k]
         prof, fc = ps, fs_
     params = dict(nmin=nmin, smooth=float(smooth), corr=corr is not None)
+    if smask is not None:
+        params["single"] = int(smask.sum())
     return LibraryNodes(t, n, prof, fc, groups=[np.asarray(g, dtype=np.int64) for g in groups], params=params)
 
 

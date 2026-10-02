@@ -20,7 +20,8 @@ V3        :func:`v3_tails`             points beyond the node range (clamped to 
 V4        :func:`v4_nearest`           linear T_eff' interpolation vs the nearest library bin
 V5        :func:`v5_node_merging`      other node merging (nmin) vs the run's nodes
 V6        :func:`v6_rounding`          Doppler shifts rounded to grid steps vs continuous shifts (direct per-point
-                                       sum over a random subset of visible points)
+                                       sum over a random subset of visible points); for sub-grid shifts
+                                       (deposit 'linear') that deposit vs continuous shifts
 brute     :func:`brute_force_check`    the full per-point sum with the same rounding, done directly (each point's
                                        interpolated node profile shifted and added, no FFT) vs the integrator
                                        (float64) and vs stored per-dump products (float32)
@@ -88,6 +89,18 @@ and the brute force take the integrator's nodes (checked: the same t, and fc whe
 intensity integrator differs from the flux library by its method (~1e-3): it gets V1 (and V2 through a factory, V3)
 and its own brute force (:func:`brute_force_imu_check`); :func:`run_validation` skips V4-V6 and the flux brute force
 for integrators without ``fc``.
+
+Sub-grid Doppler shifts (``deposit='linear'`` of DiscFlux / DiscImu; PP 2026-10-02): the references of V1 (the
+rounded exact sums), V2, V4 (the nearest bin) and V5 round the shifts, and what they test (library, T_eff'
+interpolation, node merging) does not depend on the deposit, so they compare the integrator's 'nearest' twin
+(:meth:`ppmpy.synspec.disc.DiscFlux.with_deposit`: the same nodes, no new set-up; details 'deposit', 'compared'); V3
+compares the integrator with itself. The deposit is checked by the brute force, which takes continuous shifts for a
+'linear' integrator (:func:`brute_force_check`, :func:`brute_force_imu_check`), and by V6 (then labelled 'sub-grid
+(linear) deposit vs continuous shifts', ~1e-12). Both references interpolate the node profiles linearly between grid
+points, as the deposit does: their agreement shows that the deposit is exact for piecewise-linear profiles, not how
+accurate that interpolation model is. For shifts well below dv (M487) the profile change F - F0 depends on it (the
+node profiles are piecewise linear with kinks at the FASTWIND sampling); :func:`brute_force` with
+``continuous='cubic'`` gives the sensitivity to another model (Catmull-Rom), an informational systematic.
 
 Conventions
 -----------
@@ -186,6 +199,12 @@ PP 2026-10-01: ported from the project's fw_disc_dumps_validate.py (V1, V3-V6), 
 fw_disc_validate.py (the first library-vs-exact check: :func:`v1_exact` with :class:`NearestBin` and
 :func:`exact_continuous`) and fig_disc_dumps_validation.py (the LPV comparison); brute force, EW conservation, T_eff'
 ranges and the report are new. See the provenance comments per function.
+PP 2026-10-02: :func:`brute_force` with ``continuous=True`` (continuous Doppler shifts, linear interpolation on the
+grid): the reference of the sub-grid deposit of DiscFlux / DiscImu (``deposit='linear'``) and of the whole-step
+rounding. Reviewer: the checks with rounded-shift references (V1, V2, V4, V5) compare the 'nearest' twin of a
+'linear' integrator, V6 says what it measures, :func:`brute_force_imu` got ``continuous`` and its check follows the
+deposit, :func:`brute_force` got ``continuous='cubic'`` (interpolation-model sensitivity) and clips continuous shifts
+as the integrators do.
 """
 import datetime
 import json
@@ -742,6 +761,33 @@ def _node_params(integ):
     return dict(getattr(integ, "node_params", None) or {})
 
 
+def _integ_deposit(integ):
+    """The Doppler-shift deposit of an integrator ('nearest' where it has no ``deposit`` attribute)."""
+    # PP 2026-10-02: new (sub-grid shifts)
+    dep = getattr(integ, "deposit", None)
+    return "nearest" if dep is None else str(dep)
+
+
+def _nearest_twin(integ):
+    """
+    The integrator with whole-step Doppler shifts: ``integ`` itself unless its deposit is not 'nearest', else its
+    'nearest' twin (``integ.with_deposit('nearest')``: the same nodes and arrays, no set-up). The checks whose
+    references round the shifts (V1 against the rounded exact sums, V2, V4 against the nearest bin, V5) test the
+    library, the T_eff' interpolation and the node merging, which do not depend on the deposit; on a 'linear'
+    integrator they would measure the deposit difference instead (the brute force with continuous shifts and V6
+    check the deposit).
+    """
+    # PP 2026-10-02: new (reviewer: V1, V4, V5 of a 'linear' DiscFlux failed at the deposit difference, 4e-5 - 7e-5
+    # on the toy)
+    if integ is None or _integ_deposit(integ) == "nearest":
+        return integ
+    twin = getattr(integ, "with_deposit", None)
+    if twin is None:
+        raise TypeError("the integrator has deposit {!r} but no with_deposit(): the checks with rounded-shift "
+                        "references need its 'nearest' twin".format(_integ_deposit(integ)))
+    return twin("nearest")
+
+
 def _check_integ_nodes(integ, nodes, where):
     """
     Raise unless ``nodes`` are the integrator's: the same t (if the integrator has t) and fc (if it has fc). V6 and
@@ -894,7 +940,7 @@ def exact_continuous(profiles, sample, mu, tn, pn, lref, grid=None, chunk=20000,
 
 
 def v1_exact(integ, exact, sample, mu, tn, pn, label="flux", lref=None, grid=None, ew_jacobian=True, tolerance=None,
-             dew_tolerance=None, tolerances=None):
+             dew_tolerance=None, tolerances=None, nearest_twin=None):
     """
     V1: the dump whose own models built the library (M424: 3200) through the pipeline vs the exact per-point sums
     (port of fw_disc_dumps_validate.py V1, flux and intensity; fw_disc_validate.py did this for the nearest-bin
@@ -927,6 +973,13 @@ def v1_exact(integ, exact, sample, mu, tn, pn, label="flux", lref=None, grid=Non
         Default ``tolerances['V1']`` / ``['V1_dEW']``, else :data:`DEFAULT_TOLERANCES`.
     tolerances: dict, optional
         Per-check tolerances (names as :data:`DEFAULT_TOLERANCES`).
+    nearest_twin: bool or None
+        Compare the integrator's 'nearest' twin (:meth:`ppmpy.synspec.disc.DiscFlux.with_deposit`: the same nodes,
+        whole-step shifts) instead of the integrator. None (default): True for an integrator with sub-grid shifts
+        (deposit 'linear'), whose deposit the rounded exact sums would otherwise measure (V1 tests the library and
+        the T_eff' interpolation; the deposit is checked by the brute force with continuous shifts and V6); pass
+        False to compare a 'linear' integrator itself, e.g. with :func:`exact_continuous` sums. No effect on a
+        'nearest' integrator.
 
     Returns
     -------
@@ -942,12 +995,15 @@ def v1_exact(integ, exact, sample, mu, tn, pn, label="flux", lref=None, grid=Non
     for bit.
     """
     # PP 2026-10-01: ported from fw_disc_dumps_validate.py:71-87
+    # PP 2026-10-02: nearest_twin (sub-grid shifts: a 'linear' integrator is compared through its 'nearest' twin)
     T0 = time.time()
     grid = _integ_grid(integ, grid)
     _, lr = _integ_lref(integ, lref)
     Fx, F0x = _exact_arrays(exact)
     smp = _sample_dict(sample)
-    F, F0 = _run(integ, smp, mu, tn, pn)
+    dep = _integ_deposit(integ)
+    use_twin = (dep != "nearest") if nearest_twin is None else bool(nearest_twin)
+    F, F0 = _run(_nearest_twin(integ) if use_twin else integ, smp, mu, tn, pn)
     if Fx.shape != F.shape or F0x.shape != F0.shape:
         raise ValueError("the exact sums have shape {} / {}, the pipeline gives {}".format(Fx.shape, F0x.shape,
                                                                                          F.shape))
@@ -958,6 +1014,8 @@ def v1_exact(integ, exact, sample, mu, tn, pn, label="flux", lref=None, grid=Non
     names = _line_names(integ, lref, F.shape[1])
     key = "V1_" + label
     det = dict(lines=names, F=dF, F0=dF0, nlos=F.shape[0], npoints=int(smp["teff"].size))
+    if dep != "nearest":
+        det.update(deposit=dep, compared="nearest twin" if use_twin else "integrator")
     # PP 2026-10-01: reviewer: Python max() dropped a NaN of dF0; np.maximum keeps it
     checks = [CheckResult(key, float(np.max(np.maximum(dF, dF0))), _tol("V1", tolerance, tolerances),
                           details=dict(det, per_line=np.maximum(dF, dF0))),
@@ -966,6 +1024,8 @@ def v1_exact(integ, exact, sample, mu, tn, pn, label="flux", lref=None, grid=Non
     arrays = {key + "_F": dF, key + "_F0": dF0, key + "_dEW": dEW}
     meta = dict(check="V1", label=label, wall=time.time() - T0, ew_jacobian=bool(ew_jacobian),
                 integrator=type(integ).__name__)
+    if dep != "nearest":
+        meta.update(deposit=dep, nearest_twin=use_twin)
     return ValidationReport(checks, meta=meta, arrays=arrays, data={key: dict(F=F, F0=F0)})
 
 
@@ -1152,6 +1212,8 @@ def v2_holdout(profiles, sample, theta, phi, los, grid, lref, seed=11, nmin=20, 
         (:func:`ppmpy.synspec.dumps.flux_integrator`) for the flux_sm335 run, or with ``corr`` (per library bin, the
         edges of all halves are the same) for flux_lamfix. Default ``DiscFlux(lib_nodes(L, nmin=nmin), grid,
         pad_tol)``, the legacy method (then ``nmin`` and ``pad_tol`` apply; with a factory they are not used).
+        Integrators with sub-grid shifts (deposit 'linear') are used through their 'nearest' twins (the exact sums
+        round the shifts).
     tolerance, dew_tolerance, tolerances:
         Default ``tolerances['V2']`` / ``['V2_dEW']``, else :data:`DEFAULT_TOLERANCES`; used for the hold-out and
         the in-sample checks.
@@ -1309,13 +1371,13 @@ def v2_holdout(profiles, sample, theta, phi, los, grid, lref, seed=11, nmin=20, 
     else:
         fname = getattr(factory, "__qualname__", type(factory).__name__)
     with _blas_limit(1):
-        fx_all = factory(lib_all)
+        fx_all = _nearest_twin(factory(lib_all))       # PP 2026-10-02: rounded exact sums: 'nearest' twins
     R = dict(lines=np.array(names), seed=int(seed), nmin=int(nmin))
     preds = {}
     for X, m in halves:
         other = "B" if X == "A" else "A"
         with _blas_limit(1):
-            fx_other = factory(hlibs[other])
+            fx_other = _nearest_twin(factory(hlibs[other]))
         for tag, fx in (("holdout", fx_other), ("insample", fx_all)):
             k0, k1, w = fx.pairs(teff)
             F, F0 = np.zeros((nlos, nl, ny)), np.zeros((nlos, nl, ny))
@@ -1553,7 +1615,8 @@ def v4_nearest(integ, library, samples, dumps, mu, tn, pn, grid=None, corr=None,
                tolerances=None, lref=None, pattern=SAMPLE_PATTERN, log=None):
     """
     V4: linear T_eff' interpolation between nodes (the integrator) vs the nearest library bin
-    (:func:`ppmpy.synspec.disc.integrate_library_nearest`, weights mu F_c of the bin), per dump.
+    (:func:`ppmpy.synspec.disc.integrate_library_nearest`, weights mu F_c of the bin), per dump. An integrator with
+    sub-grid shifts (deposit 'linear') is compared through its 'nearest' twin (the nearest-bin sum rounds the shifts).
 
     Assumes a flux integrator DiscFlux(lib_nodes(library, nmin, smooth, corr)) (module notes: applicability).
 
@@ -1593,9 +1656,12 @@ def v4_nearest(integ, library, samples, dumps, mu, tn, pn, grid=None, corr=None,
     """
     # PP 2026-10-01: ported from fw_disc_dumps_validate.py:89-101; corr and the smoothed case are new (reviewer:
     # V4 of flux_sm335 / flux_lamfix measured the variant, not the interpolation)
+    # PP 2026-10-02: a 'linear' integrator is compared through its 'nearest' twin (the nearest-bin sum rounds)
     T0 = time.time()
     _log = _logger(log, T0)
     grid = _integ_grid(integ, grid)
+    dep = _integ_deposit(integ)
+    integ = _nearest_twin(integ)
     lib = library if isinstance(library, FluxLibrary) else FluxLibrary.load(library)
     dl = _dumps_given(dumps, "V4")
     corr = _load_corr(corr, corr_key, lib)
@@ -1619,6 +1685,8 @@ def v4_nearest(integ, library, samples, dumps, mu, tn, pn, grid=None, corr=None,
         _log("V4 dump {}: T_eff' interpolation vs nearest bin: max|dF| {}".format(d, _fmt(out[i])))
     names = _line_names(integ, lref, out.shape[1])
     det = dict(lines=names, per_line=out.max(axis=0), dumps=dl, per_dump=out, corr=corr is not None, smooth=smooth)
+    if dep != "nearest":
+        det.update(deposit=dep, compared="nearest twin")
     tol = _tol("V4", tolerance, tolerances)
     if smooth > 0 and tolerance is None:
         tol = None
@@ -1635,7 +1703,8 @@ def v5_node_merging(integ, library, samples, dump, mu, tn, pn, nmins=(1, 5, 100)
                     corr=None, corr_key="corr", tolerance=None, tolerances=None, lref=None, pattern=SAMPLE_PATTERN,
                     log=None):
     """
-    V5: nodes merged with other minimum model counts vs the integrator's own nodes, for one dump.
+    V5: nodes merged with other minimum model counts vs the integrator's own nodes, for one dump. The integrator and
+    those of the factory are compared through their 'nearest' twins (node merging does not depend on the deposit).
 
     Assumes a flux integrator DiscFlux(lib_nodes(library, nmin, smooth, corr)) (module notes: applicability).
 
@@ -1677,9 +1746,13 @@ def v5_node_merging(integ, library, samples, dump, mu, tn, pn, nmins=(1, 5, 100)
     # flux_integrator, which builds the nodes under a 1-thread BLAS limit: the same bits for these unsmoothed nodes);
     # smooth and corr of the integrator's nodes are new (reviewer: V5 of flux_sm335 / flux_lamfix rebuilt the plain
     # nodes and measured the variant)
+    # PP 2026-10-02: the integrator and the factory's integrators compared through their 'nearest' twins (node
+    # merging does not depend on the deposit; a factory without the integrator's deposit compared like with like)
     T0 = time.time()
     _log = _logger(log, T0)
     grid = _integ_grid(integ, grid)
+    dep = _integ_deposit(integ)
+    integ = _nearest_twin(integ)
     nmins = [int(n) for n in nmins]
     if not nmins:
         raise ValueError("V5: no nmins given")
@@ -1698,7 +1771,7 @@ def v5_node_merging(integ, library, samples, dump, mu, tn, pn, nmins=(1, 5, 100)
     Fref, _ = _run(integ, smp, mu, tn, pn)
     arrays, vals = {}, []
     for nm in nmins:
-        F, _ = _run(factory(int(nm)), smp, mu, tn, pn)
+        F, _ = _run(_nearest_twin(factory(int(nm))), smp, mu, tn, pn)
         arrays["V5_nmin{}".format(int(nm))] = _dmax(F, Fref)
         vals.append(arrays["V5_nmin{}".format(int(nm))])
         _log("V5 dump {}: nmin {}: max|dF| {}".format(dump, nm, _fmt(vals[-1])))
@@ -1706,7 +1779,8 @@ def v5_node_merging(integ, library, samples, dump, mu, tn, pn, nmins=(1, 5, 100)
     names = _line_names(integ, lref, Fref.shape[1])
     chk = CheckResult("V5", vals.max(), _tol("V5", tolerance, tolerances),
                       details=dict(lines=names, per_line=vals.max(axis=0), dump=int(dump), nmins=nmins, per_nmin=vals,
-                                   nmin_ref=_node_params(integ).get("nmin"), smooth=smooth))
+                                   nmin_ref=_node_params(integ).get("nmin"), smooth=smooth,
+                                   **({} if dep == "nearest" else dict(deposit=dep, compared="nearest twins"))))
     return ValidationReport([chk], meta=dict(check="V5", dump=int(dump), nmins=nmins, smooth=smooth,
                                              wall=time.time() - T0), arrays=arrays)
 
@@ -1718,6 +1792,12 @@ def v6_rounding(integ, nodes, samples, dumps, mu, tn, pn, nsub=20000, seed=7, ch
     visible points of each dump (line of sight i mod nlos for the i-th dump): the subset's profile from the
     integrator (other points hidden) vs a direct per-point sum of the interpolated node profiles, each placed on its
     own continuously shifted abscissa (:func:`ppmpy.synspec.spectral.interp_rows`).
+
+    For an integrator with sub-grid shifts (deposit 'linear') V6 measures that deposit against the continuous shifts
+    instead: the same linear interpolation of the node profiles between grid points, so it agrees to rounding (the
+    toy and M424 ~1e-12, interp_rows' row offsets; unclipped points) and checks the deposit, not the rounding
+    (details 'deposit', 'measures'). Neither measures how the node profiles behave between their grid points
+    (:func:`brute_force` with continuous='cubic' for that sensitivity).
 
     Parameters
     ----------
@@ -1753,9 +1833,14 @@ def v6_rounding(integ, nodes, samples, dumps, mu, tn, pn, nsub=20000, seed=7, ch
         No dumps, or nodes that are not the integrator's.
     """
     # PP 2026-10-01: ported from fw_disc_dumps_validate.py:133-161
+    # PP 2026-10-02: what V6 measures follows the integrator's deposit (reviewer: a 'linear' integrator was labelled
+    # 'rounded vs continuous shifts')
     T0 = time.time()
     _log = _logger(log, T0)
     grid = _integ_grid(integ, grid)
+    dep = _integ_deposit(integ)
+    what = ("rounded vs continuous shifts" if dep == "nearest"
+            else "sub-grid ({}) deposit vs continuous shifts".format(dep))
     dl = _dumps_given(dumps, "V6")
     _check_integ_nodes(integ, nodes, "V6")
     y = grid.y
@@ -1788,32 +1873,86 @@ def v6_rounding(integ, nodes, samples, dumps, mu, tn, pn, nsub=20000, seed=7, ch
                 num += mu[k][sub[c]] @ interp_rows(y[None, :] - s[c, None], line, y)
             Fd = num / np.sum(mu[k][sub] * fc)
             out[i, j] = np.abs(Fh[j] - Fd).max()
-        _log("V6 dump {}, los{}, {} points: rounded vs continuous shifts: max|dF| {}".format(d, k + 1, sub.size,
-                                                                                            _fmt(out[i])))
+        _log("V6 dump {}, los{}, {} points: {}: max|dF| {}".format(d, k + 1, sub.size, what, _fmt(out[i])))
     names = _line_names(integ, lref, nl)
-    chk = CheckResult("V6", out.max(), _tol("V6", tolerance, tolerances),
-                      details=dict(lines=names, per_line=out.max(axis=0), dumps=dl, per_dump=out, nsub=int(nsub),
-                                   seed=int(seed)))
-    return ValidationReport([chk], meta=dict(check="V6", dumps=dl, nsub=int(nsub), seed=int(seed), chunk=chunk,
-                                             wall=time.time() - T0), arrays=dict(V6=out))
+    det = dict(lines=names, per_line=out.max(axis=0), dumps=dl, per_dump=out, nsub=int(nsub), seed=int(seed))
+    meta = dict(check="V6", dumps=dl, nsub=int(nsub), seed=int(seed), chunk=chunk, wall=time.time() - T0)
+    if dep != "nearest":
+        det.update(deposit=dep, measures=what)
+        meta.update(deposit=dep, measures=what)
+    chk = CheckResult("V6", out.max(), _tol("V6", tolerance, tolerances), details=det)
+    return ValidationReport([chk], meta=meta, arrays=dict(V6=out))
 
 
 # ----------------------------------------------------------------------------------------------
 # brute force
 # ----------------------------------------------------------------------------------------------
-def _brute_line(dep, t, fcj, m, v, teff, dv, nshift, chunk):
+_CONTINUOUS = ("linear", "cubic")
+
+
+def _continuous_mode(continuous):
+    """None for rounded shifts (False, None), else the interpolation model of continuous shifts: True or 'linear' ->
+    'linear', 'cubic'."""
+    # PP 2026-10-02: new
+    if continuous is None:
+        return None
+    if isinstance(continuous, (bool, np.bool_)):
+        return "linear" if continuous else None
+    if isinstance(continuous, str) and continuous in _CONTINUOUS:
+        return continuous
+    raise ValueError("continuous must be False, True, 'linear' or 'cubic', got {!r}".format(continuous))
+
+
+def _catmull_rom(t):
+    """The 4 Catmull-Rom weights (taps s0 - 1, s0, s0 + 1, s0 + 2) of a fraction t in [0, 1)."""
+    t2, t3 = t * t, t * t * t
+    return (0.5 * (-t3 + 2.0 * t2 - t), 0.5 * (3.0 * t3 - 5.0 * t2 + 2.0), 0.5 * (-3.0 * t3 + 4.0 * t2 + t),
+            0.5 * (t3 - t2))
+
+
+def _brute_line(dep, t, fcj, m, v, teff, dv, nshift, chunk, y=None, continuous=None):
     """
     F, F0 (ny,) of one line and line of sight, point by point: each visible point's interpolated node depth
-    w0 d_k0 + w1 d_k1 (w0 = mu (1 - a) F_c,k0, w1 = mu a F_c,k1) is shifted by its rounded Doppler shift and added.
+    w0 d_k0 + w1 d_k1 (w0 = mu (1 - a) F_c,k0, w1 = mu a F_c,k1) is shifted by its rounded Doppler shift and added;
+    with ``continuous`` ('linear' or 'cubic', :func:`_continuous_mode`) it is evaluated at y + x (x = -c ln(1 - v/c)
+    clipped to +-nshift dv, not rounded) by interpolation between its grid values: 'linear' np.interp, 'cubic'
+    Catmull-Rom (4 taps); beyond the grid the depth keeps its edge value (0 for profiles that pass the zero-padding
+    check).
     """
     # PP 2026-10-01: new (restores the brute-force check of the 2026-09-29 review); no FFT, no histogram
+    # PP 2026-10-02: continuous (the reference of the sub-grid deposit; the interpolation of v6_rounding); shifts
+    # clipped as the integrators clip them; 'cubic' (reviewer: an interpolation-model sensitivity for sub-km/s shifts)
     ny = dep.shape[1]
     k0, k1, a = node_pairs(t, teff)
-    s = np.rint(-C_KMS * np.log(1.0 - v / C_KMS) / dv).astype(np.int64)
-    s = np.clip(s, -nshift, nshift)
     w0 = m * (1.0 - a) * fcj[k0]
     w1 = m * a * fcj[k1]
     den = np.sum(w0 + w1)
+    mode = _continuous_mode(continuous)
+    if mode is not None:
+        # point by point: temporaries of one row only (chunked (chunk, ny) temporaries were page-faulted afresh on
+        # every call: mostly system time), and no row offsets (interp_rows rounds the abscissae to ~1e-8 km/s)
+        x = np.clip(-C_KMS * np.log(1.0 - v / C_KMS), -nshift * dv, nshift * dv)
+        D, D0 = np.zeros(ny), np.zeros(ny)
+        row = np.empty(ny)
+        if mode == "cubic":
+            xs = x / dv
+            s0 = np.floor(xs)
+            tt = xs - s0
+            s0 = s0.astype(np.int64)
+            base = np.arange(ny)
+        for i in range(x.size):
+            np.multiply(dep[k0[i]], w0[i], out=row)
+            row += w1[i] * dep[k1[i]]
+            D0 += row
+            if mode == "linear":
+                D += np.interp(y + x[i], y, row)
+            else:
+                for q, c in enumerate(_catmull_rom(tt[i])):
+                    if c != 0.0:
+                        D += c * row[np.clip(base + (s0[i] + q - 1), 0, ny - 1)]
+        return 1.0 - D / den, 1.0 - D0 / den
+    s = np.rint(-C_KMS * np.log(1.0 - v / C_KMS) / dv).astype(np.int64)
+    s = np.clip(s, -nshift, nshift)
     order = np.argsort(s, kind="stable")
     D, D0 = np.zeros(ny), np.zeros(ny)
     for c0 in range(0, order.size, chunk):
@@ -1842,16 +1981,34 @@ def _brute_init(spec):
 def _brute_task(task):
     st = par.worker_state()
     j, m, v, teff = task
-    return _brute_line(st["dep"][j], st["t"], st["fc"][:, j], m, v, teff, st["dv"], st["nshift"], st["chunk"])
+    return _brute_line(st["dep"][j], st["t"], st["fc"][:, j], m, v, teff, st["dv"], st["nshift"], st["chunk"],
+                       y=st.get("y"), continuous=st.get("continuous"))
 
 
-def brute_force(nodes, sample, mu, tn, pn, grid, chunk=512, nproc=1, start_method=None, timeout=900.0):
+def brute_force(nodes, sample, mu, tn, pn, grid, chunk=512, nproc=1, start_method=None, timeout=900.0,
+                continuous=False):
     """
     Disc-integrated profiles of one sample by a direct per-point sum with the rounding of
     :class:`ppmpy.synspec.disc.DiscFlux` (shifts rint(-c ln(1 - v/c) / dv) clipped to +-nshift; T_eff' interpolated
     linearly between nodes, clamped): every visible point's interpolated node profile (weights mu (1 - a) F_c,k0,
     mu a F_c,k1) is formed, shifted and added; nothing beyond the grid comes in (the zero padding of DiscFlux). No
     FFT and no (node, shift) histogram, so an independent evaluation of the same sum.
+
+    With ``continuous=True`` (or 'linear') the shifts are not rounded: every point's interpolated node profile is
+    evaluated at y + x, x = -c ln(1 - v/c) [km/s] clipped to +-nshift dv (as the integrators clip), by linear
+    interpolation between its grid values (np.interp per point; the continuous shifts of :func:`v6_rounding`, without
+    the row offsets of interp_rows). This is the reference of both Doppler-shift deposits of DiscFlux: 'linear'
+    (sub-grid shifts) equals it to rounding, 'nearest' differs by its rounding error (M424 20 000-point subsets
+    ~3e-5). That equality says that the deposit is exact for the node profiles taken as piecewise linear between
+    their grid points (the same interpolation model), nothing about the profiles between grid points.
+
+    With ``continuous='cubic'`` the profiles are evaluated at y + x by Catmull-Rom interpolation (4 taps, edge values
+    beyond the grid) instead: another interpolation model of the same grid values, for the sensitivity of
+    sub-grid shifts to it (an informational systematic, not a check of the integrator). The FASTWIND line profiles
+    are sampled more coarsely than the 1 km/s grid and linearly interpolated onto it, so the node profiles are
+    piecewise linear with kinks (M424 flux nodes: isolated |second differences| up to 6.7e-3, e.g. the core of
+    lambda4026); for shifts well below dv (M487) the second-order (broadening) part of F - F0 sits at those kinks and
+    depends on the interpolation model (module notes: sub-grid shifts).
 
     Parameters
     ----------
@@ -1863,21 +2020,28 @@ def brute_force(nodes, sample, mu, tn, pn, grid, chunk=512, nproc=1, start_metho
         (nlos, N) projections.
     grid: VelocityGrid
     chunk: int
-        Points formed at a time (memory: ~3 chunk x ny x 8 bytes per process).
+        Points formed at a time (memory: ~3 chunk x ny x 8 bytes per process; not used with ``continuous``, which
+        works point by point).
     nproc: int
         Worker processes over the (line of sight, line) tasks ('fork' or 'spawn'; same bits).
+    continuous: bool or {'linear', 'cubic'}
+        Continuous Doppler shifts (above) instead of the rounded ones: True or 'linear' with linear interpolation on
+        the grid (the reference of DiscFlux deposit='linear'), 'cubic' with Catmull-Rom interpolation (sensitivity).
 
     Returns
     -------
     F, F0: np.ndarray
-        (nlos, nl, ny) float64.
+        (nlos, nl, ny) float64. F0 (no velocities) is the same sum either way (to rounding: another order).
 
     Notes
     -----
     Work: (visible points) x ny multiply-adds per line of sight and line (M424: 3.3e9, ~10 s), i.e. ~4 min per
-    dump in one process.
+    dump in one process. continuous=True works point by point (a Python loop, ~20-40 us per point on the M424 grid:
+    ~0.5 s per line of sight and line for 10 000 visible points, ~20 s for all ~618 000; 'cubic' about 2-3 times
+    that); use subsets (mu = 0 for the points left out) or ``nproc``.
     """
     # PP 2026-10-01: new
+    # PP 2026-10-02: continuous (sub-grid deposit reference), clipped as the integrators; 'cubic' (reviewer)
     if not isinstance(grid, VelocityGrid):
         raise TypeError("grid must be a VelocityGrid")
     smp = _sample_dict(sample)
@@ -1889,7 +2053,8 @@ def brute_force(nodes, sample, mu, tn, pn, grid, chunk=512, nproc=1, start_metho
         raise ValueError("node profiles have {} grid points, the grid {}".format(ny, grid.ny))
     dep = np.ascontiguousarray(np.transpose(1.0 - prof, (1, 0, 2)))           # (nl, nn, ny)
     spec = dict(dep=dep, t=np.asarray(nodes["t"], dtype=np.float64), fc=np.asarray(nodes["fc"], dtype=np.float64),
-                dv=grid.dv, nshift=grid.nshift, chunk=max(1, int(chunk)))
+                dv=grid.dv, nshift=grid.nshift, chunk=max(1, int(chunk)), y=grid.y,
+                continuous=_continuous_mode(continuous))
     nlos = mu.shape[0]
     tasks = []
     for k in range(nlos):
@@ -1903,7 +2068,8 @@ def brute_force(nodes, sample, mu, tn, pn, grid, chunk=512, nproc=1, start_metho
         for i, task in enumerate(tasks):
             j, m, v, te = task
             F[i // nl, j], F0[i // nl, j] = _brute_line(dep[j], spec["t"], spec["fc"][:, j], m, v, te, spec["dv"],
-                                                        spec["nshift"], spec["chunk"])
+                                                        spec["nshift"], spec["chunk"], y=spec["y"],
+                                                        continuous=spec["continuous"])
         return F, F0
     par.login_node_warning(nproc)
     with par.make_pool(nproc, initializer=_brute_init, initargs=(spec,), start_method=start_method) as pool:
@@ -1941,7 +2107,7 @@ def _reference_arrays(reference):
 
 def brute_force_check(nodes, samples, mu, tn, pn, grid=None, lref=None, dumps=None, integ=None, stored=None,
                       reference=None, chunk=512, nproc=1, start_method=None, timeout=900.0, tolerance=None,
-                      f64_tolerance=None, tolerances=None, pattern=SAMPLE_PATTERN, log=None):
+                      f64_tolerance=None, tolerances=None, pattern=SAMPLE_PATTERN, log=None, continuous=None):
     """
     The full per-point sum done directly (:func:`brute_force`) compared with the integrator (float64), with stored
     per-dump products (float32) and, informationally, with an external reference set.
@@ -1973,6 +2139,11 @@ def brute_force_check(nodes, samples, mu, tn, pn, grid=None, lref=None, dumps=No
         :func:`brute_force`.
     tolerance, f64_tolerance, tolerances:
         brute (vs stored) and brute_f64 (vs integ) of :data:`DEFAULT_TOLERANCES` by default.
+    continuous: bool or None
+        :func:`brute_force` with continuous Doppler shifts (linear interpolation). None (default): True for an
+        integrator with ``deposit='linear'`` (sub-grid shifts, whose reference it is), else False (the rounded shifts
+        of the default DiscFlux; the behaviour before the option). The 'cubic' sensitivity of :func:`brute_force` is
+        no check of the integrator and is refused here.
 
     Returns
     -------
@@ -2003,6 +2174,12 @@ def brute_force_check(nodes, samples, mu, tn, pn, grid=None, lref=None, dumps=No
         integ = DiscFlux(nodes, grid=grid)
     else:
         _check_integ_nodes(integ, nodes, "brute force")
+    if continuous is None:
+        # PP 2026-10-02: continuous shifts are the reference of a sub-grid (deposit='linear') integrator
+        continuous = _integ_deposit(integ) == "linear"
+    if not isinstance(continuous, (bool, np.bool_)):
+        raise ValueError("continuous must be None, True or False here, got {!r} (brute_force(continuous='cubic') is "
+                         "an interpolation-model sensitivity, not a check)".format(continuous))
     if dumps is None:
         dl, getter = [-1], (lambda d: _sample_dict(samples))
     else:
@@ -2020,7 +2197,7 @@ def brute_force_check(nodes, samples, mu, tn, pn, grid=None, lref=None, dumps=No
         smp = getter(d)
         t1 = time.time()
         Fb, F0b = brute_force(nodes, smp, mu, tn, pn, grid, chunk=chunk, nproc=nproc, start_method=start_method,
-                              timeout=timeout)
+                              timeout=timeout, continuous=bool(continuous))
         t2 = time.time()
         Fi, F0i = _run(integ, smp, mu, tn, pn)
         nl = Fb.shape[1]
@@ -2059,6 +2236,8 @@ def brute_force_check(nodes, samples, mu, tn, pn, grid=None, lref=None, dumps=No
     meta = dict(check="brute", dumps=dl, chunk=int(chunk), nproc=int(nproc), wall=time.time() - T0,
                 stored=None if stored is None or callable(stored) else str(stored),
                 reference=reference if isinstance(reference, (str, os.PathLike)) else None)
+    if continuous:
+        meta["continuous"] = True                       # PP 2026-10-02: absent for the rounded brute force
     return ValidationReport(checks, meta=meta, arrays=arrays, data=dict(brute=data))
 
 
@@ -2090,21 +2269,31 @@ def _imu_clamped_pairs(t, teff):
     return k0, k1, a
 
 
-def _brute_imu_line(L, j, m, v, k0, k1, a, dv, nshift, icentre, chunk):
+def _brute_imu_line(L, j, m, v, k0, k1, a, dv, nshift, icentre, chunk, y=None, continuous=False):
     """
     F, F0 (ny,), vmean, vsig and the clipped count of one line and line of sight of the intensity method, point by
     point: each visible point's intensities I_l, I_c interpolated linearly in T_eff' (nodes k0, k1, weights 1 - a, a of
     any sign) and in s = sqrt(1 - mu^2) between its nodes' real rays, weighted by mu, shifted by its rounded Doppler
-    shift with the edge values beyond the grid, and added; no velocity histogram, no FFT.
+    shift with the edge values beyond the grid, and added; no velocity histogram, no FFT. With ``continuous`` the
+    intensities are evaluated at y + x (x = -c ln(1 - v/c) clipped to +-nshift dv, not rounded) by linear
+    interpolation with the edge values beyond the grid (np.interp per point), and a point counts as clipped where
+    |x| > nshift dv (the rules of DiscImu deposit='linear').
     """
     # PP 2026-10-02: new (the intensity method's brute force; its rules are those of disc.DiscImu, coded anew)
+    # PP 2026-10-02: continuous (reviewer: the reference of DiscImu deposit='linear')
     S, NN, Il, Ic, u = L["S"], L["NN"], L["Il"], L["Ic"], L["u"]
     ny = int(np.shape(Il)[-1])
     n = m.size
     s = np.sqrt(np.clip(1.0 - m * m, 0.0, 1.0))
-    raw = np.rint(-C_KMS * np.log(1.0 - v / C_KMS) / dv)
-    n_clip = int((np.abs(raw) > nshift).sum())
-    sh = np.clip(raw, -nshift, nshift).astype(np.int64)
+    xs = -C_KMS * np.log(1.0 - v / C_KMS) / dv
+    if continuous:
+        n_clip = int((np.abs(xs) > nshift).sum())
+        xk = np.clip(xs, -nshift, nshift) * dv
+        sh = None
+    else:
+        raw = np.rint(xs)
+        n_clip = int((np.abs(raw) > nshift).sum())
+        sh = np.clip(raw, -nshift, nshift).astype(np.int64)
     kk, tt = np.empty((2, n), np.int64), np.empty((2, n))
     for q, kn in enumerate((k0, k1)):
         for node in np.unique(kn):
@@ -2120,7 +2309,7 @@ def _brute_imu_line(L, j, m, v, k0, k1, a, dv, nshift, icentre, chunk):
     wc = (w * np.asarray(Ic[b, j, r, icentre], dtype=np.float64)).sum(axis=0)      # mu I_c(mu) at the line centre
     vm = np.sum(wc * v) / wc.sum()
     sd = np.sqrt(np.sum(wc * (v - vm) ** 2) / wc.sum())
-    order = np.argsort(sh, kind="stable")
+    order = np.arange(n) if continuous else np.argsort(sh, kind="stable")
     yy = np.arange(ny)
     num, den, n0, d0 = np.zeros(ny), np.zeros(ny), np.zeros(ny), np.zeros(ny)
     for c0 in range(0, n, chunk):
@@ -2132,6 +2321,12 @@ def _brute_imu_line(L, j, m, v, k0, k1, a, dv, nshift, icentre, chunk):
             RC += wq * np.asarray(Ic[b[q, ii], j, r[q, ii]], dtype=np.float64)
         n0 += RL.sum(axis=0)
         d0 += RC.sum(axis=0)
+        if continuous:
+            for q, i in enumerate(ii):
+                num += np.interp(y + xk[i], y, RL[q])
+                den += np.interp(y + xk[i], y, RC[q])
+            del RL, RC
+            continue
         si = sh[ii]
         starts = np.concatenate([[0], np.flatnonzero(np.diff(si)) + 1])
         GL, GC = np.add.reduceat(RL, starts, axis=0), np.add.reduceat(RC, starts, axis=0)
@@ -2153,11 +2348,12 @@ def _brute_imu_init(spec):
 def _brute_imu_task(item):
     i, (k, j, m, v, k0, k1, a) = item
     st = par.worker_state()
-    return i, _brute_imu_line(st["L"], j, m, v, k0, k1, a, st["dv"], st["nshift"], st["icentre"], st["chunk"])
+    return i, _brute_imu_line(st["L"], j, m, v, k0, k1, a, st["dv"], st["nshift"], st["icentre"], st["chunk"],
+                              y=st.get("y"), continuous=st.get("continuous", False))
 
 
 def brute_force_imu(library, sample, mu, tn, pn, grid, mask=None, pairs=None, lines=None, chunk=256, nproc=1,
-                    start_method=None, timeout=900.0):
+                    start_method=None, timeout=900.0, continuous=False):
     """
     Disc-integrated profiles of the intensity method by a direct per-point sum with the rules of
     :class:`ppmpy.synspec.disc.DiscImu`: every visible point's line and continuum intensities, interpolated linearly in
@@ -2167,6 +2363,11 @@ def brute_force_imu(library, sample, mu, tn, pn, grid, mask=None, pairs=None, li
     F0 the same without shifts; the velocity moments weighted by mu I_c(mu) at the line centre. No velocity histogram,
     no FFT and none of DiscImu's code (its ray search over all nodes at once, its row selection, the library FFTs), so
     an independent evaluation of the same sum.
+
+    With ``continuous=True`` the shifts are not rounded: every point's intensities are evaluated at y + x (x = -c
+    ln(1 - v/c) clipped to +-nshift dv) by linear interpolation between grid points with the edge values beyond the
+    grid (np.interp per point): the rules of DiscImu with deposit='linear', which equals it to rounding (exact for
+    the intensities taken as piecewise linear between grid points; :func:`brute_force` for the caveat).
 
     Parameters
     ----------
@@ -2193,12 +2394,15 @@ def brute_force_imu(library, sample, mu, tn, pn, grid, mask=None, pairs=None, li
         Points formed at a time (memory: ~6 chunk ny x 8 bytes per process).
     nproc, start_method, timeout:
         Worker processes over the (line of sight, line) tasks ('fork' or 'spawn'; the same bits as serial).
+    continuous: bool
+        Continuous Doppler shifts with linear interpolation (above; the reference of DiscImu deposit='linear')
+        instead of the rounded ones. Works point by point (about twice the time of the rounded sum).
 
     Returns
     -------
     dict
         F, F0 (nlos, nl, ny) float64; vmean_w, sigma_w (nlos, nl); n_clip (nlos,) int64 (visible points with clipped
-        shifts; per line of sight, as DiscImu).
+        shifts; per line of sight, as DiscImu: |rint(x / dv)| > nshift, with ``continuous`` |x / dv| > nshift).
 
     Notes
     -----
@@ -2220,6 +2424,7 @@ def brute_force_imu(library, sample, mu, tn, pn, grid, mask=None, pairs=None, li
     # PP 2026-10-02: new
     # PP 2026-10-02 (reviewer): dict grids, the recorded grid's points checked (another grid of the same ny gave wrong
     # shifts silently), integer node indices in pairs
+    # PP 2026-10-02: continuous (reviewer: the reference of DiscImu deposit='linear')
     from .disc import _same_grid_points
     if isinstance(grid, dict):
         grid = VelocityGrid(**grid)
@@ -2268,7 +2473,8 @@ def brute_force_imu(library, sample, mu, tn, pn, grid, mask=None, pairs=None, li
             tasks.append((k, j, mu[k][vis], v, k0[vis], k1[vis], a[vis]))
     F, F0 = np.full((nlos, nl, ny), np.nan), np.full((nlos, nl, ny), np.nan)
     vm, sd = np.full((nlos, nl), np.nan), np.full((nlos, nl), np.nan)
-    spec = dict(dv=grid.dv, nshift=grid.nshift, icentre=grid.icentre, chunk=max(1, int(chunk)))
+    spec = dict(dv=grid.dv, nshift=grid.nshift, icentre=grid.icentre, chunk=max(1, int(chunk)), y=grid.y,
+                continuous=bool(continuous))
 
     def put(i, res):
         k, j = tasks[i][:2]
@@ -2278,7 +2484,7 @@ def brute_force_imu(library, sample, mu, tn, pn, grid, mask=None, pairs=None, li
     if nproc <= 1:
         for i, task in enumerate(tasks):
             put(i, _brute_imu_line(L, task[1], *task[2:], spec["dv"], spec["nshift"], spec["icentre"],
-                                   spec["chunk"]))
+                                   spec["chunk"], y=spec["y"], continuous=spec["continuous"]))
         return dict(F=F, F0=F0, vmean_w=vm, sigma_w=sd, n_clip=ncl)
     smethod = par.get_context(start_method).get_start_method()
     spec["library"] = L["path"] if (L["path"] is not None and smethod != "fork") else library
@@ -2322,7 +2528,7 @@ def _stored_record(stored, d):
 
 def brute_force_imu_check(integ, samples, mu, tn, pn, library=None, dumps=None, nsub=20000, seed=7, stored=None,
                           lref=None, chunk=256, nproc=1, start_method=None, timeout=900.0, tolerance=None,
-                          f64_tolerance=None, tolerances=None, pattern=SAMPLE_PATTERN, log=None):
+                          f64_tolerance=None, tolerances=None, pattern=SAMPLE_PATTERN, log=None, continuous=None):
     """
     The intensity method's per-point sum done directly (:func:`brute_force_imu`) compared with an intensity
     integrator (:class:`ppmpy.synspec.disc.DiscImu`, float64) on a random subset of the points, or on all points and
@@ -2361,6 +2567,10 @@ def brute_force_imu_check(integ, samples, mu, tn, pn, library=None, dumps=None, 
     tolerance, f64_tolerance, tolerances:
         'brute' (vs stored) and 'brute_f64' (vs the integrator) of :data:`DEFAULT_TOLERANCES` by default; the
         moments 'brute_moments' (1e-9 km/s) and the clipped counts 'brute_n_clip' (0) through ``tolerances``.
+    continuous: bool or None
+        :func:`brute_force_imu` with continuous Doppler shifts. None (default): True for an integrator with
+        ``deposit='linear'`` (sub-grid shifts, whose reference it is), else False (the rounded shifts; the behaviour
+        before the option).
 
     Returns
     -------
@@ -2396,8 +2606,13 @@ def brute_force_imu_check(integ, samples, mu, tn, pn, library=None, dumps=None, 
     # PP 2026-10-02 (reviewer): the velocity moments and clipped counts decide checks of their own (they were only
     # stored in details, and an n_clip mismatch turned the profile check's value into NaN); the stored moments and
     # counts are compared; a per-line integrator is compared on its built lines
+    # PP 2026-10-02: continuous (reviewer: a 'linear' DiscImu was compared with the rounded brute force and failed)
     T0 = time.time()
     _log = _logger(log, T0)
+    if continuous is None:
+        continuous = _integ_deposit(integ) == "linear"
+    if not isinstance(continuous, (bool, np.bool_)):
+        raise ValueError("continuous must be None, True or False, got {!r}".format(continuous))
     if library is None:
         library = getattr(integ, "path", None)
         if library is None:
@@ -2459,7 +2674,7 @@ def brute_force_imu_check(integ, samples, mu, tn, pn, library=None, dumps=None, 
             mask[rng.choice(N, min(int(nsub), N), replace=False)] = True
         t1 = time.time()
         b = brute_force_imu(library, smp, mu, tn, pn, grid, mask=mask, lines=jl, chunk=chunk, nproc=nproc,
-                            start_method=start_method, timeout=timeout)
+                            start_method=start_method, timeout=timeout, continuous=bool(continuous))
         t2 = time.time()
         Fi, F0i, vmi, sdi, nci = _run_imu_full(integ, smp, mu, tn, pn, mask)
         d_int.append(prof(b["F"], b["F0"], Fi, F0i))
@@ -2534,6 +2749,8 @@ def brute_force_imu_check(integ, samples, mu, tn, pn, library=None, dumps=None, 
     meta = dict(check="brute_imu", dumps=dl, nsub=nsub_rec, seed=int(seed), chunk=int(chunk), nproc=int(nproc),
                 lines=list(cols), wall=time.time() - T0,
                 stored=None if stored is None or callable(stored) else str(stored))
+    if continuous:
+        meta["continuous"] = True                       # PP 2026-10-02: absent for the rounded brute force
     return ValidationReport(checks, meta=meta, arrays=arrays, data=dict(brute_imu=data))
 
 
@@ -2828,6 +3045,9 @@ def run_validation(integ=None, mu=None, tn=None, pn=None, sample=None, exact=Non
       validate.npz bit for bit) get, instead of the flux brute force, :func:`brute_force_imu_check` ('brute_imu',
       with ``brute_dumps`` and the library); the frozen legacy fw_disc.DiscImu has no ``method`` and gets V1 (and
       V3) only.
+    * Sub-grid shifts (an integrator with ``deposit='linear'``): V1, V2, V4 and V5 compare its 'nearest' twin (their
+      references round the shifts; module notes), V6 and the brute force (continuous shifts, flux and intensity)
+      check the deposit itself.
     * V1 dEW and V2 dEW use different EW definitions by default, as the legacy products: V1 with the factor
       lambda/lref (``ew_jacobian=True``, validate.npz), V2 without it (``ew_jacobian=False``, holdout.npz was
       written before fw_disc.diagnostics got the factor); pass ``holdout['ew_jacobian']=True`` for one definition.
