@@ -44,6 +44,7 @@ Documentation:
    ppmpy.synspec.validate
    ppmpy.synspec.testing
    ppmpy.synspec.moms
+   ppmpy.synspec.libmode
    ppmpy.synspec.fastwind
 
 * :ref:`genindex`

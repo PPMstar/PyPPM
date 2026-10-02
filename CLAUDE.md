@@ -123,7 +123,9 @@ RProf data, the reader uses it instead of computing it.
   shipped): `FastwindInstall` (check, stage), `Indat` (byte-identical to the old awk
   edit), `FormalInput`, log/CONVERG/MAXTCORR convergence, `run_model`, `rerun_formal`,
   `batch.run_models` (task k of K, packing child, SIGUSR1 stop/restart), `archive`, CLI
-  `python3 -m ppmpy.synspec.fastwind`, and a fake FASTWIND for tests (`fake`). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
+  `python3 -m ppmpy.synspec.fastwind`, and a fake FASTWIND for tests (`fake`). M7: `libmode` (library
+  mode: `plan_teff_nodes`, `library_from_models`, `sparse_library_test` V8; 10 K / one
+  model per node costs ~1.4 % of the LPV in residual spectra, ~5 % in the EW). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
   defaults reproduce the M424 products bit for bit, verified by the tests.
 - `Messenger` (in `ppm.py`) — centralised verbosity-controlled output; reader
   classes take a `verbose` int (0=silent … 3=all) and route messages through it.

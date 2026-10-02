@@ -28,6 +28,7 @@ dumps        per-dump driver for all dumps (restartable, rank split), time-serie
 validate     validation routines V1-V6, hold-out, brute force, EW conservation, run_validation, reports
 testing      synthetic toy runs (library, sphere, profiles) and selftest() (no data needed)
 moms         moms block reader, sampling on the sphere (MomsDataSet or low-memory slab backend), per-dump samples
+libmode      library mode: T_eff' node plans, libraries from node models, sparse-library test (V8)
 fastwind     FASTWIND runner (standard library only; host python): install check, INDAT editor, single models,
              restartable batches, archives, pformalsol reruns; python -m ppmpy.synspec.fastwind {check,one,run,...}
 
