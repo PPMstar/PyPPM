@@ -116,3 +116,12 @@ fw_disc_dumps.py, fw_disc.py        process() with a.method = 'imu' and INT = th
 Used by test_validate.py (M4, 2026-10-02; no new copies):
 fw_disc.py                          DiscImu on a toy intensity library: validate.v1_exact gives the same arrays with it
                                     as with disc.DiscImu
+
+Added for test_moms.py (M5, 2026-10-02):
+sphere_sample.py                    all-dump moms sampling (relT, teff, ur, uth, uph float32 + T9_mean, t_s per dump;
+                                    producer of samples_r4050_N1236544/dNNNN.npz); from commit 67e042f
+Used by test_moms.py (no new copies):
+fw_sphere_extract.py                one-dump moms sampling (points.npz, points.txt, meta.json); the M424 tests compare
+                                    moms.sample_moms_sphere + write_points_table with its stored products, and the toy
+                                    tests execute its sampling lines (from "T9 = m.get_spherical_interpolation" to
+                                    "ur_kms = m.get_spherical_interpolation") on a MomsDataSet of a synthetic dump

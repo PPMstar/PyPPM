@@ -42,6 +42,7 @@ Documentation:
    ppmpy.synspec.dumps
    ppmpy.synspec.validate
    ppmpy.synspec.testing
+   ppmpy.synspec.moms
 
 * :ref:`genindex`
 * :ref:`modindex`

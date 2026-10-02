@@ -116,7 +116,9 @@ RProf data, the reader uses it instead of computing it.
   runs; `python -m ppmpy.synspec.testing` runs `selftest()`, < 1 min, no data). M4: intensity method:
   `library.build_imu_library`/`ImuLibrary`, `disc.DiscImu` (default = legacy, 9 GB;
   `fft='lazy'` ~2.8 GB, `dtype='float32'`), `disc.integrate_imu_nearest`,
-  `dumps.imu_integrator`, `fwresults.locate_points`/`extract_points`. Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
+  `dumps.imu_integrator`, `fwresults.locate_points`/`extract_points`. M5: `moms` (block reader,
+  `sample_moms_sphere` with backend 'slab' (~6 s, 0.3 GB per dump, bit-identical to
+  the 'momsdataset' backend: ~50 s, 18 GB), `write_points_table`, `sample_moms_dumps`). Rules: Python 3.9 syntax; only numpy/scipy imported at module level;
   defaults reproduce the M424 products bit for bit, verified by the tests.
 - `Messenger` (in `ppm.py`) — centralised verbosity-controlled output; reader
   classes take a `verbose` int (0=silent … 3=all) and route messages through it.

@@ -27,6 +27,7 @@ disc         DiscFlux and DiscImu (FFT disc integration; low-memory modes), exac
 dumps        per-dump driver for all dumps (restartable, rank split), time-series collection
 validate     validation routines V1-V6, hold-out, brute force, EW conservation, run_validation, reports
 testing      synthetic toy runs (library, sphere, profiles) and selftest() (no data needed)
+moms         moms block reader, sampling on the sphere (MomsDataSet or low-memory slab backend), per-dump samples
 
 Every module imports only numpy and scipy at load time (plotting imports matplotlib
 inside its functions); nothing here imports ppmpy.ppm at module level.
