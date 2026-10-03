@@ -164,6 +164,8 @@ Stage 7: line-profile variability
   :func:`~ppmpy.synspec.lpv.systematics` (one run against another).
 * :func:`ppmpy.synspec.spectrum.temporal_power_spectrum` / :func:`~ppmpy.synspec.spectrum.temporal_power_spectra`
   (padded FFT as the PPMstar notebooks, or a direct DFT on any frequency grid; :doc:`conventions`).
+* :func:`ppmpy.synspec.spectrum.multitaper_spectra` (multitaper PSD, DPSS NW = 3, K = 5, adaptive weighting, optional
+  F test; the default estimator of the M424 LPV analysis; :doc:`conventions`).
 * :mod:`ppmpy.synspec.diagnostics`: line moments, broadening kernels, macroturbulence and v sin i fits.
 * :mod:`ppmpy.synspec.plotting`: dynamic spectra, profile bundles, power spectra with a d\ :sup:`-1` axis (draws on
   axes given by the caller).

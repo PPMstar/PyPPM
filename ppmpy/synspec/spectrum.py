@@ -12,6 +12,10 @@ Two evaluations of one quantity:
 * ``method='dft'``: the same values evaluated directly on any frequency grid, which is
   much cheaper when only a band or a modestly oversampled grid is wanted.
 
+Multitaper spectra (:func:`multitaper_spectra`, PP 2026-10-03; the default of the M424 LPV
+analysis): DPSS tapers (default NW = 3, K = 5), adaptive weighting, a variance-conserving
+one-sided PSD and Thomson's harmonic F test; see the section near the end of this module.
+
 Conventions
 -----------
 * Time in s, frequency in microHz (``conventions.CPD_PER_MUHZ`` converts to d^-1).
@@ -49,7 +53,8 @@ import numpy as np
 from .conventions import CPD_PER_MUHZ
 
 __all__ = ["HANN_POWER_FACTOR", "sample_spacing", "fft_frequencies", "temporal_power_spectrum",
-           "temporal_power_spectra", "peak_frequency"]
+           "temporal_power_spectra", "peak_frequency", "MT_NW", "MT_K", "dpss_tapers", "mt_bandwidth",
+           "multitaper_spectra", "multitaper_spectrum", "ftest_threshold"]
 
 # Hann factor of the legacy normalisation (applied to the power, as in the legacy code).
 HANN_POWER_FACTOR = np.sqrt(8.0 / 3.0)
@@ -641,3 +646,267 @@ def temporal_power_spectra(X, dt, axis=0, *, detrend, pad=10_000_000, window="ha
         D = np.moveaxis(np.stack(xd, axis=1).reshape((n,) + rest), 0, axis)
         return f, power, D
     return f, power
+
+
+# ----------------------------------------------------------------------------------------------
+# multitaper (Thomson 1982; Percival & Walden 1993, ch. 7 and 10)
+# PP 2026-10-03: new; the default spectral estimator of the project's LPV analysis (NW = 3, K = 5), replacing the
+# single-window (Hann) padded FFT, which stays available above as method 'fft' / 'dft'. Validated against tapify
+# (Patil et al. 2024; tests/synspec/test_multitaper.py).
+# ----------------------------------------------------------------------------------------------
+MT_NW = 3.0
+"""Default time-half-bandwidth product NW of the multitaper spectra (half-bandwidth W = NW / (N dt))."""
+MT_K = 5
+"""Default number of DPSS tapers (K = 2 NW - 1, the usual choice: concentrations lambda_k = 1.0000, 1.0000, 0.9997, 0.9949,
+0.946 for N = 1601; the adaptive weighting down-weights the last one where the spectrum is steep)."""
+_MT_BLOCK_ELEMENTS = 1 << 21     # complex elements of the eigencoefficient block (K x frequencies x series), 32 MB: below
+                                 # glibc's largest mmap threshold, so the block temporaries are reused from the heap instead
+                                 # of being mapped and page-faulted afresh (8 concurrent processes with 0.5 GB blocks ran
+                                 # 50x slower on the login node, mostly kernel time)
+
+
+def dpss_tapers(n, NW=MT_NW, K=MT_K):
+    """
+    Discrete prolate spheroidal (Slepian) tapers.
+
+    Parameters
+    ----------
+    n: int
+        Number of samples (>= 9).
+    NW: float
+        Time-half-bandwidth product (0.5 <= NW < n / 2).
+    K: int
+        Number of tapers (1 <= K; K <= 2 NW - 1 keeps every taper well concentrated).
+
+    Returns
+    -------
+    tapers: np.ndarray
+        (K, n) float64, each normalised to sum(v^2) = 1 (scipy.signal.windows.dpss).
+    eigvals: np.ndarray
+        (K,) spectral concentrations lambda_k in (0, 1): the fraction of each taper's power inside +-W.
+    """
+    from scipy.signal.windows import dpss
+    n = _int_arg("n", n, 9)
+    K = _int_arg("K", K, 1)
+    NW = float(NW)
+    if not (0.5 <= NW < n / 2.0):
+        raise ValueError("NW must satisfy 0.5 <= NW < n / 2, got NW = {} for n = {}".format(NW, n))
+    if K > 2 * NW:
+        warnings.warn("K = {} > 2 NW = {:g}: the higher tapers leak strongly (use K <= 2 NW - 1)".format(K, 2 * NW),
+                      UserWarning, stacklevel=2)
+    v, lam = dpss(n, NW, K, return_ratios=True)
+    v = np.atleast_2d(np.asarray(v, dtype=np.float64))
+    v /= np.sqrt(np.sum(v * v, axis=1, keepdims=True))
+    return v, np.atleast_1d(np.asarray(lam, dtype=np.float64))
+
+
+def mt_bandwidth(n, dt, NW=MT_NW):
+    """
+    Half-bandwidth W = NW / (n dt) of the multitaper spectra [microHz]: a line (sinusoid) appears as a flat-topped
+    peak of full width ~2W, and spectral estimates closer than 2W are correlated. M424 (1601 dumps, 2834.5 s, NW = 3):
+    W = 0.661 microHz; its halves (800 dumps): 1.32 microHz.
+    """
+    _check_dt(dt)
+    return float(NW) * 1e6 / (int(n) * float(dt))
+
+
+def ftest_threshold(alpha, K=MT_K):
+    """
+    Value of Thomson's F statistic exceeded with probability alpha under the null hypothesis (no line, locally white
+    noise): F ~ F(2, 2K - 2). For a search over N_ind independent frequencies use alpha / N_ind (Bonferroni).
+    """
+    from scipy.stats import f as fdist
+    K = _int_arg("K", K, 2)
+    return float(fdist.isf(alpha, 2, 2 * K - 2))
+
+
+def _adaptive(Sk, lam, sigma2, maxiter, tol):
+    """
+    Adaptively weighted multitaper estimate (Percival & Walden 1993, eq. 370a-b) from the eigenspectra.
+
+    Parameters
+    ----------
+    Sk: np.ndarray
+        (K, F, S) eigenspectra |Y_k|^2 (per-sample units: their mean over frequency is the variance).
+    lam: np.ndarray
+        (K,) concentrations.
+    sigma2: np.ndarray
+        (S,) variance of each detrended series (the broad-band leakage scale (1 - lambda_k) sigma2).
+    maxiter, tol:
+        Iterations at most; an estimate is final once its relative change is below tol (only the points not yet
+        converged are iterated further, so the cost follows the slowly converging, leakage-dominated frequencies).
+
+    Returns
+    -------
+    S: np.ndarray
+        (F, S) estimate; dof: np.ndarray (F, S) equivalent degrees of freedom 2 (sum d^2)^2 / sum d^4 (<= 2K).
+    """
+    K = Sk.shape[0]
+    shp = Sk.shape[1:]
+    Skf = Sk.reshape(K, -1)
+    lamc = lam[:, None]
+    Bf = ((1.0 - lam)[:, None, None] * np.broadcast_to(sigma2, shp)[None]).reshape(K, -1)
+    S = 0.5 * (Skf[0] + Skf[1]) if K > 1 else Skf[0].copy()
+    act = np.arange(S.size)
+    for _ in range(maxiter):
+        Sa = S[act]
+        d2 = lamc * Sa[None] ** 2 / (lamc * Sa[None] + Bf[:, act]) ** 2              # d_k^2
+        Snew = np.sum(d2 * Skf[:, act], axis=0) / np.sum(d2, axis=0)
+        ok = np.abs(Snew - Sa) <= tol * np.maximum(Snew, np.finfo(float).tiny)
+        S[act] = Snew
+        act = act[~ok]
+        if act.size == 0:
+            break
+    d2 = lamc * S[None] ** 2 / (lamc * S[None] + Bf) ** 2
+    dof = 2.0 * np.sum(d2, axis=0) ** 2 / np.sum(d2 ** 2, axis=0)
+    return S.reshape(shp), dof.reshape(shp)
+
+
+def multitaper_spectra(X, dt, axis=0, *, detrend, NW=MT_NW, K=MT_K, over=20, frange=None, adaptive=True,
+                       ftest=False, norm="psd", maxiter=100, tol=1e-10, return_detrended=False, return_dof=False):
+    """
+    Multitaper power spectra (Thomson 1982) of many uniformly sampled series on one frequency grid.
+
+    Each detrended series x_n (n = 0..N-1) is multiplied by K DPSS tapers v_k (sum v_k^2 = 1); the eigencoefficients
+    Y_k(f) = sum_n v_k[n] x_n exp(-2 pi i f n dt) are evaluated on the grid f_j = j / (M dt), j = 1..M/2, by a real FFT
+    of the zero-padded tapered series (M = round(over N): ``over`` grid points per natural resolution 1/(N dt); the
+    zero padding interpolates exactly, as the mean padding of the Hann spectra). The estimate combines the eigenspectra
+    |Y_k|^2 with Thomson's adaptive weights (``adaptive``; otherwise their plain mean).
+
+    Parameters
+    ----------
+    X: array-like
+        Series with time along ``axis``; finite.
+    dt: float
+        Sample spacing [s] (:func:`sample_spacing`).
+    axis: int
+        Time axis of X.
+    detrend: None, 'mean', 'ratio' or ('poly', order, mode)
+        As :func:`temporal_power_spectrum` (per series). The detrended series is centred once more before tapering.
+    NW, K: float, int
+        Time-half-bandwidth product and number of tapers (default 3 and 5): frequency resolution 2W = 2 NW / (N dt)
+        (:func:`mt_bandwidth`), 2K degrees of freedom per series (fewer where adaptive weighting suppresses leaky
+        tapers).
+    over: int
+        Grid points per natural resolution 1/(N dt) (>= 1).
+    frange: (float or None, float or None), optional
+        Keep only frequencies in this inclusive band [microHz].
+    adaptive: bool
+        Thomson's adaptive weighting (default; reduces broad-band leakage from strong low-frequency power).
+    ftest: bool
+        Also return Thomson's harmonic F statistic F(f) ~ F(2, 2K - 2) under the null hypothesis (a sinusoid at f
+        against locally white noise; :func:`ftest_threshold`) and the complex line coefficient mu(f) (a sinusoid
+        A cos(2 pi f t + phi) gives mu = (A / 2) exp(i phi): its amplitude is 2 |mu|, in the units of the detrended
+        series).
+    norm: 'psd'
+        One-sided power spectral density per microHz, P = 2e-6 dt S (S in per-sample units), which conserves the
+        variance: integral of P over (0, Nyquist] ~ var(x) (exact in expectation for white noise).
+    maxiter, tol:
+        Adaptive-weighting iterations and relative convergence tolerance.
+    return_detrended, return_dof: bool
+        Also return the detrended series (shape of X) / the equivalent degrees of freedom per frequency and series.
+
+    Returns
+    -------
+    freq_muhz: np.ndarray
+        (F,) frequencies [microHz].
+    power: np.ndarray
+        X's shape with the time axis replaced by the F frequencies.
+    fstat, mu: np.ndarray
+        Only with ftest: F statistic (float) and complex line coefficient (complex; amplitude 2 |mu|), shape of power.
+    dof: np.ndarray
+        Only with return_dof.
+    detrended: np.ndarray
+        Only with return_detrended (last).
+
+    Notes
+    -----
+    Validated against tapify.MultiTaper (Patil et al. 2024) with method='fft', the same padding and
+    center_data=True: non-adaptive spectra and F statistics agree to rounding; adaptive spectra to the tolerance of
+    the two iterations (tapify takes the variance from the spectrum, this function from the series). Line amplitude:
+    a sinusoid of amplitude A at a grid frequency gives 2 |mu| = A (to O(leakage)); its power integrates to A^2 / 2
+    over the peak (+-W). The F test assumes a stationary sinusoid over the whole series and locally flat noise.
+    """
+    from scipy import fft as sfft
+    X = np.asarray(X)
+    if X.ndim == 0:
+        raise ValueError("X must have a time axis")
+    if norm != "psd":
+        raise ValueError("multitaper spectra support norm='psd' only, got {!r}".format(norm))
+    Xm = np.moveaxis(X, axis, 0)
+    n, rest = Xm.shape[0], Xm.shape[1:]
+    flat = Xm.reshape(n, -1)
+    nser = flat.shape[1]
+    if nser == 0:
+        raise ValueError("X contains no series (shape {})".format(X.shape))
+    _check_dt(dt)
+    over = _int_arg("over", over, 1)
+    v, lam = dpss_tapers(n, NW, K)
+    K = v.shape[0]
+    if ftest and K < 2:
+        raise ValueError("the F test needs K >= 2")
+    D = np.empty((n, nser))
+    for s in range(nser):
+        x = np.ascontiguousarray(flat[:, s])
+        if not np.all(np.isfinite(x)):
+            raise ValueError("series contains non-finite values; fill the gaps first")
+        xd = _detrend(x, dt, detrend)
+        if not np.all(np.isfinite(xd)):
+            raise ValueError("the detrended series is not finite (detrend={!r} divided by zero?)".format(detrend))
+        D[:, s] = xd
+    Y0 = D - D.mean(axis=0)
+    sigma2 = np.mean(Y0 * Y0, axis=0)
+    M = max(n, int(round(over * n)))
+    fall = np.arange(1, M // 2 + 1) / (M * dt) * 1e6
+    keep = _band(fall, frange)
+    jidx = np.flatnonzero(keep) + 1
+    f = fall[keep]
+    nf = f.size
+    P = np.empty((nf, nser))
+    Fs = np.empty((nf, nser)) if ftest else None
+    MU = np.empty((nf, nser), dtype=np.complex128) if ftest else None
+    DOF = np.empty((nf, nser)) if return_dof else None
+    U0 = v.sum(axis=1)                                   # taper DC values (odd tapers ~0)
+    U0[1::2] = 0.0
+    sU2 = float(np.sum(U0 ** 2))
+    onesided = np.where(jidx * 2 == M, 1.0, 2.0)         # the Nyquist bin of an even M is not doubled
+    blk = max(1, _MT_BLOCK_ELEMENTS // (K * max(nf, 1)))
+    for s0 in range(0, nser, blk):
+        s1 = min(nser, s0 + blk)
+        T = v[:, :, None] * Y0[None, :, s0:s1]                                   # (K, n, b)
+        Yk = sfft.rfft(T, n=M, axis=1)[:, jidx, :]                               # (K, F, b)
+        Sk = Yk.real ** 2 + Yk.imag ** 2
+        if adaptive and K > 1:
+            S, dof = _adaptive(Sk, lam, sigma2[s0:s1], maxiter, tol)
+        else:
+            S = Sk.mean(axis=0)
+            dof = np.full(S.shape, 2.0 * K)
+        P[:, s0:s1] = (onesided[:, None] * 1e-6 * dt) * S
+        if return_dof:
+            DOF[:, s0:s1] = dof
+        if ftest:
+            mu = np.tensordot(U0, Yk, axes=(0, 0)) / sU2                          # (F, b)
+            resid = np.sum(np.abs(Yk - U0[:, None, None] * mu[None]) ** 2, axis=0)
+            Fs[:, s0:s1] = (K - 1) * np.abs(mu) ** 2 * sU2 / resid
+            MU[:, s0:s1] = mu
+        del T, Yk, Sk
+
+    def shape(A):
+        return np.moveaxis(A.reshape((nf,) + rest), 0, axis)
+
+    out = [f, shape(P)]
+    if ftest:
+        out += [shape(Fs), shape(MU)]
+    if return_dof:
+        out.append(shape(DOF))
+    if return_detrended:
+        out.append(np.moveaxis(D.reshape((n,) + rest), 0, axis))
+    return tuple(out)
+
+
+def multitaper_spectrum(x, dt, **kw):
+    """:func:`multitaper_spectra` of one 1-D series; returns the same tuple with 1-D arrays."""
+    x = np.asarray(x)
+    if x.ndim != 1:
+        raise ValueError("x must be 1-D (use multitaper_spectra for many series)")
+    return multitaper_spectra(x, dt, axis=0, **kw)

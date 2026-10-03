@@ -148,3 +148,25 @@ mean-padding (default 1e7 samples, as the PPMstar notebooks).
 
 For M424, quote frequencies in d\ :sup:`-1` and microHz; with 1601 dumps the resolution is 0.22 microHz and the Nyquist
 frequency 176.4 microHz.
+
+Multitaper spectra (default of the M424 LPV analysis since 2026-10-03)
+----------------------------------------------------------------------
+
+:func:`ppmpy.synspec.spectrum.multitaper_spectra` (and :func:`~ppmpy.synspec.spectrum.multitaper_spectrum` for one
+series) is Thomson's (1982) multitaper estimator: the detrended series is multiplied by K discrete prolate spheroidal
+(Slepian) tapers (:func:`~ppmpy.synspec.spectrum.dpss_tapers`, default NW = 3, K = 5), the K eigenspectra are evaluated
+on the grid j / (over N dt) by a zero-padded FFT of the tapered series and combined with Thomson's adaptive weights
+(Percival & Walden 1993). Compared with the single Hann window it has 2K degrees of freedom per series instead of 2
+(much less scatter), far lower broad-band leakage (important for the steep red-noise spectra of IGW-only runs), and a
+harmonic F test for lines (``ftest=True``: F ~ F(2, 2K - 2) under the null hypothesis;
+:func:`~ppmpy.synspec.spectrum.ftest_threshold`; the line amplitude is 2 abs(mu)). Its resolution is the full bandwidth
+2W, W = NW / (N dt) (:func:`~ppmpy.synspec.spectrum.mt_bandwidth`; M424, 1601 dumps: W = 0.66 microHz): a sinusoid
+appears as a flat-topped peak of width ~2W, and spectral estimates closer than 2W are correlated.
+
+* Normalisation 'psd' only: one-sided PSD per microHz, P = 2e-6 dt S, which conserves the variance (a sinusoid of
+  amplitude A integrates to A\ :sup:`2` / 2 over its peak). Multitaper levels are therefore 3.27 times the Hann
+  'ppmstar' levels for a smooth spectrum.
+* Validated against tapify (Patil et al. 2024): identical non-adaptive spectra and F statistics; tapify's adaptive
+  weights take the broad-band variance from the summed padded spectrum (scaled by the padding and dt), here it is the
+  variance of the series, as in Percival & Walden.
+* The Hann + padded FFT (:func:`~ppmpy.synspec.spectrum.temporal_power_spectrum`) remains available.
