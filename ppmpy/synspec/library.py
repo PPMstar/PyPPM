@@ -2233,8 +2233,55 @@ def _reopen_imu_library(path, ident):
     return ImuLibrary.load(path, mmap=True)
 
 
+IMU_INTERP = ("linear", "pchip")
+
+
+def pchip_rows(x, V, g):
+    """
+    Monotone piecewise-cubic (PCHIP) interpolation of every row of V, given on the common abscissa x, onto g.
+
+    Parameters
+    ----------
+    x: array-like
+        (k,) non-decreasing abscissa; repeated values (e.g. wavelengths that coincide after rounding) are merged
+        and their values averaged.
+    V: array-like
+        (n, k) values.
+    g: array-like
+        (m,) where to evaluate; constant beyond the ends of x (as :func:`~ppmpy.synspec.spectral.interp_rows`).
+
+    Returns
+    -------
+    np.ndarray
+        (n, m) float64.
+
+    Notes
+    -----
+    PP 2026-10-08: for intensity libraries from dense formal solutions (build_imu_library(interp='pchip')).
+    """
+    from scipy.interpolate import PchipInterpolator
+    x = np.asarray(x, dtype=np.float64)
+    V = np.atleast_2d(np.asarray(V, dtype=np.float64))
+    if x.ndim != 1 or V.shape[1] != x.size:
+        raise ValueError("x must be 1-D with one value per column of V")
+    if np.any(np.diff(x) < 0):
+        raise ValueError("x must be non-decreasing")
+    xu, inv = np.unique(x, return_inverse=True)
+    if xu.size < 2:
+        raise ValueError("need at least two distinct abscissae")
+    if xu.size != x.size:
+        cnt = np.bincount(inv)
+        V = np.stack([np.bincount(inv, weights=row) / cnt for row in V])
+    g = np.asarray(g, dtype=np.float64)
+    out = PchipInterpolator(xu, V, axis=1, extrapolate=False)(np.clip(g, xu[0], xu[-1]))
+    out[:, g <= xu[0]] = V[:, :1]                           # exactly constant at and beyond the ends
+    out[:, g >= xu[-1]] = V[:, -1:]
+    return out
+
+
 def build_imu_library(reps, lib, lines, grid, lref=None, runs_dir=None, suffix="VTV010", frac=1e-3, check=True,
-                      layout=IMU_LAYOUT, nmu=4001, allow_missing=False, progress=None, teff_from_meta="auto"):
+                      layout=IMU_LAYOUT, nmu=4001, allow_missing=False, progress=None, teff_from_meta="auto",
+                      interp="linear"):
     """
     Intensity library from the OUT_IMU files of the representatives (port of fw_imu_library.py
     --stage build).
@@ -2280,6 +2327,13 @@ def build_imu_library(reps, lib, lines, grid, lref=None, runs_dir=None, suffix="
         bins without one are treated like empty bins (src = nearest bin with a representative).
     progress: callable, optional
         progress(bins_done, bins_total) after each representative.
+    interp: {'linear', 'pchip'}
+        How each ray's intensities go from the model's wavelengths onto the grid: 'linear' (default, the M424
+        production, bit for bit) or 'pchip' (:func:`pchip_rows`: monotone piecewise cubic with a continuous first
+        derivative; wavelengths that coincide after FASTWIND's 4-decimal output are merged, their values averaged;
+        constant beyond the band). 'pchip' is meant for models with a dense formal-solution grid (e.g. NFOBS 6401,
+        ~1 km/s): the derivative of the profile, which sets the residual spectra of slow flows, is then smooth
+        instead of piecewise constant. Recorded in ``params['interp']`` (absent = 'linear'). PP 2026-10-08.
     teff_from_meta: bool or 'auto'
         For reps given as a representatives.txt: where teff_rep comes from (:meth:`Representatives.read`
         ``from_meta``). 'auto' (default): the full-precision value of ``<dir>/meta.txt`` where it exists (as
@@ -2327,6 +2381,8 @@ def build_imu_library(reps, lib, lines, grid, lref=None, runs_dir=None, suffix="
     # asserts, allow_missing, checks returned instead of logged, up-front checks of the OUT files (check=True) and of
     # the representatives' bins, teff_from_meta for a representatives.txt (legacy: meta.txt values)
     from .fwresults import read_out, read_out_imu
+    if interp not in IMU_INTERP:
+        raise ValueError("interp must be one of {}, got {!r}".format(IMU_INTERP, interp))
     y = _grid_y(grid)
     names = _line_names(lines)
     if lref is None and not hasattr(lines, "lref"):
@@ -2417,8 +2473,12 @@ def build_imu_library(reps, lib, lines, grid, lref=None, runs_dir=None, suffix="
             n = p.size
             S[b, j, :n] = p / rmax
             RM[b, j], NN[b, j] = rmax, n
-            IC[b, j, :n] = interp_rows(np.repeat(yl[None, :], n, 0), Ic.T, y)
-            IL[b, j, :n] = interp_rows(np.repeat(yl[None, :], n, 0), Il.T, y)
+            if interp == "pchip":                                # PP 2026-10-08: smooth intensities
+                IC[b, j, :n] = pchip_rows(yl, Ic.T, y)
+                IL[b, j, :n] = pchip_rows(yl, Il.T, y)
+            else:
+                IC[b, j, :n] = interp_rows(np.repeat(yl[None, :], n, 0), Ic.T, y)
+                IL[b, j, :n] = interp_rows(np.repeat(yl[None, :], n, 0), Il.T, y)
         if progress is not None:
             progress(nrep + r + 1, 2 * nrep)
 
@@ -2444,6 +2504,8 @@ def build_imu_library(reps, lib, lines, grid, lref=None, runs_dir=None, suffix="
                   ny=int(ny), y0=float(y[0]), y1=float(y[-1]), dv=float(y[1] - y[0]),
                   grid=grid.to_dict() if hasattr(grid, "to_dict") else None, K=int(K), n_rep=int(nrep),
                   allow_missing=bool(allow_missing))
+    if interp != "linear":
+        params["interp"] = interp                            # absent = 'linear' (legacy '_meta' unchanged)
     inputs = {}
     if runs_dir is not None:
         inputs["runs"] = os.path.abspath(os.fspath(runs_dir))
