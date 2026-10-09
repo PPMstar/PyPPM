@@ -3189,7 +3189,7 @@ def _runs_of(bins):
 
 def extend_imu_library(base_imu, ext, store, grid=None, lref=None, imu_runs=None, layout=IMU_LAYOUT, imu_dirs=None,
                        results_dir=None, extract_dir=None, suffix="VTV010", check=True, allow_missing=False,
-                       select=None, cap_ok=True, cap=None, lines=None, nproc=1, log=None):
+                       select=None, cap_ok=True, cap=None, lines=None, nproc=1, log=None, interp="linear"):
     """
     The intensity library of an extended flux library: the base intensity library's rows in the base bins, one
     representative node model per node bin outside (the node model closest to the node's mean T_eff';
@@ -3213,6 +3213,9 @@ def extend_imu_library(base_imu, ext, store, grid=None, lref=None, imu_runs=None
     imu_runs, layout, imu_dirs, results_dir, extract_dir, suffix, check, allow_missing, select, cap_ok, cap, lines,
     nproc, log:
         The OUT_IMU files of the node models and the checks (:func:`imu_library_from_models`).
+    interp: {'linear', 'pchip'}
+        Interpolation of the node models' rays onto the grid (:func:`ppmpy.synspec.library.build_imu_library`); use
+        the base library's ('pchip' for a library built with it; recorded in params['interp']). PP 2026-10-08.
 
     Returns
     -------
@@ -3273,8 +3276,10 @@ def extend_imu_library(base_imu, ext, store, grid=None, lref=None, imu_runs=None
     if grid is None:
         grid = base_imu.grid if base_imu.grid is not None else VelocityGrid()
     y = np.asarray(getattr(grid, "y", grid), dtype=np.float64)
-    if y.size != base_imu.ny or y.size != ext.ny:
-        raise ValueError("grid of {} points, the libraries have {} / {}".format(y.size, base_imu.ny, ext.ny))
+    # PP 2026-10-08: only the base intensity library must share the grid; the flux library contributes its bins (edges,
+    # counts, node models), not its profiles, so a finer intensity grid (e.g. 0.25 km/s, interp='pchip') is allowed
+    if y.size != base_imu.ny:
+        raise ValueError("grid of {} points, the base intensity library has {}".format(y.size, base_imu.ny))
     ok = _usable(st, select, cap_ok, cap)
     nb = ext.nb
     node_bins = np.asarray(rec["node_bins"], dtype=np.int64)
@@ -3312,7 +3317,7 @@ def extend_imu_library(base_imu, ext, store, grid=None, lref=None, imu_runs=None
                                                                                  np.flatnonzero(sel)])
         sub = dict(edges=ext.edges[a:b + 1], tmean=ext.tmean[a:b], count=view.count[a:b])
         part, pchk = build_imu_library(rp, sub, names, y, lref=lr, runs_dir=None, suffix=suffix, check=check,
-                                       allow_missing=True)
+                                       allow_missing=True, interp=interp)       # PP 2026-10-08: interp
         parts.append((a, b, part))
         chk_bins += (np.asarray(pchk["bins"]) + a).tolist()
         if check:
@@ -3363,6 +3368,8 @@ def extend_imu_library(base_imu, ext, store, grid=None, lref=None, imu_runs=None
                   grid=grid.to_dict() if hasattr(grid, "to_dict") else gp.get("grid"), K=int(K),
                   replicas_averaged=False, n_rep=int(len(reps)),
                   max_models_per_node=int(cnt[is_node].max()) if is_node.any() else 0)
+    if interp != "linear" or "interp" in params:
+        params["interp"] = interp                                # PP 2026-10-08: of the node rows (base rows: the base's)
     params[EXTENSION_KEY] = dict(rec, base_imu_source=base_imu.path, base_imu_params=gp,
                                  rep_idx=[int(i) for i in reps.idx], rep_bins=[int(b) for b in reps.bins])
     inputs = dict(base_imu=base_imu.path) if base_imu.path else {}
