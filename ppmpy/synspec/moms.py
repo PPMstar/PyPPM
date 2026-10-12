@@ -841,14 +841,84 @@ def _sample_momsdataset(m, dump, radius, npoints, tslot, vslots, velocity_scale,
     return T, vel
 
 
-def _sample_slab(source, dump, z, y, x, tslot, vslots, velocity_scale, components, slab, cells="corners"):
+class DecodeScaleCorrection:
+    """
+    Per-cell correction of moms decoded with a wrong ``AAvMachNo`` (PP 2026-10-12; M424: decompressed with 0.0086, the
+    production run used 0.0125).
+
+    The moms store log10(rho/rho0), log10(p/p0) (the T9 slot) and the momenta (rho/rho0) u as signed 16-bit values
+    scaled by ``ArgsImg`` ~ AAvMachNo^2 (the log fractions) and ~ AAvMachNo (the momenta); decoding with another
+    value scales them by k = (A_dec/A_enc)^2 and m = A_dec/A_enc. The decoder then writes rho' = rho0 10^(k l_rho),
+    T9' = T90 10^(k l_T) and u' = m (rho/rho0) u / 10^(k l_rho). The inverse, per cell::
+
+        l_rho = (log10 rho' - log10 rho0) / k,   rho = rho0 10^l_rho
+        T9    = T90 10^((log10 T9' - log10 T90) / k)
+        u     = (u' / m) (rho' / rho)
+
+    Parameters
+    ----------
+    r_base, rho0, T90: array-like
+        The base state as a function of radius (increasing r; M424: the dump-0 rprof Rho0 and T9). The decoder's base
+        is the 4x4x4 Gauss average of its tabulated profile over each briquette, not a function of radius only; with
+        the radius-only base the correction reproduces a re-decompression to ~2e-4 (median) and <= 1.5 % (99.9th
+        percentile, 3950-4060 Mm) of rho and u, ~6e-5 / <= 0.3 % of T9 (M424 dump 3200, Frontera test 2026-10-12);
+        the momenta part is exact.
+    a_dec, a_enc: float
+        AAvMachNo of the decompression build and of the production run.
+    rho_slot, t_slot: str
+        Slot names of the density and the temperature (M424: 'rho', 'T9').
+    """
+
+    def __init__(self, r_base, rho0, T90, a_dec=0.0086, a_enc=0.0125, rho_slot="rho", t_slot="T9"):
+        self.r = np.asarray(r_base, dtype=np.float64)
+        self.lrho0 = np.log10(np.asarray(rho0, dtype=np.float64))
+        self.lT0 = np.log10(np.asarray(T90, dtype=np.float64))
+        if np.any(np.diff(self.r) <= 0):
+            raise ValueError("r_base must increase")
+        self.k = (float(a_dec) / float(a_enc)) ** 2
+        self.m = float(a_dec) / float(a_enc)
+        self.a_dec, self.a_enc = float(a_dec), float(a_enc)
+        self.rho_slot, self.t_slot = rho_slot, t_slot
+
+    def __repr__(self):
+        return "DecodeScaleCorrection(a_dec={}, a_enc={}, k={:.5f}, m={:.5f})".format(self.a_dec, self.a_enc, self.k,
+                                                                                    self.m)
+
+    def apply(self, r, rho, T, u=None):
+        """Corrected (rho, T, [ux, uy, uz]) of cells at radius r from the decoded values (cells with rho <= 0 or
+        T <= 0, e.g. outside the star, are returned unchanged)."""
+        r = np.asarray(r, dtype=np.float64)
+        rho = np.asarray(rho, dtype=np.float64)
+        T = np.asarray(T, dtype=np.float64)
+        lr0 = np.interp(r, self.r, self.lrho0)
+        lt0 = np.interp(r, self.r, self.lT0)
+        ok = (rho > 0) & (T > 0)
+        rho_c = rho.copy()
+        T_c = T.copy()
+        rho_c[ok] = 10.0 ** (lr0[ok] + (np.log10(rho[ok]) - lr0[ok]) / self.k)
+        T_c[ok] = 10.0 ** (lt0[ok] + (np.log10(T[ok]) - lt0[ok]) / self.k)
+        if u is None:
+            return rho_c, T_c, None
+        fac = np.ones_like(rho)
+        fac[ok] = rho[ok] / rho_c[ok] / self.m
+        return rho_c, T_c, [np.asarray(c, dtype=np.float64) * fac for c in u]
+
+
+def _sample_slab(source, dump, z, y, x, tslot, vslots, velocity_scale, components, slab, cells="corners",
+                 correction=None):
     """
     The slab backend: the points are grouped by boxes of `slab` z intervals; per box the T field and the velocity
     components are computed at the corner cells of its points (cells='corners') or on all its cells ('box'), then
     interpolated with RegularGridInterpolator on the box. Only the 8 corner values of a point enter its result, so
     the values elsewhere in the box array are never read.
     """
-    reader = MomsBlockReader(source, dump, [tslot] + (list(vslots) if vslots is not None else []))
+    rslot = source.slot(correction.rho_slot) if correction is not None else None
+    if correction is not None and cells != "corners":
+        raise NotImplementedError("correction is implemented for slab_cells='corners' only")
+    if correction is not None and tslot != source.slot(correction.t_slot):
+        raise ValueError("correction: the temperature slot must be {!r}".format(correction.t_slot))
+    reader = MomsBlockReader(source, dump, [tslot] + (list(vslots) if vslots is not None else [])
+                             + ([rslot] if rslot is not None and rslot != tslot else []))
     try:
         grid = source.grid(reader.n)
         g = grid.coord
@@ -892,8 +962,16 @@ def _sample_slab(source, dump, z, y, x, tslot, vslots, velocity_scale, component
                 ci, cj, ck = np.unravel_index(flat, shape)
                 gi, gj, gk = ci + i0, cj + j0, ck + k0
                 fields = [reader.gather(tslot, gi, gj, gk)]
+                if correction is not None:                  # PP 2026-10-12: decode-scale correction per cell
+                    cr0 = np.sqrt(np.power(g[gk], 2.0) + np.power(g[gj], 2.0) + np.power(g[gi], 2.0))
+                    rho_dec = reader.gather(rslot, gi, gj, gk)
+                    uu = None if vslots is None else [reader.gather(s, gi, gj, gk) for s in vslots]
+                    _, Tc, uc = correction.apply(cr0, rho_dec, fields[0], uu)
+                    fields = [Tc.astype(np.asarray(fields[0]).dtype)]
+                    del rho_dec, cr0
                 if vslots is not None:
-                    u = [reader.gather(s, gi, gj, gk) for s in vslots]
+                    u = [reader.gather(s, gi, gj, gk) for s in vslots] if correction is None else \
+                        [c.astype(np.float32) for c in uc]
                     # cell coordinates as MomsGrid.box (1.0 * g == g), r as ppmpy's _radius, float32 Jacobian
                     cx, cy, cz = g[gk], g[gj], g[gi]
                     cr = np.sqrt(np.power(cx, 2.0) + np.power(cy, 2.0) + np.power(cz, 2.0))
@@ -936,7 +1014,7 @@ def _check_finite(dump, arrays, what):
 
 
 def sample_moms_points(source, dump, z, y, x, temperature="T9", velocity=("ux", "uy", "uz"), velocity_scale=1e3,
-                       backend="slab", slab=16, slab_cells="corners", moms=None, components=True):
+                       backend="slab", slab=16, slab_cells="corners", moms=None, components=True, correction=None):
     """
     The temperature slot and the spherical velocity components of one dump at any points, interpolated
     trilinearly on the moms cell centres (ppmpy ``MomsDataSet.get_interpolation``).
@@ -990,6 +1068,8 @@ def sample_moms_points(source, dump, z, y, x, temperature="T9", velocity=("ux", 
         raise ValueError("z, y, x must be 1-d arrays of equal length")
     tslot = source.slot(temperature)
     vslots = None if velocity is None else [source.slot(v) for v in velocity]
+    if correction is not None and backend != "slab":
+        raise NotImplementedError("correction (DecodeScaleCorrection) needs backend='slab'")
     if backend == "momsdataset":
         m = _momsdataset(source, dump) if moms is None else moms
         coord = _check_momsdataset(m, source, dump)
@@ -999,7 +1079,7 @@ def sample_moms_points(source, dump, z, y, x, temperature="T9", velocity=("ux", 
         del m
     else:
         T, vel, coord = _sample_slab(source, dump, z, y, x, tslot, vslots, velocity_scale, components, slab,
-                                     slab_cells)
+                                     slab_cells, correction=correction)
     out = dict(T=T)
     out.update(vel)
     _check_finite(dump, out, "outer cells NaN?")
@@ -1009,7 +1089,7 @@ def sample_moms_points(source, dump, z, y, x, temperature="T9", velocity=("ux", 
 
 def sample_moms_sphere(source, dump, radius, npoints, teff0, temperature="T9", velocity=("ux", "uy", "uz"),
                        velocity_scale=1e3, backend="slab", slab=16, moms=None, components=True,
-                       slab_cells="corners"):
+                       slab_cells="corners", correction=None):
     """
     One moms dump on the equal-area sphere: temperature perturbation, T_eff' and velocity components per point.
 
@@ -1064,7 +1144,7 @@ def sample_moms_sphere(source, dump, radius, npoints, teff0, temperature="T9", v
     else:
         p = sample_moms_points(source, dump, z, y, x, temperature=tslot, velocity=vslots,
                                velocity_scale=velocity_scale, backend="slab", slab=slab, slab_cells=slab_cells,
-                               components=components)
+                               components=components, correction=correction)
         coord = p.pop("grid")
         T = p.pop("T")
         vel = p
@@ -1174,11 +1254,12 @@ def _dumps_task(dump):
 
 
 def _sample_one(source, dump, radius, npoints, teff0, outdir, backend, check, temperature, velocity,
-                velocity_scale, slab, meta):
+                velocity_scale, slab, meta, correction=None):
     # PP 2026-10-02: ported from sphere_sample.py:47-65
     t0 = time.time()
     s = sample_moms_sphere(source, dump, radius, npoints, teff0, temperature=temperature, velocity=velocity,
-                           velocity_scale=velocity_scale, backend=backend, slab=slab, components=True)
+                           velocity_scale=velocity_scale, backend=backend, slab=slab, components=True,
+                           correction=correction)
     tname = s["meta"]["temperature"]
     arrays = dict(relT=s["relT"].astype(np.float32), teff=s["teff"].astype(np.float32))
     for k in ("ur", "uth", "uph"):
@@ -1208,7 +1289,7 @@ def _sample_one(source, dump, radius, npoints, teff0, outdir, backend, check, te
 def sample_moms_dumps(source, dumps, radius, npoints, teff0, outdir, rank=0, nranks=1, nproc=1, backend="slab",
                       overwrite=False, check=None, start_method=None, temperature="T9", velocity=("ux", "uy", "uz"),
                       velocity_scale=1e3, slab=16, meta=False, timeout=1800.0, maxtasksperchild=50,
-                      log=functools.partial(print, flush=True)):
+                      log=functools.partial(print, flush=True), correction=None):
     """
     Per-dump sphere samples (sphere_sample.py): ``outdir/dNNNN.npz`` with relT, teff, ur, uth, uph (float32,
     points in idx order), ``<temperature>_mean`` and t_s.
@@ -1263,7 +1344,8 @@ def sample_moms_dumps(source, dumps, radius, npoints, teff0, outdir, rank=0, nra
     if log:
         log("rank {}/{}: {} dumps, {} to do -> {}".format(rank, nranks, len(mine), len(todo), outdir))
     kw = dict(radius=radius, npoints=npoints, teff0=teff0, outdir=outdir, backend=backend, check=check,
-              temperature=temperature, velocity=velocity, velocity_scale=velocity_scale, slab=slab, meta=meta)
+              temperature=temperature, velocity=velocity, velocity_scale=velocity_scale, slab=slab, meta=meta,
+              correction=correction)
     results = []
     if not todo:
         return results
