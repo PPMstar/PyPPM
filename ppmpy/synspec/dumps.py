@@ -1194,6 +1194,42 @@ def imu_integrator(library, grid=None, lines=None, dtype="float64", fft="precomp
 # ----------------------------------------------------------------------------------------------
 # all dumps
 # ----------------------------------------------------------------------------------------------
+def rotation_angle(rot, t_s):
+    """Rotation angle Omega (t_s - t0) [rad] of a rotation configuration (:func:`run_disc_dumps` ``rotation``)."""
+    # PP 2026-10-14: new
+    return float(rot["omega"]) * (float(t_s) - float(rot["t0"]))
+
+
+def rotated_projections(rot, t_s, rows=None):
+    """
+    Projections mu, theta_hat . n(t), phi_hat . n(t) (nlos, N) for the lines of sight n(t) = R_z(-alpha) n0 of a
+    rotating star, alpha = :func:`rotation_angle` (the star turns by +alpha about +z; seen in the simulation frame the
+    observers turn by -alpha). ``rot``: dict with omega [rad/s], t0 [s], L0 (nlos, 3), theta, phi (N,) and
+    project_method. ``rows``: a slice of the lines of sight (default all).
+    """
+    # PP 2026-10-14: new (rotation study); 2026-10-15: rows (observer chunks, bounded memory)
+    al = rotation_angle(rot, t_s)
+    c, s = np.cos(al), np.sin(al)
+    Rm = np.array([[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]])           # R_z(-alpha)
+    L0 = np.asarray(rot["L0"], dtype=np.float64)
+    Lt = (L0 if rows is None else L0[rows]) @ Rm.T
+    return project_los(rot["theta"], rot["phi"], Lt, method=rot["project_method"], chunk=PROJECT_CHUNK)
+
+
+LOS_KEYS = ("F", "F0", "diag_F", "diag_F0", "vmean_w", "sigma_w", "wout", "n_clip")
+"""Members of a :func:`disc_dump` result with one entry per line of sight (first axis)."""
+
+
+def _merge_los_chunks(parts):
+    """One :func:`disc_dump` result from the results of consecutive line-of-sight chunks of the same dump."""
+    # PP 2026-10-15: new (observer chunks)
+    res = dict(parts[0])
+    for k in LOS_KEYS:
+        if res.get(k) is not None:
+            res[k] = np.concatenate([np.asarray(p[k]) for p in parts], axis=0)
+    return res
+
+
 class _DumpWorker:
     """Per-process state of :func:`run_disc_dumps`: the integrator, the projections and the run configuration."""
 
@@ -1211,8 +1247,28 @@ class _DumpWorker:
             return dict(dump=int(d), skipped=True)            # written meanwhile (another rank)
         t0 = time.time()
         smp = load_sample(cfg["samples_dir"], d, cfg["pattern"])
-        res = disc_dump(self.integ, smp, self.mu, self.tn, self.pn, diag_vwin=cfg["diag_vwin"],
-                        diag_keys=cfg["diag_keys"], lref=cfg["lref"], batch=cfg.get("batch", False))
+        rot = cfg.get("rotation")
+        if rot is not None:
+            # PP 2026-10-14: solid-body rotation (kinematic): the observers turn by -Omega (t - t0) about +z in the
+            # simulation frame (the surface pattern rotates with the star) and u_phi gets v_eq sin(theta)
+            smp["uph"] = smp["uph"] + rot["veq"] * rot["sinth"]
+        nlos = np.shape(self.mu)[0]
+        chunk = int(cfg.get("los_chunk") or nlos)
+        parts = []
+        for c0 in range(0, nlos, chunk):
+            # PP 2026-10-15: observer chunks bound the memory (histograms and projections of `chunk` lines of sight
+            # at a time); every line of sight is computed independently, so the results do not depend on the chunks
+            rows = slice(c0, min(c0 + chunk, nlos))
+            if rot is not None:
+                mu, tn, pn = rotated_projections(rot, smp["t_s"], rows=None if chunk >= nlos else rows)
+            else:
+                mu, tn, pn = (self.mu, self.tn, self.pn) if chunk >= nlos else (self.mu[rows], self.tn[rows],
+                                                                              self.pn[rows])
+            parts.append(disc_dump(self.integ, smp, mu, tn, pn, diag_vwin=cfg["diag_vwin"],
+                                   diag_keys=cfg["diag_keys"], lref=cfg["lref"], batch=cfg.get("batch", False)))
+            del mu, tn, pn
+        res = parts[0] if len(parts) == 1 else _merge_los_chunks(parts)
+        del parts
         extra = cfg["extra_fields"]
         if callable(extra):
             extra = extra(d, smp, res)
@@ -1470,7 +1526,7 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
                    nranks=1, maxtasksperchild=20, timeout=900.0, overwrite=False, start_method=None, extra_fields=None,
                    lref=None, factory_kwargs=None, pattern=SAMPLE_PATTERN, project_method="matmul", diag_vwin=None,
                    diag_keys=DIAG_KEYS, meta=False, tmpdir=None, tune_malloc=None, batch=None, log=None,
-                   deposit=None):
+                   deposit=None, rotation=None, los_chunk=None):
     """
     Disc-integrated profiles of many dumps (port of fw_disc_dumps.py): one file per dump in ``outdir/name``.
 
@@ -1590,6 +1646,19 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
         records and files are those of the code before the option). With an explicit ``name`` whose dumps are all
         present, the deposit of the directory (run record, else its first per-dump file) must be the requested one
         (ValueError otherwise; checked where the requested deposit is known without building the integrator).
+    rotation: dict, optional
+        Kinematic solid-body rotation about the simulation's +z axis (PP 2026-10-14): veq [km/s] (equatorial
+        velocity at the stellar surface), rstar_Mm [Mm] (Omega = veq / rstar) and t0 [s] (the time of zero rotation
+        angle; give the same t0 to every rank). Per dump the lines of sight become n(t) = R_z(-Omega (t_s - t0)) n0
+        (:func:`rotated_projections`: the star and its surface pattern turn by +Omega (t_s - t0) under the observer)
+        and u_phi gets veq sin(theta). No Coriolis force, oblateness or gravity darkening. Recorded as
+        params['rotation']; None (default) changes nothing. Doppler shifts beyond the grid's vshift are clipped and
+        counted (per-dump member n_clip): choose vshift > veq + max |u . n|.
+    los_chunk: int, optional
+        Integrate at most this many lines of sight at a time per dump (PP 2026-10-15). The batched lazy intensity
+        integrator holds one dense histogram per line of sight ((nodes x rays) x (2 nshift + 1) float64), so the
+        memory per worker grows with the number of lines of sight and the shift window; chunks bound it. The
+        results do not depend on it (not recorded). Default: all at once.
 
     Returns
     -------
@@ -1754,6 +1823,11 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
                       extra_fields=_extra_desc(extra_fields))
         if dep != "nearest":
             params["deposit"] = dep                     # PP 2026-10-02: absent for 'nearest' (records as before)
+        if rotation is not None:
+            # PP 2026-10-14: solid-body rotation about +z (absent without rotation: records as before)
+            rot_rec = dict(veq=float(rotation["veq"]), rstar_Mm=float(rotation["rstar_Mm"]), t0=float(rotation["t0"]),
+                           axis=[0.0, 0.0, 1.0])
+            params["rotation"] = rot_rec
         factory = "{}.{}".format(_modname(integ_factory),
                                  getattr(integ_factory, "__qualname__", type(integ_factory).__name__))
         info = dict(names=names, factory=factory,
@@ -1780,13 +1854,19 @@ def run_disc_dumps(dumps, samples_dir, outdir, name, integ_factory, factory_args
 
         # projections (fw_disc_dumps.py:70-75): 'matmul' = rhat @ LOS.T, then C-contiguous (nlos, N)
         MU, TN, PN = project_los(theta64, phi64, L, method=project_method, chunk=PROJECT_CHUNK)
+        rot_cfg = None
+        if rotation is not None:
+            # PP 2026-10-14: per-dump lines of sight (rotated_projections) need the angles in the workers
+            rot_cfg = dict(veq=float(rotation["veq"]), omega=float(rotation["veq"]) / (1e3 * float(rotation["rstar_Mm"])),
+                           t0=float(rotation["t0"]), L0=np.array(L, dtype=np.float64), theta=theta64, phi=phi64,
+                           sinth=np.sin(theta64), project_method=project_method)
         del theta64, phi64
         base_meta = None
         if meta:
             base_meta = make_meta("synspec.disc_dump", params=params, names=names, run=info)
         cfg = dict(outdir=outdir, fields=fields, overwrite=bool(overwrite), samples_dir=samples_dir, pattern=pattern,
                    lref=lr, diag_vwin=diag_vwin, diag_keys=keys, extra_fields=extra_fields, meta=base_meta,
-                   batch=use_batch)
+                   batch=use_batch, rotation=rot_cfg, los_chunk=los_chunk)
         _log("{}: {} dumps (rank {}/{}), {} to do, {} workers -> {}; T_eff' nodes {} ({:.0f}-{:.0f} K){}".format(
             name, len(mine), rank, nranks, len(todo), nproc, ddir, tnodes.size, tnodes[0], tnodes[-1],
             "; lines of sight batched" if use_batch else ""))
